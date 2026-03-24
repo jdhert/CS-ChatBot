@@ -1,0 +1,41 @@
+{
+  "generatedAt": "2026-03-17T05:21:03.954Z",
+  "dataset": "C:\\Users\\shpark6\\Desktop\\AI작업\\coviAI\\workspace-fastify\\docs\\eval\\scc_eval_set.seed.json",
+  "baseUrl": "http://127.0.0.1:3112",
+  "summary": {
+    "total": 38,
+    "answerable": 29,
+    "unanswerable": 9,
+    "exactBestHit": "27/29 (93.1%)",
+    "top3SupportHit": "29/29 (100%)",
+    "answerFormatOk": "29/29 (100%)",
+    "linkAttached": "28/29 (96.55%)",
+    "negativeGuarded": "9/9 (100%)",
+    "answerSourceMissing": 0,
+    "delayMs": 1200
+  },
+  "failures": [
+    {
+      "id": "EV-029",
+      "query": "전표승인서에서 날짜랑 시간을 줄바꿈해서 보여주고 싶어",
+      "reason": "MISSING_SIMILAR_LINK",
+      "expectedRequireId": "276ca4ac-b450-4227-9498-4ac49cfeee77",
+      "actualBestRequireId": null,
+      "answerSource": "rule_only",
+      "similarIssueUrl": null,
+      "generatedAnswer": "1) 핵심 안내\n현재 후보 이력에서 질문과 정확히 일치하는 사례를 특정하기 어렵습니다.\n\n2) 추가 확인 요청\n오류 메시지, 화면 경로, 재현 조건을 함께 주시면 재탐색하겠습니다.",
+      "llmUsed": false,
+      "llmSkipped": true,
+      "timings": {
+        "ruleMs": 1285,
+        "embeddingMs": 1,
+        "vectorMs": 0,
+        "rerankMs": 72,
+        "retrievalMs": 1470,
+        "cacheHit": false,
+        "llmMs": 0,
+        "totalMs": 1470
+      }
+    }
+  ]
+}

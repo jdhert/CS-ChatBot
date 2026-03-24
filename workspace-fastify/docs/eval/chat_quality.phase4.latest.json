@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-03-18T06:32:32.408Z",
+  "dataset": "C:\\Users\\shpark6\\Desktop\\AI작업\\coviAI\\workspace-fastify\\docs\\eval\\scc_eval_set.seed.json",
+  "baseUrl": "http://127.0.0.1:3116",
+  "summary": {
+    "total": 50,
+    "answerable": 37,
+    "unanswerable": 13,
+    "exactBestHit": "37/37 (100%)",
+    "top3SupportHit": "37/37 (100%)",
+    "policyMode": "expectedRequireId_or_acceptedRequireIds",
+    "answerFormatOk": "37/37 (100%)",
+    "linkAttached": "37/37 (100%)",
+    "negativeGuarded": "13/13 (100%)",
+    "answerSourceMissing": 0,
+    "delayMs": 1800
+  },
+  "failures": []
+}

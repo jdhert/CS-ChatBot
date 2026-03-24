@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420" role="img" aria-labelledby="title desc">
+  <title id="title">AI Core External Call Architecture</title>
+  <desc id="desc">Client to Web/WAS to AI Core and back to Client flow diagram</desc>
+  <defs>
+    <style>
+      .bg { fill: #f8fafc; }
+      .box { fill: #ffffff; stroke: #0f172a; stroke-width: 2; rx: 14; ry: 14; }
+      .core { fill: #ecfeff; stroke: #0e7490; stroke-width: 2; rx: 14; ry: 14; }
+      .txt { fill: #0f172a; font-family: Arial, sans-serif; font-size: 22px; font-weight: 700; }
+      .sub { fill: #334155; font-family: Arial, sans-serif; font-size: 16px; }
+      .arrow { stroke: #334155; stroke-width: 3; fill: none; marker-end: url(#mArrow); }
+      .return { stroke: #475569; stroke-width: 3; fill: none; marker-end: url(#mArrow); stroke-dasharray: 10 8; }
+      .label { fill: #334155; font-family: Arial, sans-serif; font-size: 14px; }
+    </style>
+    <marker id="mArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#334155"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1280" height="420"/>
+
+  <rect class="box" x="70" y="130" width="220" height="120"/>
+  <text class="txt" x="180" y="190" text-anchor="middle">Client</text>
+  <text class="sub" x="180" y="220" text-anchor="middle">User Question</text>
+
+  <rect class="box" x="370" y="130" width="300" height="120"/>
+  <text class="txt" x="520" y="185" text-anchor="middle">Web/WAS Server</text>
+  <text class="sub" x="520" y="212" text-anchor="middle">JSP + AJAX Gateway</text>
+
+  <rect class="core" x="760" y="90" width="440" height="200"/>
+  <text class="txt" x="980" y="145" text-anchor="middle">AI Core</text>
+  <text class="sub" x="980" y="176" text-anchor="middle">/chat API</text>
+  <text class="sub" x="980" y="202" text-anchor="middle">LLM-assisted Answering</text>
+  <text class="sub" x="980" y="228" text-anchor="middle">Chunk DB + Ranking</text>
+
+  <path class="arrow" d="M290 190 L370 190"/>
+  <text class="label" x="330" y="175" text-anchor="middle">1) request</text>
+
+  <path class="arrow" d="M670 190 L760 190"/>
+  <text class="label" x="715" y="175" text-anchor="middle">2) /chat call</text>
+
+  <path class="return" d="M760 235 L670 235"/>
+  <text class="label" x="715" y="260" text-anchor="middle">3) answer + require_id link</text>
+
+  <path class="return" d="M370 235 L290 235"/>
+  <text class="label" x="330" y="260" text-anchor="middle">4) final response</text>
+</svg>

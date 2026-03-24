@@ -1,0 +1,46 @@
+{
+  "generatedAt": "2026-03-17T05:39:32.819Z",
+  "dataset": "C:\\Users\\shpark6\\Desktop\\AI작업\\coviAI\\workspace-fastify\\docs\\eval\\scc_eval_set.seed.json",
+  "total": 12,
+  "answerable": 8,
+  "unanswerable": 4,
+  "metrics": {
+    "top1Hit": "7/8 (87.5%)",
+    "top3Hit": "8/8 (100%)",
+    "chunkTypeHit": "8/8 (100%)",
+    "negativeCorrect": "4/4 (100%)"
+  },
+  "runtime": {
+    "delayMs": 1800,
+    "ruleOnlyCount": 12,
+    "hybridCount": 0,
+    "vectorUsedCount": 0
+  },
+  "failures": [
+    {
+      "id": "EV-039",
+      "query": "기초설정관리에서 브라우저캐시여부 체크하고 저장해도 다시 풀려",
+      "expectedRequireId": "2f7763cf-438c-47dd-b6fc-b8c58e0b616a",
+      "actualBestRequireId": "8095a700-bbf4-441e-84d4-f19852f391d0",
+      "actualBestSccId": "251364",
+      "actualBestChunkType": "qa_pair",
+      "confidence": 1,
+      "top3RequireIds": [
+        "8095a700-bbf4-441e-84d4-f19852f391d0",
+        "2f7763cf-438c-47dd-b6fc-b8c58e0b616a",
+        "bde24d19-e9fa-45fd-a067-d757fea5c3fa"
+      ],
+      "retrievalMode": "rule_only",
+      "vectorUsed": false,
+      "vectorError": "GOOGLE_EMBEDDING_HTTP_429",
+      "timings": {
+        "ruleMs": 2279,
+        "embeddingMs": 655,
+        "vectorMs": 0,
+        "rerankMs": 234,
+        "retrievalMs": 2650,
+        "cacheHit": false
+      }
+    }
+  ]
+}

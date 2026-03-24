@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-03-18T06:28:43.893Z",
+  "dataset": "C:\\Users\\shpark6\\Desktop\\AI작업\\coviAI\\workspace-fastify\\docs\\eval\\scc_eval_set.seed.json",
+  "total": 50,
+  "answerable": 37,
+  "unanswerable": 13,
+  "metrics": {
+    "top1Hit": "37/37 (100%)",
+    "top3Hit": "37/37 (100%)",
+    "policyMode": "expectedRequireId_or_acceptedRequireIds",
+    "chunkTypeHit": "37/37 (100%)",
+    "negativeCorrect": "13/13 (100%)"
+  },
+  "runtime": {
+    "delayMs": 1800,
+    "ruleOnlyCount": 0,
+    "hybridCount": 50,
+    "vectorUsedCount": 50
+  },
+  "failures": []
+}

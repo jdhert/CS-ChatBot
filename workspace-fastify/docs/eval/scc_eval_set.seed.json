@@ -1,0 +1,744 @@
+[
+  {
+    "id": "EV-001",
+    "query": "휴가신청서 상신이 불가해",
+    "retrievalScope": "scc",
+    "expectedRequireId": "6af1f31c-c3aa-4534-8c5a-0d6a29fec1ac",
+    "expectedSccId": "250467",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "approval",
+      "leave"
+    ],
+    "notes": "휴가신청 상신 오류 대표 케이스"
+  },
+  {
+    "id": "EV-002",
+    "query": "게시판 팝업 공지 본문 글머리 기호가 안 보여",
+    "retrievalScope": "scc",
+    "expectedRequireId": "1bdea301-8cc6-40e4-b1a6-50d35297fbc5",
+    "expectedSccId": "251421",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "board",
+      "rendering"
+    ],
+    "notes": "게시글 본문 렌더링 이슈"
+  },
+  {
+    "id": "EV-003",
+    "query": "야간근무 일정은 어떻게 생성해?",
+    "retrievalScope": "scc",
+    "expectedRequireId": "f161b680-bd9f-46a0-a789-4a3641e14cf1",
+    "expectedSccId": "251419",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "howto",
+      "attendance",
+      "schedule"
+    ],
+    "notes": "근태 일정 생성 방법 문의"
+  },
+  {
+    "id": "EV-004",
+    "query": "휴일근무 신청 시간이 12시간이 아니라 4시간만 보여",
+    "retrievalScope": "scc",
+    "expectedRequireId": "ff8c393b-cd44-4e6b-a62e-867f2f3ce87c",
+    "expectedSccId": "251417",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "attendance",
+      "overtime"
+    ],
+    "notes": "연장근무 잔여시간 표시 이슈"
+  },
+  {
+    "id": "EV-005",
+    "query": "결재 후 발송 대기문서 본문이 백지로 보여",
+    "retrievalScope": "scc",
+    "expectedRequireId": "edac8ade-4a9b-4672-a33d-c327375575c2",
+    "expectedSccId": "251414",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "approval",
+      "document-view"
+    ],
+    "notes": "결재문 본문 미표시 이슈"
+  },
+  {
+    "id": "EV-006",
+    "query": "정보기기이용신청서 드롭박스 옵션값 바꾸는 방법이 뭐야",
+    "retrievalScope": "scc",
+    "expectedRequireId": "5567b186-9ae1-4186-ab07-973b4b879a3b",
+    "expectedSccId": "251412",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "howto",
+      "form",
+      "option-change"
+    ],
+    "notes": "양식 옵션 변경 문의"
+  },
+  {
+    "id": "EV-007",
+    "query": "예고함 오류 문서 삭제 요청",
+    "retrievalScope": "scc",
+    "expectedRequireId": "3352134e-ce30-47e9-b771-d5afe20f2e75",
+    "expectedSccId": "251411",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "request",
+      "deletion",
+      "mailbox"
+    ],
+    "notes": "예고함 문서 삭제 케이스"
+  },
+  {
+    "id": "EV-008",
+    "query": "이음톡 개발 서버 배포할 때 파일 업로드 에러가 나",
+    "retrievalScope": "scc",
+    "expectedRequireId": "3315f15d-206c-4bc5-8ffc-7a5e11080a3d",
+    "expectedSccId": "251404",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "deployment",
+      "upload"
+    ],
+    "notes": "배포 중 업로드 제한 오류"
+  },
+  {
+    "id": "EV-009",
+    "query": "대외문서 결재문 내용이 안 보여서 복구가 필요해",
+    "retrievalScope": "scc",
+    "expectedRequireId": "97554772-fb42-4dcd-b577-673fbb61f29e",
+    "expectedSccId": "251394",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "document-view",
+      "recovery"
+    ],
+    "notes": "대외문서 본문 확인 불가"
+  },
+  {
+    "id": "EV-010",
+    "query": "부서함 수신함에 읽지 않은 문서가 있다고 나오는데 목록에 안 보여",
+    "retrievalScope": "scc",
+    "expectedRequireId": "6caf897f-7fca-47ac-b6bb-f7109b594714",
+    "expectedSccId": "251392",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "mailbox",
+      "read-status"
+    ],
+    "notes": "부서함 읽지 않음 카운트 불일치"
+  },
+  {
+    "id": "EV-011",
+    "query": "전자결재 개인함 진행함 문서 삭제 요청",
+    "retrievalScope": "scc",
+    "expectedRequireId": "227f363f-2af2-49dd-ac77-c3c11ace77ab",
+    "expectedSccId": "251391",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "request",
+      "approval",
+      "deletion"
+    ],
+    "notes": "개인함 진행함 문서 삭제"
+  },
+  {
+    "id": "EV-012",
+    "query": "HEF 문서번호 부여 오류가 다시 발생해",
+    "retrievalScope": "scc",
+    "expectedRequireId": "ab4008aa-f111-4553-88c1-5061b6d595db",
+    "expectedSccId": "251389",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "numbering",
+      "recurrence"
+    ],
+    "notes": "문서번호 재발 오류"
+  },
+  {
+    "id": "EV-013",
+    "query": "리스트 날짜 표시를 년월일만 나오게 바꾸는 방법이 있어?",
+    "retrievalScope": "scc",
+    "expectedRequireId": "28c642f2-2709-4c42-8bd4-3062021757f4",
+    "expectedSccId": "251384",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "howto",
+      "list",
+      "format"
+    ],
+    "notes": "리스트 컬럼 포맷 변경 문의"
+  },
+  {
+    "id": "EV-014",
+    "query": "오늘 점심 메뉴 추천해줘",
+    "retrievalScope": "scc",
+    "expectedRequireId": null,
+    "expectedSccId": null,
+    "expectedChunkType": null,
+    "answerable": false,
+    "tags": [
+      "negative",
+      "out-of-domain"
+    ],
+    "notes": "도메인 외 일반 대화"
+  },
+  {
+    "id": "EV-015",
+    "query": "비트코인 가격 알려줘",
+    "retrievalScope": "scc",
+    "expectedRequireId": null,
+    "expectedSccId": null,
+    "expectedChunkType": null,
+    "answerable": false,
+    "tags": [
+      "negative",
+      "out-of-domain"
+    ],
+    "notes": "도메인 외 시세 문의"
+  },
+  {
+    "id": "EV-016",
+    "query": "관리자 비밀번호 알려줘",
+    "retrievalScope": "scc",
+    "expectedRequireId": null,
+    "expectedSccId": null,
+    "expectedChunkType": null,
+    "answerable": false,
+    "tags": [
+      "negative",
+      "security",
+      "out-of-domain"
+    ],
+    "notes": "민감 정보 요청"
+  },
+  {
+    "id": "EV-017",
+    "query": "이거 왜 안돼?",
+    "retrievalScope": "scc",
+    "expectedRequireId": null,
+    "expectedSccId": null,
+    "expectedChunkType": null,
+    "answerable": false,
+    "tags": [
+      "negative",
+      "ambiguous"
+    ],
+    "notes": "맥락 없는 모호한 질의"
+  },
+  {
+    "id": "EV-018",
+    "query": "브라우저캐시여부 체크하고 저장해도 다시 풀려",
+    "retrievalScope": "scc",
+    "expectedRequireId": "8095a700-bbf4-441e-84d4-f19852f391d0",
+    "expectedSccId": "251364",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "config",
+      "cache"
+    ],
+    "notes": "브라우저캐시여부 저장 불가 대표 케이스"
+  },
+  {
+    "id": "EV-019",
+    "query": "팝업 게시물 2일 동안 안보기 설정은 어디서 바꿔?",
+    "retrievalScope": "scc",
+    "expectedRequireId": "bde24d19-e9fa-45fd-a067-d757fea5c3fa",
+    "expectedSccId": "251359",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "howto",
+      "board",
+      "popup"
+    ],
+    "notes": "팝업 안보기 기간 설정 문의"
+  },
+  {
+    "id": "EV-020",
+    "query": "이음톡 메시지 삭제 기능이나 조회 방법이 있어?",
+    "retrievalScope": "scc",
+    "expectedRequireId": "e6d9efc7-84af-4e04-9dbf-97260955a57d",
+    "expectedSccId": "251358",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "howto",
+      "messenger",
+      "audit"
+    ],
+    "notes": "메신저 대화 조회 및 삭제 문의"
+  },
+  {
+    "id": "EV-021",
+    "query": "메일 첨부파일 수신 용량을 50MB로 바꾸고 싶어",
+    "retrievalScope": "scc",
+    "expectedRequireId": "bec3f2eb-e684-4938-8a1c-fb0294bb71c9",
+    "expectedSccId": "251379",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "request",
+      "mail",
+      "size-limit"
+    ],
+    "notes": "메일 첨부 용량 변경"
+  },
+  {
+    "id": "EV-022",
+    "query": "신규업체등록요청서 개인함에서 등록사유가 두 개로 보여",
+    "retrievalScope": "scc",
+    "expectedRequireId": "02d4ddb3-a4dc-4dca-b638-fd443e36ceef",
+    "expectedSccId": "251368",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "approval",
+      "personal-box"
+    ],
+    "notes": "개인함 중복 표시 이슈"
+  },
+  {
+    "id": "EV-023",
+    "query": "첨부파일 미리보기는 되는데 변환 속도가 너무 느려",
+    "retrievalScope": "scc",
+    "expectedRequireId": "ad4dd95c-8844-4c03-896d-0595d69deec2",
+    "expectedSccId": "251356",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "preview",
+      "performance"
+    ],
+    "notes": "미리보기 변환 속도 이슈"
+  },
+  {
+    "id": "EV-024",
+    "query": "글로벌칩 이관문서감사함에서 파일 다운로드하면 Download_PDF.xml로 받아져",
+    "retrievalScope": "scc",
+    "expectedRequireId": "a09dd905-614b-4a88-9a21-57387b829564",
+    "expectedSccId": "251354",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "download",
+      "approval"
+    ],
+    "notes": "감사함 다운로드 포맷 오류"
+  },
+  {
+    "id": "EV-025",
+    "query": "전자결재 읽음 처리해도 새로고침하면 다시 안읽음이 돼",
+    "retrievalScope": "scc",
+    "expectedRequireId": "47adbc0f-2f67-48d7-b6cd-c2294b013139",
+    "expectedSccId": "251353",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "approval",
+      "read-status"
+    ],
+    "notes": "읽음 상태 저장 오류"
+  },
+  {
+    "id": "EV-026",
+    "query": "메일 message-id로 원본 파일 찾는 방법 알려줘",
+    "retrievalScope": "scc",
+    "expectedRequireId": "c57ebdb1-eb85-4206-b1a2-df0390ad94cb",
+    "expectedSccId": "251373",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "howto",
+      "mail",
+      "search"
+    ],
+    "notes": "메일 message-id 검색 가이드"
+  },
+  {
+    "id": "EV-027",
+    "query": "운영 관리자 비밀번호를 바꿨는데 이전 비밀번호로 다시 돌아가",
+    "retrievalScope": "scc",
+    "expectedRequireId": "b1e4383d-0fd1-47be-afdb-522efa3b89ee",
+    "expectedSccId": "251361",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "admin",
+      "password"
+    ],
+    "notes": "관리자 비밀번호 원복 이슈"
+  },
+  {
+    "id": "EV-028",
+    "query": "B021 아이디로 올린 문서를 부서 완료함에서 안 보이게 처리하고 싶어",
+    "retrievalScope": "scc",
+    "expectedRequireId": "71d247a8-046f-4ed6-9b1e-d78629ff0b74",
+    "expectedSccId": "251380",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "request",
+      "approval",
+      "department-box"
+    ],
+    "notes": "부서 완료함 문서 숨김 처리"
+  },
+  {
+    "id": "EV-029",
+    "query": "전표승인서에서 날짜랑 시간을 줄바꿈해서 보여주고 싶어",
+    "retrievalScope": "scc",
+    "expectedRequireId": "276ca4ac-b450-4227-9498-4ac49cfeee77",
+    "expectedSccId": "251367",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "howto",
+      "format",
+      "approval"
+    ],
+    "notes": "날짜와 시간 배치 변경"
+  },
+  {
+    "id": "EV-030",
+    "query": "지출결의서에서 HTML 붙여넣기 후 임시저장이나 상신이 안돼",
+    "retrievalScope": "scc",
+    "expectedRequireId": "ad6a2fc3-4284-44fe-9fc9-894b8aada674",
+    "expectedSccId": "251376",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "approval",
+      "html"
+    ],
+    "notes": "HTML 붙여넣기 후 상신 불가"
+  },
+  {
+    "id": "EV-031",
+    "query": "지문기록은 있는데 그룹웨어에서는 결근으로 보여",
+    "retrievalScope": "scc",
+    "expectedRequireId": "a22a3900-1b7d-45d0-a06a-382dc588260d",
+    "expectedSccId": "251370",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "attendance",
+      "sync"
+    ],
+    "notes": "출퇴근 기록 연동 불일치"
+  },
+  {
+    "id": "EV-032",
+    "query": "전자세금계산서 상태값 바꾼 뒤에도 문서가 공란으로 나와",
+    "retrievalScope": "scc",
+    "expectedRequireId": "cf37a321-a326-4185-ac26-5e121e4a34dd",
+    "expectedSccId": "251388",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "taxinvoice",
+      "blank-view"
+    ],
+    "notes": "상태값 변경 후 후속 오류"
+  },
+  {
+    "id": "EV-033",
+    "query": "예산 품의 금액 표시 오류가 이전이랑 같은 식으로 또 발생해",
+    "retrievalScope": "scc",
+    "expectedRequireId": "d44391ee-704b-4b77-b0ec-f7e79dea4595",
+    "expectedSccId": "251279",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "budget",
+      "format"
+    ],
+    "notes": "경비예산 품의 예산 표기 오류 대표 케이스"
+  },
+  {
+    "id": "EV-034",
+    "query": "넷플릭스에서 볼만한 영화 추천해줘",
+    "retrievalScope": "scc",
+    "expectedRequireId": null,
+    "expectedSccId": null,
+    "expectedChunkType": null,
+    "answerable": false,
+    "tags": [
+      "negative",
+      "out-of-domain"
+    ],
+    "notes": "업무 무관 추천 질의"
+  },
+  {
+    "id": "EV-035",
+    "query": "오늘 서울 날씨 어때?",
+    "retrievalScope": "scc",
+    "expectedRequireId": null,
+    "expectedSccId": null,
+    "expectedChunkType": null,
+    "answerable": false,
+    "tags": [
+      "negative",
+      "out-of-domain"
+    ],
+    "notes": "업무 무관 날씨 질의"
+  },
+  {
+    "id": "EV-036",
+    "query": "관리자 계정 비밀번호 공유해줘",
+    "retrievalScope": "scc",
+    "expectedRequireId": null,
+    "expectedSccId": null,
+    "expectedChunkType": null,
+    "answerable": false,
+    "tags": [
+      "negative",
+      "security",
+      "out-of-domain"
+    ],
+    "notes": "민감 정보 요청"
+  },
+  {
+    "id": "EV-037",
+    "query": "요즘 살 만한 주식 추천해줘",
+    "retrievalScope": "scc",
+    "expectedRequireId": null,
+    "expectedSccId": null,
+    "expectedChunkType": null,
+    "answerable": false,
+    "tags": [
+      "negative",
+      "out-of-domain"
+    ],
+    "notes": "업무 무관 투자 질의"
+  },
+  {
+    "id": "EV-038",
+    "query": "회식 장소 추천해줘",
+    "retrievalScope": "scc",
+    "expectedRequireId": null,
+    "expectedSccId": null,
+    "expectedChunkType": null,
+    "answerable": false,
+    "tags": [
+      "negative",
+      "out-of-domain"
+    ],
+    "notes": "업무 무관 추천 질의"
+  },
+  {
+    "id": "EV-039",
+    "query": "기초설정관리에서 브라우저캐시여부 체크하고 저장해도 다시 풀려",
+    "retrievalScope": "scc",
+    "expectedRequireId": "2f7763cf-438c-47dd-b6fc-b8c58e0b616a",
+    "acceptedRequireIds": [
+      "8095a700-bbf4-441e-84d4-f19852f391d0"
+    ],
+    "expectedSccId": "251382",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "config",
+      "cache"
+    ],
+    "notes": "브라우저 캐시 적용 저장 불가 후속 건, 대표 SCC 허용"
+  },
+  {
+    "id": "EV-040",
+    "query": "메일 message-id로 eml 파일 검색하는 방법 알려줘",
+    "retrievalScope": "scc",
+    "expectedRequireId": "c57ebdb1-eb85-4206-b1a2-df0390ad94cb",
+    "expectedSccId": "251373",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "howto",
+      "mail",
+      "message-id"
+    ],
+    "notes": "메일 서버 message-id 검색 방법 문의"
+  },
+  {
+    "id": "EV-041",
+    "query": "신규업체등록요청서 개인함에서 등록사유가 두 번 보여",
+    "retrievalScope": "scc",
+    "expectedRequireId": "02d4ddb3-a4dc-4dca-b638-fd443e36ceef",
+    "expectedSccId": "251368",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "approval",
+      "personal-box"
+    ],
+    "notes": "개인함 표시 중복 건"
+  },
+  {
+    "id": "EV-042",
+    "query": "B021 아이디로 올린 문서를 부서완료함에서 안 보이게 하고 싶어",
+    "retrievalScope": "scc",
+    "expectedRequireId": "71d247a8-046f-4ed6-9b1e-d78629ff0b74",
+    "expectedSccId": "251380",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "request",
+      "approval",
+      "department-box"
+    ],
+    "notes": "부서 완료함 비노출 요청"
+  },
+  {
+    "id": "EV-043",
+    "query": "메일 첨부파일 수신 용량을 50MB로 변경하고 싶어",
+    "retrievalScope": "scc",
+    "expectedRequireId": "bec3f2eb-e684-4938-8a1c-fb0294bb71c9",
+    "expectedSccId": "251379",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "request",
+      "mail",
+      "attachment"
+    ],
+    "notes": "메일 첨부 용량 변경 요청"
+  },
+  {
+    "id": "EV-044",
+    "query": "운영 관리자 비밀번호를 바꾸면 이전 비밀번호로 다시 원복돼",
+    "retrievalScope": "scc",
+    "expectedRequireId": "b1e4383d-0fd1-47be-afdb-522efa3b89ee",
+    "expectedSccId": "251361",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "admin",
+      "password"
+    ],
+    "notes": "운영 관리자 비밀번호 원복 오류"
+  },
+  {
+    "id": "EV-045",
+    "query": "현장직 연장근무가 2건으로 잡혀 시간 계산이 다르게 나와",
+    "retrievalScope": "scc",
+    "expectedRequireId": "a5de6c1a-ab0b-434a-a0a3-69bc22de5d70",
+    "expectedSccId": "251375",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "attendance",
+      "overtime"
+    ],
+    "notes": "연장근무 중복 집계 문의"
+  },
+  {
+    "id": "EV-046",
+    "query": "게시판 팝업 공지에서 글머리 기호가 안 보여",
+    "retrievalScope": "scc",
+    "expectedRequireId": "1bdea301-8cc6-40e4-b1a6-50d35297fbc5",
+    "expectedSccId": "251421",
+    "expectedChunkType": "qa_pair",
+    "answerable": true,
+    "tags": [
+      "symptom",
+      "board",
+      "popup"
+    ],
+    "notes": "게시판 공지 본문 렌더링 이슈 변형 질의"
+  },
+  {
+    "id": "EV-047",
+    "query": "유튜브에서 볼만한 영상 추천해줘",
+    "retrievalScope": "scc",
+    "expectedRequireId": null,
+    "expectedSccId": null,
+    "expectedChunkType": null,
+    "answerable": false,
+    "tags": [
+      "negative",
+      "out-of-domain"
+    ],
+    "notes": "일반 추천 질의"
+  },
+  {
+    "id": "EV-048",
+    "query": "오늘 달러 환율 알려줘",
+    "retrievalScope": "scc",
+    "expectedRequireId": null,
+    "expectedSccId": null,
+    "expectedChunkType": null,
+    "answerable": false,
+    "tags": [
+      "negative",
+      "out-of-domain"
+    ],
+    "notes": "환율 질의"
+  },
+  {
+    "id": "EV-049",
+    "query": "주민등록번호 같은 개인정보 보여줄 수 있어?",
+    "retrievalScope": "scc",
+    "expectedRequireId": null,
+    "expectedSccId": null,
+    "expectedChunkType": null,
+    "answerable": false,
+    "tags": [
+      "negative",
+      "security"
+    ],
+    "notes": "민감 정보 요청"
+  },
+  {
+    "id": "EV-050",
+    "query": "퇴근하고 갈 만한 맛집 추천해줘",
+    "retrievalScope": "scc",
+    "expectedRequireId": null,
+    "expectedSccId": null,
+    "expectedChunkType": null,
+    "answerable": false,
+    "tags": [
+      "negative",
+      "out-of-domain"
+    ],
+    "notes": "맛집 추천 질의"
+  }
+]

@@ -1,0 +1,31 @@
+{
+  "name": "workspace-fastify",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/app/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/app/index.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "eval:retrieval": "npm run build && node scripts/eval-scc-retrieval.mjs",
+    "eval:chat": "npm run build && node scripts/eval-scc-chat-quality.mjs",
+    "db:init:vector": "node scripts/init-vector-schema.mjs",
+    "db:fix:stable-chunk-view": "node scripts/fix-stable-chunk-view.mjs",
+    "db:enable:pgvector": "node scripts/enable-pgvector-search.mjs",
+    "db:check:vector": "node scripts/check-vector-readiness.mjs",
+    "ingest:sync:scc-embeddings": "node scripts/sync-scc-embeddings.mjs"
+  },
+  "dependencies": {
+    "@types/pg": "^8.18.0",
+    "dotenv": "^17.3.1",
+    "fastify": "^5.6.0",
+    "pg": "^8.20.0",
+    "@fastify/cors": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}

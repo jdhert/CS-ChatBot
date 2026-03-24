@@ -1,0 +1,48 @@
+# Node.js dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+coverage/
+.turbo/
+.cache/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# TypeScript
+*.tsbuildinfo
+
+# Runtime temp
+tmp/
+temp/
+
+# Test artifacts
+playwright-report/
+test-results/
+
+# Security-sensitive local files
+*.pem
+*.key
+*.crt
+settings.env
+
+# Legacy reference should not live inside this repo
+legacy-express/
+../legacy-express/
