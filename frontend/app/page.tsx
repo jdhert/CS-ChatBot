@@ -1,0 +1,376 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { flushSync } from "react-dom"
+import { ChatArea } from "@/components/chatbot/chat-area"
+import { ConversationsPanel } from "@/components/chatbot/conversations-panel"
+import type { Message } from "@/components/chatbot/chat-message"
+import type { Conversation } from "@/lib/conversations"
+import {
+  loadConversations,
+  saveConversations,
+  loadActiveSessionId,
+  saveActiveSessionId,
+  createNewConversation,
+  updateConversation,
+  deleteConversation,
+  generateConversationTitle,
+} from "@/lib/conversations"
+
+interface ChatDisplay {
+  title?: string | null
+  answerText?: string | null
+  linkUrl?: string | null
+  linkLabel?: string | null
+  status?: string | null
+  answerSource?: string | null
+  retrievalMode?: string | null
+  confidence?: number | null
+}
+
+interface ChatApiResponse {
+  display?: ChatDisplay
+  generatedAnswer?: string | null
+  message?: string | null
+}
+
+const quickFallbackAnswer =
+  "현재 AI Core 응답을 가져오지 못했습니다. 잠시 후 다시 시도하거나, 구체적인 오류 문구와 화면 경로를 함께 입력해 주세요."
+
+function toMessageFromDisplay(display: ChatDisplay | undefined, fallbackText: string): Message {
+  return {
+    id: crypto.randomUUID(),
+    sender: "bot",
+    timestamp: new Date(),
+    title: display?.title ?? "AI Core",
+    content: display?.answerText ?? fallbackText,
+    linkUrl: display?.linkUrl ?? null,
+    linkLabel: display?.linkLabel ?? null,
+    status: display?.status ?? null,
+    answerSource: display?.answerSource ?? null,
+    retrievalMode: display?.retrievalMode ?? null,
+    confidence: typeof display?.confidence === "number" ? display.confidence : null,
+  }
+}
+
+export default function ChatbotPage() {
+  const [isDarkMode, setIsDarkMode] = useState(false)
+  const [isTyping, setIsTyping] = useState(false)
+
+  // 대화 관리
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+  const [currentMessages, setCurrentMessages] = useState<Message[]>([])
+
+  // 초기 로드
+  useEffect(() => {
+    const loadedConversations = loadConversations()
+    setConversations(loadedConversations)
+
+    const savedActiveId = loadActiveSessionId()
+    if (savedActiveId && loadedConversations.some((conv) => conv.id === savedActiveId)) {
+      setActiveConversationId(savedActiveId)
+      const activeConv = loadedConversations.find((conv) => conv.id === savedActiveId)
+      if (activeConv) {
+        setCurrentMessages(activeConv.messages)
+      }
+    } else if (loadedConversations.length > 0) {
+      // 가장 최근 대화 선택
+      const latestConv = loadedConversations[0]
+      setActiveConversationId(latestConv.id)
+      setCurrentMessages(latestConv.messages)
+      saveActiveSessionId(latestConv.id)
+    }
+  }, [])
+
+  // 다크모드
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add("dark")
+    } else {
+      document.documentElement.classList.remove("dark")
+    }
+  }, [isDarkMode])
+
+  // 대화 저장
+  useEffect(() => {
+    if (activeConversationId && currentMessages.length > 0) {
+      const existingConv = conversations.find((conv) => conv.id === activeConversationId)
+
+      // 제목 결정: 기존 제목이 "새 대화"이면 첫 메시지로 업데이트, 아니면 기존 제목 유지
+      const shouldUpdateTitle = !existingConv?.title || existingConv.title === "새 대화"
+      const title = shouldUpdateTitle
+        ? generateConversationTitle(currentMessages[0]?.content ?? "새 대화")
+        : existingConv.title
+
+      const updatedConv: Conversation = {
+        id: activeConversationId,
+        title,
+        messages: currentMessages,
+        createdAt: existingConv?.createdAt ?? new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+
+      const newConversations = updateConversation(conversations, updatedConv)
+      setConversations(newConversations)
+      saveConversations(newConversations)
+    }
+  }, [currentMessages, activeConversationId])
+
+  // 새 대화 시작
+  function handleNewConversation() {
+    const newConv = createNewConversation()
+    setActiveConversationId(newConv.id)
+    setCurrentMessages([])
+    saveActiveSessionId(newConv.id)
+
+    const newConversations = [newConv, ...conversations]
+    setConversations(newConversations)
+    saveConversations(newConversations)
+  }
+
+  // 대화 선택
+  function handleSelectConversation(conversationId: string) {
+    setActiveConversationId(conversationId)
+    saveActiveSessionId(conversationId)
+
+    const selectedConv = conversations.find((conv) => conv.id === conversationId)
+    if (selectedConv) {
+      setCurrentMessages(selectedConv.messages)
+    }
+  }
+
+  // 대화 삭제
+  function handleDeleteConversation(conversationId: string) {
+    const newConversations = deleteConversation(conversations, conversationId)
+    setConversations(newConversations)
+    saveConversations(newConversations)
+
+    // 삭제한 대화가 활성 대화인 경우
+    if (conversationId === activeConversationId) {
+      if (newConversations.length > 0) {
+        // 다른 대화 선택
+        const nextConv = newConversations[0]
+        setActiveConversationId(nextConv.id)
+        setCurrentMessages(nextConv.messages)
+        saveActiveSessionId(nextConv.id)
+      } else {
+        // 대화가 없으면 새 대화 시작
+        handleNewConversation()
+      }
+    }
+  }
+
+  // 메시지 전송 (스트리밍 방식)
+  async function submitMessage(content: string) {
+    // 활성 대화가 없으면 새로 생성
+    let convId = activeConversationId
+    if (!convId) {
+      const newConv = createNewConversation(content)
+      convId = newConv.id
+      setActiveConversationId(convId)
+      saveActiveSessionId(convId)
+
+      const newConversations = [newConv, ...conversations]
+      setConversations(newConversations)
+      saveConversations(newConversations)
+    }
+
+    const userMessage: Message = {
+      id: crypto.randomUUID(),
+      content,
+      sender: "user",
+      timestamp: new Date(),
+    }
+    setCurrentMessages((prev) => [...prev, userMessage])
+
+    // Create a temporary assistant message for streaming
+    const assistantMessageId = crypto.randomUUID()
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      sender: "bot",
+      timestamp: new Date(),
+      title: "AI Core",
+      content: "",
+      status: null,
+      answerSource: null,
+      retrievalMode: null,
+      confidence: null,
+      linkUrl: null,
+      linkLabel: null,
+      isNewMessage: true, // 새로 생성되는 메시지이므로 타이핑 효과 적용
+    }
+    setCurrentMessages((prev) => [...prev, assistantMessage])
+    setIsTyping(false) // 스트리밍 메시지 자체가 보이므로 로딩 인디케이터는 숨김
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: content,
+          retrievalScope: "all", // Manual + SCC 통합 검색
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      // Check if response is JSON (error or no match) or streaming
+      const contentType = response.headers.get("content-type")
+      if (contentType?.includes("application/json")) {
+        // Handle JSON response (no match or error)
+        const jsonData = await response.json()
+        const noMatchMessage: Message = {
+          id: crypto.randomUUID(),
+          sender: "bot",
+          timestamp: new Date(),
+          title: "검색 결과",
+          content: jsonData.message || "검색 결과가 없습니다. 다른 키워드로 시도해보세요.",
+          status: jsonData.error || "no_match",
+          answerSource: "no_match",
+        }
+        // Replace the temporary message
+        setCurrentMessages((prev) =>
+          prev.map((msg) => (msg.id === assistantMessageId ? noMatchMessage : msg))
+        )
+        return
+      }
+
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error("No response body")
+      }
+
+      const decoder = new TextDecoder()
+      let buffer = ""
+      let accumulatedText = ""
+      let metadata: Record<string, unknown> | null = null
+
+      // Character-by-character typing animation
+      const animateText = async (targetText: string, previousLength: number) => {
+        const newChars = targetText.slice(previousLength)
+        const charsPerFrame = Math.max(1, Math.floor(newChars.length / 10)) // Adjust speed
+
+        for (let i = previousLength; i <= targetText.length; i += charsPerFrame) {
+          const displayText = targetText.slice(0, Math.min(i, targetText.length))
+          flushSync(() => {
+            setCurrentMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMessageId ? { ...msg, content: displayText } : msg
+              )
+            )
+          })
+          if (i < targetText.length) {
+            await new Promise((resolve) => setTimeout(resolve, 20)) // 20ms per frame
+          }
+        }
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n")
+        buffer = lines.pop() ?? ""
+
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed || !trimmed.startsWith("data: ")) continue
+
+          try {
+            const jsonStr = trimmed.slice(6)
+            const event = JSON.parse(jsonStr)
+
+            if (event.type === "metadata") {
+              metadata = event.data
+              console.log("[STREAM] Metadata received:", metadata)
+            } else if (event.type === "chunk") {
+              const previousLength = accumulatedText.length
+              accumulatedText += event.data
+              console.log("[STREAM] Chunk received, total length:", accumulatedText.length)
+              // Animate the new characters
+              await animateText(accumulatedText, previousLength)
+            } else if (event.type === "done") {
+              console.log("[STREAM] Stream done")
+              // Final update with metadata
+              if (metadata) {
+                // Generate link URL from bestRequireId if available
+                let linkUrl: string | null = null
+                let linkLabel: string | null = null
+
+                if (metadata.bestRequireId && typeof metadata.bestRequireId === "string") {
+                  linkUrl = `https://cs.covision.co.kr/WebSite/Basic/ServiceManagement/Service_View.aspx?req_id=${metadata.bestRequireId}&system=Menu01&alias=Menu01.Service.List&mnid=705`
+                  linkLabel = "유사 이력 바로가기"
+                }
+
+                setCurrentMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? {
+                          ...msg,
+                          content: accumulatedText,
+                          ...metadata,
+                          linkUrl,
+                          linkLabel,
+                          isNewMessage: false, // 스트리밍 완료 후에는 타이핑 효과 비활성화
+                        }
+                      : msg
+                  )
+                )
+              }
+            }
+          } catch {
+            // Skip invalid JSON
+          }
+        }
+      }
+    } catch (error) {
+      const errorMessage: Message = {
+        id: crypto.randomUUID(),
+        sender: "bot",
+        timestamp: new Date(),
+        title: "연결 오류",
+        content: quickFallbackAnswer,
+        status: "error",
+        answerSource: "proxy_error",
+      }
+      // Replace the temporary message with error message
+      setCurrentMessages((prev) =>
+        prev.map((msg) => (msg.id === assistantMessageId ? errorMessage : msg))
+      )
+    } finally {
+      setIsTyping(false)
+    }
+  }
+
+  return (
+    <div className="flex h-screen w-full overflow-hidden bg-background">
+      {/* 왼쪽: 대화 목록 */}
+      <div className="w-64 border-r border-border">
+        <ConversationsPanel
+          conversations={conversations}
+          activeConversationId={activeConversationId}
+          onSelectConversation={handleSelectConversation}
+          onNewConversation={handleNewConversation}
+          onDeleteConversation={handleDeleteConversation}
+        />
+      </div>
+
+      {/* 오른쪽: 채팅 영역 */}
+      <main className="flex-1 overflow-hidden">
+        <ChatArea
+          messages={currentMessages}
+          isTyping={isTyping}
+          isDarkMode={isDarkMode}
+          onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
+          onSendMessage={submitMessage}
+        />
+      </main>
+    </div>
+  )
+}
