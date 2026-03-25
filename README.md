@@ -8,7 +8,7 @@ CoviAI는 사내 매뉴얼, 이력 데이터, FAQ 등을 기반으로 사용자 
 
 ### 현재 데이터 규모
 - **임베딩 벡터**: 13,255개 청크
-- **벡터 차원**: 3,072 (Google Gemini)
+- **벡터 차원**: 768 (Google Gemini Embedding 2)
 - **임베딩 커버리지**: 100%
 - **청크 타입**: issue, action, resolution, qa_pair
 - **검색 방식**: Hybrid (Rule-based + Vector Similarity)
@@ -34,7 +34,7 @@ graph TB
 
     subgraph "Data Layer"
         C[PostgreSQL + pgvector]
-        C1[Vector 검색<br/>3072-dim]
+        C1[Vector 검색<br/>768-dim]
         C2[메타데이터<br/>ai_core schema]
     end
 
@@ -67,7 +67,7 @@ graph TB
 - **스트리밍**: Server-Sent Events (SSE)
 - **데이터베이스**: PostgreSQL + pgvector
 - **LLM**: Google Gemini 2.5 Flash
-- **Embedding**: Google Gemini Embedding 001 (3072-dim)
+- **Embedding**: Google Gemini Embedding 2 (768-dim)
 
 ## ✨ 주요 기능
 
@@ -277,7 +277,7 @@ erDiagram
 - `require_id`: 요구사항 ID (UUID)
 - `chunk_id`: 청크 ID (Deterministic UUID)
 - `chunk_text`: 검색 대상 텍스트
-- `embedding_vec`: 벡터 임베딩 (pgvector, 3072-dim)
+- `embedding_vec`: 벡터 임베딩 (pgvector, 768-dim)
 - `state_weight`: 상태 가중치
 - `resolved_weight`: 해결 여부 가중치
 - `evidence_weight`: 증거 가중치
@@ -305,8 +305,8 @@ sequenceDiagram
     par Rule-based 검색
         BE->>DB: ILIKE 키워드 매칭
     and Vector 검색
-        BE->>Gemini: Embedding API<br/>(gemini-embedding-001)
-        Gemini-->>BE: 쿼리 벡터 (3072-dim)
+        BE->>Gemini: Embedding API<br/>(gemini-embedding-2-preview)
+        Gemini-->>BE: 쿼리 벡터 (768-dim)
         BE->>DB: Vector Similarity<br/>(cosine distance)
     end
     DB-->>BE: 검색 결과 (500개)
@@ -350,6 +350,10 @@ sequenceDiagram
 - ✅ README.md 시각화 개선 (Mermaid 다이어그램)
 - ✅ 레거시 코드 정리 (ARCHIVE/ 이동)
 - ✅ GitHub 원격 저장소 연결 (Monorepo)
+- ✅ 스트리밍 응답 최적화 (타이핑 애니메이션 제거하여 SSE 정상화)
+- ✅ LLM 출력 토큰 제한 증가 (2048 → 8192)
+- ✅ 임베딩 캐시 TTL 1시간으로 증가 (성능 최적화)
+- ✅ 다국어 관련 도메인 토큰 추가
 
 ### 2026-03-23
 - ✅ Deterministic UUID 전환 (chunk_id 안정화)
