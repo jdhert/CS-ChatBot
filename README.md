@@ -29,7 +29,7 @@ graph TB
         B[Fastify Server<br/>Port: 3101]
         B1[SSE 스트리밍]
         B2[RAG 검색 엔진]
-        B3[Claude API]
+        B3[Google Gemini API]
     end
 
     subgraph "Data Layer"
@@ -66,7 +66,8 @@ graph TB
 - **언어**: TypeScript
 - **스트리밍**: Server-Sent Events (SSE)
 - **데이터베이스**: PostgreSQL + pgvector
-- **AI 모델**: Claude API (Anthropic)
+- **LLM**: Google Gemini 2.5 Flash
+- **Embedding**: Google Gemini Embedding 001 (3072-dim)
 
 ## ✨ 주요 기능
 
@@ -171,8 +172,7 @@ coviAI/                       # Monorepo 루트
 ### 사전 요구사항
 - Node.js 18+
 - PostgreSQL 15+ (pgvector 0.8.2 확장 설치 필요)
-- Claude API Key (Anthropic)
-- Google API Key (Gemini Embedding)
+- Google API Key (Gemini LLM + Embedding)
 
 ### 환경 변수 설정
 ```bash
@@ -188,10 +188,11 @@ VECTOR_DB_USER=your_db_user
 VECTOR_DB_PASSWORD=your_db_password
 VECTOR_DB_SCHEMA=ai_core
 
-# AI APIs
+# AI APIs (Google Gemini)
 GOOGLE_API_KEY=your_google_api_key
+GOOGLE_MODEL=gemini-2.5-flash
 GOOGLE_EMBEDDING_MODEL=gemini-embedding-001
-ANTHROPIC_API_KEY=your_anthropic_api_key
+LLM_PROVIDER=google
 ```
 
 ### 설치
@@ -292,7 +293,7 @@ sequenceDiagram
     participant FE as Frontend<br/>(Next.js)
     participant BE as Backend<br/>(Fastify)
     participant DB as PostgreSQL<br/>+ pgvector
-    participant Claude as Claude API
+    participant Gemini as Google Gemini API
 
     User->>FE: 질의 입력
     FE->>BE: POST /chat<br/>(SSE 연결)
@@ -304,20 +305,20 @@ sequenceDiagram
     par Rule-based 검색
         BE->>DB: ILIKE 키워드 매칭
     and Vector 검색
-        BE->>Claude: Embedding API
-        Claude-->>BE: 쿼리 벡터
+        BE->>Gemini: Embedding API<br/>(gemini-embedding-001)
+        Gemini-->>BE: 쿼리 벡터 (3072-dim)
         BE->>DB: Vector Similarity<br/>(cosine distance)
     end
     DB-->>BE: 검색 결과 (500개)
 
-    Note over BE,Claude: 3. Reranking
-    BE->>Claude: Relevance 재평가
-    Claude-->>BE: Top 5 선택
+    Note over BE,Gemini: 3. Reranking
+    BE->>Gemini: Relevance 재평가<br/>(gemini-2.5-flash)
+    Gemini-->>BE: Top 5 선택
 
-    Note over BE,Claude: 4. 답변 생성
-    BE->>Claude: 스트리밍 생성 요청
+    Note over BE,Gemini: 4. 답변 생성
+    BE->>Gemini: 스트리밍 생성 요청<br/>(gemini-2.5-flash)
     loop 청크 단위
-        Claude-->>BE: 답변 청크
+        Gemini-->>BE: 답변 청크
         BE-->>FE: SSE 이벤트
         FE-->>User: 실시간 렌더링
     end
