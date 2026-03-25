@@ -55,3 +55,12 @@ public/uploads/
 
 # Archive
 ARCHIVE/
+
+# Legacy archive
+ARCHIVE/
+
+# Temporary files
+.tmp_*/
+*.log
+nul
+test-payload.json
