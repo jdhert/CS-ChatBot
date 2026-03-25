@@ -695,7 +695,7 @@ async function invokeGeminiText(
   const timeoutMs = parseEnvInt(process.env.LLM_TIMEOUT_MS, DEFAULT_LLM_TIMEOUT_MS);
   const maxOutputTokens = Math.min(
     Math.max(parseEnvInt(process.env.LLM_MAX_OUTPUT_TOKENS, DEFAULT_LLM_MAX_OUTPUT_TOKENS), 128),
-    2048
+    8192
   );
   const temperature = parseEnvNumber(process.env.LLM_TEMPERATURE, 0.2);
   const controller = new AbortController();
@@ -765,7 +765,7 @@ async function* invokeGeminiTextStream(
   const timeoutMs = parseEnvInt(process.env.LLM_TIMEOUT_MS, DEFAULT_LLM_TIMEOUT_MS);
   const maxOutputTokens = Math.min(
     Math.max(parseEnvInt(process.env.LLM_MAX_OUTPUT_TOKENS, DEFAULT_LLM_MAX_OUTPUT_TOKENS), 128),
-    2048
+    8192
   );
   const temperature = parseEnvNumber(process.env.LLM_TEMPERATURE, 0.2);
   const controller = new AbortController();

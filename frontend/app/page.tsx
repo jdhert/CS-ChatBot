@@ -250,26 +250,6 @@ export default function ChatbotPage() {
       let accumulatedText = ""
       let metadata: Record<string, unknown> | null = null
 
-      // Character-by-character typing animation
-      const animateText = async (targetText: string, previousLength: number) => {
-        const newChars = targetText.slice(previousLength)
-        const charsPerFrame = Math.max(1, Math.floor(newChars.length / 10)) // Adjust speed
-
-        for (let i = previousLength; i <= targetText.length; i += charsPerFrame) {
-          const displayText = targetText.slice(0, Math.min(i, targetText.length))
-          flushSync(() => {
-            setCurrentMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === assistantMessageId ? { ...msg, content: displayText } : msg
-              )
-            )
-          })
-          if (i < targetText.length) {
-            await new Promise((resolve) => setTimeout(resolve, 20)) // 20ms per frame
-          }
-        }
-      }
-
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -290,11 +270,14 @@ export default function ChatbotPage() {
               metadata = event.data
               console.log("[STREAM] Metadata received:", metadata)
             } else if (event.type === "chunk") {
-              const previousLength = accumulatedText.length
               accumulatedText += event.data
               console.log("[STREAM] Chunk received, total length:", accumulatedText.length)
-              // Animate the new characters
-              await animateText(accumulatedText, previousLength)
+              // 즉시 업데이트 (ChatGPT/Gemini 스타일)
+              setCurrentMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMessageId ? { ...msg, content: accumulatedText } : msg
+                )
+              )
             } else if (event.type === "done") {
               console.log("[STREAM] Stream done")
               // Final update with metadata
