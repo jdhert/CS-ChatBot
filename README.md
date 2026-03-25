@@ -6,30 +6,51 @@
 
 CoviAI는 사내 매뉴얼, 이력 데이터, FAQ 등을 기반으로 사용자 질의에 대해 실시간으로 답변을 제공하는 RAG(Retrieval-Augmented Generation) 기반 챗봇 시스템입니다.
 
+### 현재 데이터 규모
+- **임베딩 벡터**: 13,255개 청크
+- **벡터 차원**: 3,072 (Google Gemini)
+- **임베딩 커버리지**: 100%
+- **청크 타입**: issue, action, resolution, qa_pair
+- **검색 방식**: Hybrid (Rule-based + Vector Similarity)
+
 ## 🏗️ 시스템 아키텍처
 
 ### 전체 구조
-```
-┌─────────────────┐
-│  Frontend       │
-│  (Next.js)      │ :3000
-│  - 챗봇 UI       │
-│  - 대화 이력 관리│
-└────────┬────────┘
-         │ HTTP/SSE
-┌────────▼────────┐
-│  Backend API    │
-│  (Fastify)      │ :3101
-│  - 스트리밍 응답 │
-│  - RAG 검색      │
-└────────┬────────┘
-         │
-┌────────▼────────┐
-│  Database       │
-│  (PostgreSQL)   │
-│  - 벡터 검색     │
-│  - 메타데이터    │
-└─────────────────┘
+
+```mermaid
+graph TB
+    subgraph "Frontend Layer"
+        A[Next.js App<br/>Port: 3000]
+        A1[챗봇 UI<br/>React 19]
+        A2[대화 이력 관리<br/>localStorage]
+    end
+
+    subgraph "Backend Layer"
+        B[Fastify Server<br/>Port: 3101]
+        B1[SSE 스트리밍]
+        B2[RAG 검색 엔진]
+        B3[Claude API]
+    end
+
+    subgraph "Data Layer"
+        C[PostgreSQL + pgvector]
+        C1[Vector 검색<br/>3072-dim]
+        C2[메타데이터<br/>ai_core schema]
+    end
+
+    A --> A1
+    A --> A2
+    A -->|HTTP/SSE| B
+    B --> B1
+    B --> B2
+    B --> B3
+    B -->|SQL| C
+    C --> C1
+    C --> C2
+
+    style A fill:#61dafb,stroke:#333,stroke-width:2px
+    style B fill:#00c58e,stroke:#333,stroke-width:2px
+    style C fill:#336791,stroke:#333,stroke-width:2px
 ```
 
 ### 기술 스택
@@ -108,28 +129,40 @@ CoviAI는 사내 매뉴얼, 이력 데이터, FAQ 등을 기반으로 사용자 
 ## 📁 프로젝트 구조
 
 ```
-coviAI/
+coviAI/                       # Monorepo 루트
+│
 ├── frontend/                 # Next.js 프론트엔드
 │   ├── app/
 │   │   ├── page.tsx         # 메인 챗봇 페이지
 │   │   └── api/chat/        # API 라우트
 │   ├── components/
 │   │   └── chatbot/         # 챗봇 UI 컴포넌트
-│   └── lib/
-│       └── conversations.ts  # 대화 이력 관리
+│   ├── lib/
+│   │   └── conversations.ts # 대화 이력 관리
+│   └── package.json         # Frontend 의존성
 │
 ├── workspace-fastify/        # Fastify 백엔드
 │   ├── src/
 │   │   ├── app/
 │   │   │   ├── index.ts     # 서버 진입점
 │   │   │   └── server.ts    # 라우트 정의
-│   │   └── modules/
-│   │       └── chat/
-│   │           └── chat.service.ts  # RAG 검색 로직
-│   └── package.json
+│   │   ├── modules/
+│   │   │   └── chat/
+│   │   │       └── chat.service.ts  # RAG 검색 로직
+│   │   └── db/
+│   │       ├── mariadb.ts   # Source DB 연결
+│   │       └── postgres.ts  # Vector DB 연결
+│   ├── scripts/
+│   │   ├── check-chunk-stability.mjs
+│   │   └── fix-stable-chunk-view.mjs
+│   ├── .env.example
+│   └── package.json         # Backend 의존성
+│
+├── docs/                     # 프로젝트 문서
+│   ├── API.md               # API 명세서
+│   └── DATABASE.md          # 데이터베이스 스키마
 │
 ├── .gitignore
-├── package.json
 └── README.md
 ```
 
@@ -137,26 +170,39 @@ coviAI/
 
 ### 사전 요구사항
 - Node.js 18+
-- PostgreSQL 15+ (pgvector 확장 설치 필요)
-- Anthropic API Key
+- PostgreSQL 15+ (pgvector 0.8.2 확장 설치 필요)
+- Claude API Key (Anthropic)
+- Google API Key (Gemini Embedding)
 
 ### 환경 변수 설정
 ```bash
-# settings.env
-DATABASE_URL=postgresql://user:password@localhost:5432/dbname
-ANTHROPIC_API_KEY=your_api_key_here
+# workspace-fastify/.env (템플릿: .env.example 참고)
+NODE_ENV=development
+PORT=3101
+
+# Database
+VECTOR_DB_HOST=localhost
+VECTOR_DB_PORT=5432
+VECTOR_DB_NAME=your_db_name
+VECTOR_DB_USER=your_db_user
+VECTOR_DB_PASSWORD=your_db_password
+VECTOR_DB_SCHEMA=ai_core
+
+# AI APIs
+GOOGLE_API_KEY=your_google_api_key
+GOOGLE_EMBEDDING_MODEL=gemini-embedding-001
+ANTHROPIC_API_KEY=your_anthropic_api_key
 ```
 
 ### 설치
 ```bash
-# 전체 의존성 설치
+# 프론트엔드 의존성 설치
+cd frontend
 npm install
 
-# 프론트엔드 설치
-cd frontend && npm install
-
-# 백엔드 설치
-cd workspace-fastify && npm install
+# 백엔드 의존성 설치
+cd ../workspace-fastify
+npm install
 ```
 
 ### 실행
@@ -176,47 +222,137 @@ npm run dev
 
 ## 📊 데이터베이스 스키마
 
+### ERD (Entity Relationship Diagram)
+
+```mermaid
+erDiagram
+    SCC_SOURCE ||--o{ V_SCC_CHUNK_PREVIEW : "generates"
+    V_SCC_CHUNK_PREVIEW ||--o{ SCC_CHUNK_EMBEDDINGS : "has"
+    SCC_CHUNK_EMBEDDINGS }o--|| EMBEDDING_INGEST_STATE : "tracks"
+
+    SCC_SOURCE {
+        uuid require_id PK
+        bigint scc_id
+        text issue_text
+        text action_text
+        text resolution_text
+        integer reply_state
+        timestamp ingested_at
+    }
+
+    V_SCC_CHUNK_PREVIEW {
+        uuid chunk_id PK
+        bigint scc_id
+        uuid require_id FK
+        text chunk_type
+        integer chunk_seq
+        text chunk_text
+        text module_tag
+        float resolved_weight
+        float state_weight
+        float evidence_weight
+        float specificity_score
+    }
+
+    SCC_CHUNK_EMBEDDINGS {
+        uuid chunk_id PK
+        text embedding_model PK
+        bigint scc_id
+        uuid require_id
+        text chunk_type
+        text chunk_text
+        vector_3072 embedding_vec
+        timestamp embedded_at
+    }
+
+    EMBEDDING_INGEST_STATE {
+        text embedding_model PK
+        integer last_batch_size
+        timestamp last_run_at
+    }
+```
+
 ### 주요 뷰: `ai_core.v_scc_chunk_preview`
 - `require_id`: 요구사항 ID (UUID)
-- `chunk_id`: 청크 ID
+- `chunk_id`: 청크 ID (Deterministic UUID)
 - `chunk_text`: 검색 대상 텍스트
-- `embedding`: 벡터 임베딩 (pgvector)
+- `embedding_vec`: 벡터 임베딩 (pgvector, 3072-dim)
 - `state_weight`: 상태 가중치
 - `resolved_weight`: 해결 여부 가중치
 - `evidence_weight`: 증거 가중치
 - `specificity_score`: 구체성 점수
 
+**📖 상세 문서**: [docs/DATABASE.md](docs/DATABASE.md)
+
 ## 🔄 RAG 검색 흐름
 
-1. **쿼리 전처리**
-   - 사용자 입력 정규화
-   - 검색 쿼리 변형 생성 (6가지 변형)
+```mermaid
+sequenceDiagram
+    participant User as 사용자
+    participant FE as Frontend<br/>(Next.js)
+    participant BE as Backend<br/>(Fastify)
+    participant DB as PostgreSQL<br/>+ pgvector
+    participant Claude as Claude API
 
-2. **하이브리드 검색**
-   - Rule-based: PostgreSQL ILIKE로 키워드 매칭
-   - Vector-based: pgvector로 시맨틱 유사도 검색
-   - 결과 병합 및 중복 제거
+    User->>FE: 질의 입력
+    FE->>BE: POST /chat<br/>(SSE 연결)
 
-3. **Reranking**
-   - Claude API를 통한 relevance 재평가
-   - 상위 5개 최종 선택
+    Note over BE: 1. 쿼리 전처리
+    BE->>BE: 정규화 + 변형 생성
 
-4. **답변 생성**
-   - 선택된 컨텍스트를 프롬프트에 포함
-   - Claude API로 스트리밍 답변 생성
-   - SSE를 통해 프론트엔드로 전송
+    Note over BE,DB: 2. 하이브리드 검색
+    par Rule-based 검색
+        BE->>DB: ILIKE 키워드 매칭
+    and Vector 검색
+        BE->>Claude: Embedding API
+        Claude-->>BE: 쿼리 벡터
+        BE->>DB: Vector Similarity<br/>(cosine distance)
+    end
+    DB-->>BE: 검색 결과 (500개)
+
+    Note over BE,Claude: 3. Reranking
+    BE->>Claude: Relevance 재평가
+    Claude-->>BE: Top 5 선택
+
+    Note over BE,Claude: 4. 답변 생성
+    BE->>Claude: 스트리밍 생성 요청
+    loop 청크 단위
+        Claude-->>BE: 답변 청크
+        BE-->>FE: SSE 이벤트
+        FE-->>User: 실시간 렌더링
+    end
+```
+
+**📖 상세 문서**: [docs/API.md](docs/API.md)
+
+## 📚 문서
+
+| 문서 | 설명 |
+|------|------|
+| [API.md](docs/API.md) | API 엔드포인트 명세서 (SSE 스트리밍, RAG 검색) |
+| [DATABASE.md](docs/DATABASE.md) | 데이터베이스 스키마 및 ERD, 쿼리 예시 |
+| [.env.example](workspace-fastify/.env.example) | 환경 변수 템플릿 |
 
 ## 📈 향후 개선 계획
 
 - [ ] 캐싱 전략 도입 (Redis)
-- [ ] 데이터베이스 인덱스 최적화
+- [ ] 데이터베이스 인덱스 최적화 (chunk_type, require_id)
 - [ ] 답변 품질 피드백 시스템
 - [ ] 다국어 지원
 - [ ] 대화 컨텍스트 유지 (멀티턴)
+- [ ] Docker 컨테이너화 (docker-compose.yml)
 
-## 📝 커밋 히스토리
+## 📝 변경 이력
+
+### 2026-03-25
+- ✅ 프로젝트 문서화 완료 (API.md, DATABASE.md)
+- ✅ README.md 시각화 개선 (Mermaid 다이어그램)
+- ✅ 레거시 코드 정리 (ARCHIVE/ 이동)
+- ✅ GitHub 원격 저장소 연결 (Monorepo)
 
 ### 2026-03-23
+- ✅ Deterministic UUID 전환 (chunk_id 안정화)
+- ✅ 임베딩 데이터 확장: 3,243 → 13,255 rows
 - ✅ 프론트엔드: Next.js 기반 챗봇 UI 구현
 - ✅ 백엔드: Fastify 기반 스트리밍 API 구현
 - ✅ 성능 최적화: RAG 검색 속도 70-90% 개선
