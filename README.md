@@ -19,28 +19,38 @@ CoviAI는 사내 매뉴얼, 이력 데이터, FAQ 등을 기반으로 사용자 
 
 ```mermaid
 graph TB
+    subgraph "Client"
+        CLIENT[브라우저<br/>Port: 80]
+    end
+
+    subgraph "Infrastructure Layer"
+        NGINX[Nginx<br/>Reverse Proxy<br/>Port: 80]
+    end
+
     subgraph "Frontend Layer"
-        A[Next.js App<br/>Port: 3000]
+        A[Next.js App<br/>Container: 3000]
         A1[챗봇 UI<br/>React 19]
         A2[대화 이력 관리<br/>localStorage]
     end
 
     subgraph "Backend Layer"
-        B[Fastify Server<br/>Port: 3101]
+        B[Fastify Server<br/>Container: 3101]
         B1[SSE 스트리밍]
         B2[RAG 검색 엔진]
         B3[Google Gemini API]
     end
 
     subgraph "Data Layer"
-        C[PostgreSQL + pgvector]
+        C[PostgreSQL + pgvector<br/>DB_HOST_REMOVED:5432]
         C1[Vector 검색<br/>768-dim]
         C2[메타데이터<br/>ai_core schema]
     end
 
+    CLIENT -->|HTTP| NGINX
+    NGINX -->|/* → :3000| A
+    NGINX -->|/api/* → :3101| B
     A --> A1
     A --> A2
-    A -->|HTTP/SSE| B
     B --> B1
     B --> B2
     B --> B3
@@ -48,6 +58,8 @@ graph TB
     C --> C1
     C --> C2
 
+    style CLIENT fill:#f9f9f9,stroke:#333,stroke-width:2px
+    style NGINX fill:#009639,stroke:#333,stroke-width:2px
     style A fill:#61dafb,stroke:#333,stroke-width:2px
     style B fill:#00c58e,stroke:#333,stroke-width:2px
     style C fill:#336791,stroke:#333,stroke-width:2px
@@ -65,9 +77,15 @@ graph TB
 - **Framework**: Fastify (Node.js)
 - **언어**: TypeScript
 - **스트리밍**: Server-Sent Events (SSE)
-- **데이터베이스**: PostgreSQL + pgvector
+- **데이터베이스**: PostgreSQL + pgvector 0.8.2
 - **LLM**: Google Gemini 2.5 Flash
 - **Embedding**: Google Gemini Embedding 2 (768-dim)
+
+#### Infrastructure
+- **컨테이너화**: Docker, Docker Compose
+- **리버스 프록시**: Nginx (CORS 해결, 80 포트 통합)
+- **배포 환경**: 온프레미스 → 클라우드 마이그레이션 준비
+- **이미지 최적화**: Multi-stage build, Alpine Linux
 
 ## ✨ 주요 기능
 
@@ -160,8 +178,17 @@ coviAI/                       # Monorepo 루트
 │   └── package.json         # Backend 의존성
 │
 ├── docs/                     # 프로젝트 문서
+│   ├── docker.md            # Docker 배포 가이드
 │   ├── API.md               # API 명세서
 │   └── DATABASE.md          # 데이터베이스 스키마
+│
+├── nginx/                    # Nginx 리버스 프록시 설정
+│   └── nginx.conf           # CORS 해결, 80 포트 통합
+│
+├── docker-compose.yml        # Docker Compose 오케스트레이션
+├── .env.example              # 환경 변수 템플릿
+├── .dockerignore             # Docker 빌드 최적화
+├── CLAUDE.md                 # AI 에이전트 프로젝트 컨텍스트
 │
 ├── .gitignore
 └── README.md
@@ -169,57 +196,84 @@ coviAI/                       # Monorepo 루트
 
 ## 🔧 설치 및 실행
 
-### 사전 요구사항
+### 방법 1: Docker Compose (권장) 🐳
+
+**사전 요구사항**
+- Docker Desktop (또는 Docker Engine + Docker Compose)
+- Google API Key
+
+**빠른 시작**
+```bash
+# 1. 환경변수 설정
+cp .env.example .env
+# .env 파일을 열어서 GOOGLE_API_KEY 입력
+
+# 2. 전체 스택 실행 (Frontend + Backend + Nginx)
+docker-compose up -d --build
+
+# 3. 로그 확인
+docker-compose logs -f
+
+# 4. 접속
+# 브라우저: http://localhost
+```
+
+**장점**
+- ✅ **한 번에 전체 스택 실행** (Frontend, Backend, Nginx)
+- ✅ **CORS 문제 완전 해결** (Nginx 리버스 프록시)
+- ✅ **환경 일관성** (개발/스테이징/프로덕션 동일)
+- ✅ **쉬운 스케일링** (`docker-compose up -d --scale backend=3`)
+- ✅ **클라우드 마이그레이션 준비 완료**
+
+**📖 상세 가이드**: [docs/docker.md](docs/docker.md)
+
+---
+
+### 방법 2: 로컬 개발 환경
+
+**사전 요구사항**
 - Node.js 18+
 - PostgreSQL 15+ (pgvector 0.8.2 확장 설치 필요)
 - Google API Key (Gemini LLM + Embedding)
 
-### 환경 변수 설정
+**환경 변수 설정**
 ```bash
 # workspace-fastify/.env (템플릿: .env.example 참고)
 NODE_ENV=development
 PORT=3101
 
 # Database
-VECTOR_DB_HOST=localhost
+VECTOR_DB_HOST=DB_HOST_REMOVED
 VECTOR_DB_PORT=5432
-VECTOR_DB_NAME=your_db_name
-VECTOR_DB_USER=your_db_user
-VECTOR_DB_PASSWORD=your_db_password
+VECTOR_DB_NAME=ai2
+VECTOR_DB_USER=novian
+VECTOR_DB_PASSWORD=REMOVED
 VECTOR_DB_SCHEMA=ai_core
 
 # AI APIs (Google Gemini)
 GOOGLE_API_KEY=your_google_api_key
 GOOGLE_MODEL=gemini-2.5-flash
-GOOGLE_EMBEDDING_MODEL=gemini-embedding-001
 LLM_PROVIDER=google
 ```
 
-### 설치
+**설치 및 실행**
 ```bash
-# 프론트엔드 의존성 설치
+# 프론트엔드 의존성 설치 및 실행
 cd frontend
 npm install
+npm run dev  # Port 3000
 
-# 백엔드 의존성 설치
-cd ../workspace-fastify
-npm install
-```
-
-### 실행
-```bash
-# 프론트엔드 (포트 3000)
-cd frontend
-npm run dev
-
-# 백엔드 (포트 3101)
+# 백엔드 의존성 설치 및 실행 (별도 터미널)
 cd workspace-fastify
-npm run dev
+npm install
+npm run dev  # Port 3101
 ```
 
-### 접속
+**접속**
 - 프론트엔드: http://localhost:3000
 - 백엔드 API: http://localhost:3101
+
+**주의**: 로컬 개발 환경에서는 CORS 설정이 필요할 수 있습니다.
 
 ## 📊 데이터베이스 스키마
 
@@ -330,20 +384,32 @@ sequenceDiagram
 
 | 문서 | 설명 |
 |------|------|
-| [API.md](docs/API.md) | API 엔드포인트 명세서 (SSE 스트리밍, RAG 검색) |
-| [DATABASE.md](docs/DATABASE.md) | 데이터베이스 스키마 및 ERD, 쿼리 예시 |
-| [.env.example](workspace-fastify/.env.example) | 환경 변수 템플릿 |
+| [docs/docker.md](docs/docker.md) | 🐳 **Docker 배포 가이드** (docker-compose, Nginx 프록시, 클라우드 마이그레이션) |
+| [docs/API.md](docs/API.md) | API 엔드포인트 명세서 (SSE 스트리밍, RAG 검색) |
+| [docs/DATABASE.md](docs/DATABASE.md) | 데이터베이스 스키마 및 ERD, 쿼리 예시 |
+| [.env.example](.env.example) | 환경 변수 템플릿 (루트 디렉토리) |
+| [CLAUDE.md](CLAUDE.md) | AI 에이전트 인수인계 문서 (프로젝트 컨텍스트) |
 
 ## 📈 향후 개선 계획
 
+- [x] **Docker 컨테이너화** (docker-compose.yml, Nginx 리버스 프록시)
+- [x] **클라우드 마이그레이션 준비** (온프레미스 → AWS/GCP/Azure)
 - [ ] 캐싱 전략 도입 (Redis)
 - [ ] 데이터베이스 인덱스 최적화 (chunk_type, require_id)
 - [ ] 답변 품질 피드백 시스템
 - [ ] 다국어 지원
 - [ ] 대화 컨텍스트 유지 (멀티턴)
-- [ ] Docker 컨테이너화 (docker-compose.yml)
+- [ ] 모니터링 및 로깅 (Prometheus, Grafana)
 
 ## 📝 변경 이력
+
+### 2026-03-26
+- ✅ **Docker Compose 배포 환경 구축** (Frontend + Backend + Nginx)
+- ✅ **Nginx 리버스 프록시 설정** (80 포트 통합, CORS 완전 해결)
+- ✅ **Multi-stage Dockerfile 작성** (이미지 크기 최적화)
+- ✅ **클라우드 마이그레이션 준비** (온프레미스 → AWS/GCP/Azure)
+- ✅ **배포 문서 작성** ([docs/docker.md](docs/docker.md))
+- ✅ **CLAUDE.md 추가** (AI 에이전트 프로젝트 컨텍스트 파일)
 
 ### 2026-03-25
 - ✅ 프로젝트 문서화 완료 (API.md, DATABASE.md)
