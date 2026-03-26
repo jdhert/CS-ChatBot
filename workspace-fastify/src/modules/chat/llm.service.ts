@@ -41,7 +41,8 @@ const PROMPT_RULESET = [
   "실제 데이터 활용: best_qa_pair_text, best_resolution_text, best_action_text에 구체적인 정보(코드, 설정값, 절차)가 있으면 반드시 추출해서 답변에 포함한다.",
   "근거 우선순위: qa_pair -> resolution -> action -> issue 순으로 맥락을 해석한다. qa_pair는 질문-답변 쌍이므로 가장 유용하다.",
   "링크 규칙: selectedRequireId가 있으면 참고 링크는 해당 require_id URL을 기재한다.",
-  "링크 규칙: selectedRequireId가 null이면 참고 링크는 '없음'으로 작성한다."
+  "링크 규칙: selectedRequireId가 null이면 참고 링크는 '없음'으로 작성한다.",
+  "개인정보 금지: context에 등장하는 특정 개인 이름(예: '홍길동 대리', '김OO 사원'), 회사명, 내선번호, 이메일 주소는 답변에 절대 포함하지 않는다. 답변은 현재 질문한 사용자에게 일반적인 가이드를 제공하는 방식으로 작성한다."
 ] as const;
 const DEFAULT_LLM_TWO_STEP_MAX_CONFIDENCE = 0.55;
 const DEFAULT_LLM_ANSWER_CACHE_TTL_MS = 30 * 1000;
