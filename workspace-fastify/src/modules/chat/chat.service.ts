@@ -2425,7 +2425,7 @@ async function computeChatSearch(
   const topRequireId = best?.requireId ?? null;
   const confidence = best ? round2(best.score) : 0;
   const hasCooldownRelaxedBest = shouldPromoteCooldownBest(best, runnerUp, vectorResult);
-  const hasConfidentBest = best ? best.score >= DEFAULT_SCORE_THRESHOLD || hasCooldownRelaxedBest : false;
+  const hasConfidentBest = best ? round2(best.score) >= DEFAULT_SCORE_THRESHOLD || hasCooldownRelaxedBest : false;
   const rerankMs = Date.now() - rerankStartedAt;
   const timingBase = {
     ruleMs,
