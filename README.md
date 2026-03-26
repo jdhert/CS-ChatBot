@@ -2,6 +2,8 @@
 
 코비전 사내 지원 시스템을 위한 AI 기반 질의응답 챗봇 플랫폼
 
+<img src="https://github.com/user-attachments/assets/70b7c078-9a6d-45de-9e60-8ac52d871dcb" width="1024" height="559" alt="CS-AI Chatbot - Your Modern CS Assistant" />
+
 ## 📋 프로젝트 개요
 
 CoviAI는 사내 매뉴얼, 이력 데이터, FAQ 등을 기반으로 사용자 질의에 대해 실시간으로 답변을 제공하는 RAG(Retrieval-Augmented Generation) 기반 챗봇 시스템입니다.
@@ -113,6 +115,22 @@ graph TB
 ## 🚀 성능 최적화
 
 ### 최근 적용된 최적화 (2026-03-26)
+
+#### LLM 개인정보 노출 방지
+- **문제**: LLM이 SCC qa_pair 원문에서 실제 고객 이름("김상원 대리" 등)을 추출해 답변에 포함
+- **원인**: LLM이 "[QUESTION] 안녕하십니까, 김상원 대리입니다..." 텍스트를 답변 대상으로 오해
+- **해결**: `PROMPT_RULESET`에 개인정보 금지 규칙 추가 — context 내 이름/회사명/내선번호/이메일을 답변에 포함 금지
+
+#### 검색 임계값 부동소수점 수정
+- **문제**: `best.score >= 0.45` 비교에서 실제 점수가 0.4499...인 경우 `round2()` 표시는 0.45이나 매칭 실패
+- **원인**: 벡터 전용 후보(ruleScore=0)는 블렌딩 후 점수가 임계값에 근접하게 계산됨
+- **해결**: `hasConfidentBest` 비교를 `round2(best.score) >= DEFAULT_SCORE_THRESHOLD`로 변경
+- **영향**: "야간근무 일정은 어떻게 생성해?" 등 유사 질의 매칭 복구
+
+#### 초기 로딩 script.js 404 제거
+- **문제**: 페이지 최초 렌더링 시 `/_vercel/insights/script.js` 404 에러 발생
+- **원인**: `@vercel/analytics` 패키지가 Vercel CDN에서 스크립트를 로드하나 로컬/Docker 환경에서는 미존재
+- **해결**: `layout.tsx`에서 `<Analytics />` 컴포넌트 및 import 제거
 
 #### LLM 답변 품질 개선
 - **문제**: LLM 프롬프트에 전달되는 qa_pair 텍스트가 160자로 잘려 [ANSWER] 부분이 누락됨
@@ -397,6 +415,9 @@ sequenceDiagram
 - [x] **클라우드 마이그레이션 준비** (온프레미스 → AWS/GCP/Azure)
 - [x] **LLM 답변 품질 개선** (프롬프트 텍스트 길이 제한 확장)
 - [x] **캐시 메모리 관리** (만료 항목 주기적 자동 정리)
+- [x] **LLM 개인정보 노출 방지** (SCC 원문 내 이름/회사명 답변 제외)
+- [x] **검색 임계값 부동소수점 수정** (벡터 전용 후보 매칭 누락 해결)
+- [x] **초기 로딩 script.js 404 제거** (Vercel Analytics 제거)
 - [ ] 캐싱 전략 도입 (Redis)
 - [ ] 데이터베이스 인덱스 최적화 (chunk_type, require_id)
 - [ ] 답변 품질 피드백 시스템
@@ -407,6 +428,9 @@ sequenceDiagram
 ## 📝 변경 이력
 
 ### 2026-03-26 (최신)
+- ✅ **LLM 개인정보 노출 방지** — SCC 원문 내 실제 이름(예: 홍길동 대리), 회사명, 내선번호가 답변에 포함되지 않도록 PROMPT_RULESET 규칙 추가
+- ✅ **검색 임계값 부동소수점 수정** — `best.score >= 0.45` 비교를 `round2(score) >= 0.45`로 변경하여 벡터 전용 후보가 0.4499...로 임계값 미달 후 누락되는 문제 해결 (예: '야간근무 일정은 어떻게 생성해?' SCC 매칭)
+- ✅ **초기 로딩 script.js 404 제거** — `@vercel/analytics` 패키지가 Vercel CDN에서 불러오려던 `/_vercel/insights/script.js`가 로컬/Docker 환경에서 404를 발생시키던 문제 제거 (layout.tsx에서 `<Analytics />` 제거)
 - ✅ **LLM 답변 품질 수정** — 프롬프트 텍스트 길이 제한 확장으로 qa_pair [ANSWER] 누락 문제 해결
 - ✅ **캐시 주기적 정리** — 만료된 캐시 항목 1분 주기 자동 정리로 메모리 누수 방지
 - ✅ **Docker Compose 환경변수 전면 명세화** — Runtime/Google API/Vector DB/LLM/Embedding 섹션 분류
