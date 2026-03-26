@@ -1,42 +1,43 @@
 # AI Core Agent Handoff
 
-작성일: 2026-03-16  
-대상: 다음 작업을 이어받는 에이전트 / 개발자  
-기준 경로: `C:\Users\shpark6\Desktop\AI작업\coviAI\workspace-fastify`
+> **IMPORTANT: All responses to the user MUST be written in Korean, regardless of the language used in this document or the user's query language.**
 
-## 1. 문서 목적
+Written: 2026-03-16
+Audience: Next agent or developer taking over this work
+Base path: `C:\Users\shpark6\Desktop\AI작업\coviAI\workspace-fastify`
 
-이 문서는 현재 `workspace-fastify` 프로젝트의 구조, DB 접속 정보, 주요 테이블/뷰, 검색/LLM 동작 방식, 최근 작업 내역, 미해결 이슈를 다음 작업자가 빠르게 파악할 수 있도록 정리한 인수인계 문서다.
+## 1. Purpose of This Document
 
-이 문서의 목적은 다음과 같다.
+This document is a handoff guide to help the next agent or developer quickly understand the current state of the `workspace-fastify` project — including its structure, DB connection details, key tables/views, search/LLM behavior, recent changes, and open issues.
 
-- 다른 에이전트가 기존 의도와 구현 맥락을 잃지 않고 즉시 작업을 이어갈 수 있도록 한다.
-- PostgreSQL/pgvector 기반 chunk + embedding 구조를 빠르게 이해할 수 있도록 한다.
-- 현재 구현이 어디까지 완료되었고, 무엇이 아직 불안정한지 명확히 남긴다.
-- 실행/테스트/배포 시 필요한 명령과 주의사항을 한 파일에 모은다.
+Goals:
 
-## 2. 프로젝트 개요
+- Allow another agent to immediately continue work without losing the original intent or implementation context.
+- Provide a fast onramp to the PostgreSQL/pgvector-based chunk + embedding architecture.
+- Clearly state what is complete and what is still unstable.
+- Consolidate all commands and cautions needed for running, testing, and deploying into one file.
 
-이 프로젝트는 Covision AI Core MVP 런타임이다.  
-웹 애플리케이션(JSP/AJAX)과 분리된 독립 Fastify 서버로 동작하며, SCC 유지보수 이력 데이터를 기반으로 다음 순서의 질의응답을 수행한다.
+## 2. Project Overview
 
-1. SCC chunk 뷰(`ai_core.v_scc_chunk_preview`)에서 후보 이력을 찾는다.
-2. 후보 이력의 텍스트/가중치 기반 rule 점수를 계산한다.
-3. 질문 임베딩과 저장된 chunk 임베딩을 비교해 vector 후보를 찾는다.
-4. rule 점수와 vector 점수를 혼합해 최종 후보군을 만든다.
-5. 필요 시 LLM(Google Gemini)에게 상위 후보군을 넘겨 설명형 답변을 생성한다.
-6. 최종적으로 `/chat` 응답으로 후보 이력, 링크, 생성 답변, 진단 정보를 반환한다.
+This project is the Covision AI Core MVP runtime.
+It runs as a standalone Fastify server, decoupled from the web application (JSP/AJAX), and performs Q&A based on SCC maintenance history data in the following order:
 
-핵심 방향은 전형적인 RAG 구조다.  
-다만 현재는 "자유 생성"보다 "근거 기반 생성" 쪽으로 설계되어 있다.
+1. Retrieve candidate records from the SCC chunk view (`ai_core.v_scc_chunk_preview`).
+2. Compute text/weight-based rule scores for candidate records.
+3. Embed the query and compare it against stored chunk embeddings to find vector candidates.
+4. Merge rule scores and vector scores into a final candidate set.
+5. If needed, pass the top candidates to an LLM (Google Gemini) to generate an explanatory answer.
+6. Return the `/chat` response containing candidate records, links, generated answer, and diagnostics.
 
-## 3. 아키텍처 요약
+The core approach is a standard RAG pipeline, but it is designed for evidence-based generation rather than free-form generation.
+
+## 3. Architecture Summary
 
 ```text
 Client
   -> Web/WAS Server (JSP + AJAX)
   -> AI Core (/chat)
-     - Chunk View 조회
+     - Chunk View Query
      - Rule Scoring
      - Vector Search (pgvector / float8[] fallback)
      - LLM Candidate Comparison / Answer Generation
@@ -44,13 +45,13 @@ Client
   -> Client
 ```
 
-핵심 엔드포인트:
+Key endpoints:
 
 - `GET /health`
 - `GET /test/chat`
 - `POST /chat`
 
-## 4. 기술 스택
+## 4. Tech Stack
 
 - Runtime: Node.js
 - Server: Fastify
@@ -62,11 +63,11 @@ Client
   - OpenAI
   - Google Gemini Embedding
 
-## 5. DB 접속 정보
+## 5. DB Connection
 
-현재 코드의 기본 PostgreSQL 접속값은 `src/platform/db/vectorClient.ts` 및 각 DB 스크립트에 하드코딩 fallback 으로 들어가 있다.
+The default PostgreSQL connection values are hardcoded as fallbacks in `src/platform/db/vectorClient.ts` and each DB script.
 
-접속 정보:
+Connection details:
 
 - Host: `DB_HOST_REMOVED`
 - Port: `5432`
@@ -75,23 +76,23 @@ Client
 - Password: `REMOVED`
 - Schema: `ai_core`
 
-주의:
+Notes:
 
-- `.env.example`는 샘플 문서일 뿐이고 자동 로딩되지 않는다.
-- 실제 실행 시 `process.env`에 값이 주입되지 않으면 위 fallback 값으로 접속한다.
-- 이 프로젝트는 `VECTOR_DB_*` 환경변수가 없을 때도 DB 연결이 되도록 기본값이 코드에 박혀 있다.
+- `.env.example` is a sample document only and is not auto-loaded.
+- If `process.env` values are not injected at runtime, the above fallback values are used.
+- This project is designed to connect to the DB even when `VECTOR_DB_*` env vars are absent.
 
-관련 파일:
+Related files:
 
-- [vectorClient.ts](C:/Users/shpark6/Desktop/AI작업/coviAI/workspace-fastify/src/platform/db/vectorClient.ts)
-- [init-vector-schema.mjs](C:/Users/shpark6/Desktop/AI작업/coviAI/workspace-fastify/scripts/init-vector-schema.mjs)
-- [fix-stable-chunk-view.mjs](C:/Users/shpark6/Desktop/AI작업/coviAI/workspace-fastify/scripts/fix-stable-chunk-view.mjs)
-- [enable-pgvector-search.mjs](C:/Users/shpark6/Desktop/AI작업/coviAI/workspace-fastify/scripts/enable-pgvector-search.mjs)
-- [sync-scc-embeddings.mjs](C:/Users/shpark6/Desktop/AI작업/coviAI/workspace-fastify/scripts/sync-scc-embeddings.mjs)
+- [vectorClient.ts](workspace-fastify/src/platform/db/vectorClient.ts)
+- [init-vector-schema.mjs](workspace-fastify/scripts/init-vector-schema.mjs)
+- [fix-stable-chunk-view.mjs](workspace-fastify/scripts/fix-stable-chunk-view.mjs)
+- [enable-pgvector-search.mjs](workspace-fastify/scripts/enable-pgvector-search.mjs)
+- [sync-scc-embeddings.mjs](workspace-fastify/scripts/sync-scc-embeddings.mjs)
 
-## 6. 현재 DB 실데이터 상태
+## 6. Current Live DB State
 
-2026-03-23 기준 live DB 조회 결과 (데이터 표본 확장):
+As of 2026-03-23 (expanded sample):
 
 | Object | Row Count |
 | --- | ---: |
@@ -101,18 +102,18 @@ Client
 | `ai_core.v_scc_embedding_status` | 1 |
 | `ai_core.v_scc_embedding_coverage` | 1 |
 
-임베딩 모델 상태:
+Embedding model state:
 
 | embedding_model | embedding_dim | rows |
 | --- | ---: | ---: |
 | `google:gemini-embedding-001` | 3072 | 13255 |
 
-pgvector 상태:
+pgvector state:
 
-- `vector` extension 설치됨
-- 설치 버전: `0.8.2`
+- `vector` extension installed
+- Version: `0.8.2`
 
-인덱스 상태:
+Index state:
 
 - `scc_chunk_embeddings_pkey`
 - `idx_scc_chunk_embeddings_require`
@@ -122,161 +123,161 @@ pgvector 상태:
 - `idx_scc_chunk_embeddings_model_dim`
 - `idx_scc_chunk_embeddings_embedded_at`
 
-현재 없음:
+Not present:
 
-- `embedding_vec` 기반 HNSW / IVFFlat ANN 인덱스
+- HNSW / IVFFlat ANN index on `embedding_vec`
 
-이유:
+Reason:
 
-- 현재 임베딩 차원은 `3072`
-- `pgvector` ANN 인덱스는 차원 제한 이슈로 생성 실패
-- 그래서 현재는 `embedding_vec` 컬럼은 존재하지만 ANN 인덱스 없이 cosine 연산 기반 검색을 수행한다.
+- Current embedding dimension is `3072`
+- `pgvector` ANN index creation fails due to dimension limit
+- Therefore, cosine similarity search is performed without ANN index (full scan)
 
-## 7. 주요 DB 오브젝트 상세
+## 7. Key DB Objects
 
 ### 7.1 `ai_core.v_scc_chunk_preview`
 
-역할:
+Role:
 
-- 검색의 원본 데이터 소스
-- chunk 단위의 이슈/행동/해결/질문-답변 데이터를 제공
-- 검색용 feature score 컬럼을 함께 보유
+- Primary data source for search
+- Provides issue/action/resolution/qa_pair data at the chunk level
+- Includes feature score columns for ranking
 
-주요 컬럼:
+Key columns:
 
-| 컬럼 | 타입 | 설명 |
+| Column | Type | Description |
 | --- | --- | --- |
-| `chunk_id` | `uuid` | chunk 고유 ID. 현재 deterministic UUID |
+| `chunk_id` | `uuid` | Unique chunk ID — currently deterministic UUID |
 | `scc_id` | `bigint` | SCC ID |
-| `require_id` | `uuid` | 원문 요청 ID |
+| `require_id` | `uuid` | Original request ID |
 | `chunk_type` | `text` | `issue`, `action`, `resolution`, `qa_pair` |
-| `chunk_seq` | `integer` | 같은 require 내 chunk 순번 |
-| `chunk_text` | `text` | 검색 및 답변의 본문 텍스트 |
-| `module_tag` | `text` | 모듈/도메인 태그 |
-| `reply_state` | `integer` | 처리 상태 |
-| `resolved_weight` | `numeric` | 상태/완료 관련 가중치 |
-| `ingested_at` | `timestamptz` | 적재 시각 |
-| `state_weight` | `numeric` | 상태 기반 가중치 |
-| `evidence_weight` | `numeric` | 근거성 가중치 |
-| `text_len_score` | `numeric` | 본문 길이 기반 점수 |
-| `tech_signal_score` | `numeric` | 기술 시그널 점수 |
-| `specificity_score` | `numeric` | 구체성 점수 |
-| `closure_penalty_score` | `numeric` | 종료성 문구 패널티 |
-| `resolution_stage` | `integer` | 해결 단계 |
-| `feature_len` | `integer` | feature 길이 |
+| `chunk_seq` | `integer` | Chunk sequence within the same require |
+| `chunk_text` | `text` | Body text used for search and answer generation |
+| `module_tag` | `text` | Module/domain tag |
+| `reply_state` | `integer` | Processing state |
+| `resolved_weight` | `numeric` | State/completion weight |
+| `ingested_at` | `timestamptz` | Ingestion timestamp |
+| `state_weight` | `numeric` | State-based weight |
+| `evidence_weight` | `numeric` | Evidence weight |
+| `text_len_score` | `numeric` | Score based on body text length |
+| `tech_signal_score` | `numeric` | Technical signal score |
+| `specificity_score` | `numeric` | Specificity score |
+| `closure_penalty_score` | `numeric` | Penalty for closure phrases |
+| `resolution_stage` | `integer` | Resolution stage |
+| `feature_len` | `integer` | Feature length |
 
-중요한 변경 이력:
+Important history:
 
-- 과거에는 `chunk_id`가 랜덤에 가까운 구조여서 임베딩 재사용이 어려웠다.
-- 현재는 `ai_core.make_stable_chunk_uuid(...)`로 deterministic UUID 생성 방식으로 교체했다.
-- 이 덕분에 동일 chunk 텍스트/키 조합이면 동일한 `chunk_id`가 유지된다.
+- Previously, `chunk_id` was near-random, making embedding reuse difficult.
+- Now uses `ai_core.make_stable_chunk_uuid(...)` to generate deterministic UUIDs.
+- Same chunk text/key combination always produces the same `chunk_id`.
 
-관련 파일:
+Related file:
 
-- [fix-stable-chunk-view.mjs](C:/Users/shpark6/Desktop/AI작업/coviAI/workspace-fastify/scripts/fix-stable-chunk-view.mjs)
+- [fix-stable-chunk-view.mjs](workspace-fastify/scripts/fix-stable-chunk-view.mjs)
 
 ### 7.2 `ai_core.v_scc_chunk_preview_base`
 
-역할:
+Role:
 
-- 원본 `v_scc_chunk_preview` 정의를 snapshot 해둔 백업 view
-- deterministic `chunk_id`를 입힌 새 view를 재구성할 때 기반 소스로 사용
+- Snapshot backup of the original `v_scc_chunk_preview` definition
+- Used as the source when reconstructing the view with deterministic `chunk_id`
 
-주의:
+Note:
 
-- stable chunk view 보정 스크립트가 최초 실행될 때 생성된다.
-- 운영 중 view 재작성 시 이 base view를 기준으로 다시 감싼다.
+- Created the first time the stable chunk view fix script runs.
+- When rewriting the view in production, this base view is used as the foundation.
 
 ### 7.3 `ai_core.make_stable_chunk_uuid(...)`
 
-역할:
+Role:
 
-- `require_id + chunk_type + chunk_seq + reply_state + md5(chunk_text)`를 조합해 UUID 생성
-- 같은 논리 chunk는 항상 같은 `chunk_id`가 나오게 한다.
+- Generates a UUID from `require_id + chunk_type + chunk_seq + reply_state + md5(chunk_text)`
+- Ensures the same logical chunk always produces the same `chunk_id`
 
-효과:
+Effects:
 
-- 임베딩 중복 생성 방지
-- chunk 변경 여부 추적 가능
-- `scc_chunk_embeddings`와의 연결 안정성 확보
+- Prevents duplicate embedding generation
+- Enables change tracking for chunks
+- Ensures stable linkage with `scc_chunk_embeddings`
 
 ### 7.4 `ai_core.scc_chunk_embeddings`
 
-역할:
+Role:
 
-- 각 chunk 텍스트의 embedding 결과를 저장
-- vector 검색의 실질적 대상 테이블
+- Stores embedding results for each chunk text
+- The actual target table for vector search
 
-주요 컬럼:
+Key columns:
 
-| 컬럼 | 타입 | 설명 |
+| Column | Type | Description |
 | --- | --- | --- |
-| `chunk_id` | `uuid` | `v_scc_chunk_preview.chunk_id`와 연결 |
+| `chunk_id` | `uuid` | Links to `v_scc_chunk_preview.chunk_id` |
 | `scc_id` | `bigint` | SCC ID |
-| `require_id` | `uuid` | 요청 ID |
-| `chunk_type` | `text` | chunk 종류 |
-| `chunk_text` | `text` | 임베딩 대상 텍스트 원문 |
+| `require_id` | `uuid` | Request ID |
+| `chunk_type` | `text` | Chunk type |
+| `chunk_text` | `text` | Original text used for embedding |
 | `text_hash` | `text` | `md5(chunk_text)` |
-| `embedding_model` | `text` | `provider:model` 형식. 예: `google:gemini-embedding-001` |
-| `embedding_dim` | `integer` | 임베딩 차원 |
-| `embedding_values` | `float8[]` | 원본 임베딩 값 배열 |
-| `embedding_norm` | `float8` | 코사인 유사도 계산용 norm |
-| `source_ingested_at` | `timestamptz` | 소스 적재 시각 |
-| `embedded_at` | `timestamptz` | 임베딩 실행 시각 |
-| `updated_at` | `timestamptz` | 갱신 시각 |
-| `embedding_vec` | `vector` | pgvector 전용 컬럼 |
+| `embedding_model` | `text` | `provider:model` format, e.g. `google:gemini-embedding-001` |
+| `embedding_dim` | `integer` | Embedding dimension |
+| `embedding_values` | `float8[]` | Raw embedding value array |
+| `embedding_norm` | `float8` | Norm for cosine similarity computation |
+| `source_ingested_at` | `timestamptz` | Source ingestion timestamp |
+| `embedded_at` | `timestamptz` | Embedding execution timestamp |
+| `updated_at` | `timestamptz` | Last update timestamp |
+| `embedding_vec` | `vector` | pgvector-dedicated column |
 
 Primary Key:
 
 - `(chunk_id, embedding_model)`
 
-의미:
+Meaning:
 
-- 같은 chunk라도 모델이 다르면 별도 row로 저장 가능
-- 동일 모델 기준으로는 중복 저장 대신 upsert
+- The same chunk can have separate rows for different models
+- For the same model, uses upsert instead of duplicate insert
 
-현재 상태:
+Current state:
 
 - `13255` rows
-- 모두 `google:gemini-embedding-001` / `3072` 차원
-- `embedding_vec` 컬럼 존재
-- ANN 인덱스는 아직 없음
+- All `google:gemini-embedding-001` / `3072` dimensions
+- `embedding_vec` column exists
+- No ANN index yet
 
 ### 7.5 `ai_core.embedding_ingest_state`
 
-역할:
+Role:
 
-- embedding 적재 작업의 상태 저장
-- 최근 성공/실패 메시지 확인 가능
+- Stores the state of embedding ingestion jobs
+- Allows checking the most recent success/failure messages
 
-주요 컬럼:
+Key columns:
 
-| 컬럼 | 타입 | 설명 |
+| Column | Type | Description |
 | --- | --- | --- |
-| `state_key` | `text` | 예: `scc_chunk_embeddings:google:gemini-embedding-001` |
-| `last_source_ingested_at` | `timestamptz` | 마지막 소스 적재 시점 |
-| `last_run_at` | `timestamptz` | 마지막 실행 시각 |
+| `state_key` | `text` | e.g. `scc_chunk_embeddings:google:gemini-embedding-001` |
+| `last_source_ingested_at` | `timestamptz` | Last source ingestion timestamp |
+| `last_run_at` | `timestamptz` | Last run timestamp |
 | `last_status` | `text` | `ok`, `error`, `running`, `never` |
-| `last_message` | `text` | 실행 결과 요약 |
-| `updated_at` | `timestamptz` | 갱신 시각 |
+| `last_message` | `text` | Execution result summary |
+| `updated_at` | `timestamptz` | Last update timestamp |
 
-현재 주요 row:
+Current key rows:
 
 - `scc_chunk_embeddings:google:gemini-embedding-001`
   - `last_status = ok`
   - `last_message = provider=google, model=gemini-embedding-001, selected=143, embedded=143, inserted=143, updated=0, skipped=0`
-- 과거 오류 흔적:
+- Past error traces:
   - `google:text-embedding-004` -> 404 model not found
 
-### 7.6 모니터링 view
+### 7.6 Monitoring Views
 
 #### `ai_core.v_scc_embedding_status`
 
-역할:
+Role:
 
-- 모델별 embedding row 수, embedded chunk 수, 마지막 적재 시각 확인
+- Check row count, embedded chunk count, and last ingestion timestamp per model
 
-컬럼:
+Columns:
 
 - `embedding_model`
 - `embedding_rows`
@@ -286,32 +287,32 @@ Primary Key:
 
 #### `ai_core.v_scc_embedding_coverage`
 
-역할:
+Role:
 
-- source chunk 수 대비 embedding coverage 계산
+- Calculate embedding coverage as a percentage of source chunks
 
-컬럼:
+Columns:
 
 - `embedding_model`
 - `source_chunk_rows`
 - `embedded_chunks`
 - `coverage_pct`
 
-현재 해석:
+Current interpretation:
 
-- `v_scc_chunk_preview`와 `scc_chunk_embeddings` row 수가 둘 다 `13255`이므로 coverage 는 사실상 100% 상태로 볼 수 있다.
+- Both `v_scc_chunk_preview` and `scc_chunk_embeddings` have `13255` rows, so coverage is effectively 100%.
 
-## 8. 현재 검색/랭킹 구조
+## 8. Current Search/Ranking Structure
 
-핵심 구현 파일:
+Key implementation file:
 
-- [chat.service.ts](C:/Users/shpark6/Desktop/AI작업/coviAI/workspace-fastify/src/modules/chat/chat.service.ts)
+- [chat.service.ts](workspace-fastify/src/modules/chat/chat.service.ts)
 
-### 8.1 입력
+### 8.1 Input
 
 `POST /chat`
 
-요청 바디:
+Request body:
 
 ```json
 {
@@ -320,62 +321,62 @@ Primary Key:
 }
 ```
 
-현재 프론트 계약:
+Current frontend contract:
 
-- `tenant`, `user`, `sessionId` 등은 보내지 않음
-- 최소 입력은 `query`, `retrievalScope`
+- `tenant`, `user`, `sessionId`, etc. are not sent
+- Minimum input is `query` and `retrievalScope`
 
-### 8.2 rule 검색 흐름
+### 8.2 Rule Search Flow
 
-1. `v_scc_chunk_preview`에서 chunk row를 읽는다.
-2. 질문에서 token/focus token을 추출한다.
-3. `issue`, `qa_pair` 기준으로 `require_id` 후보를 먼저 좁히는 fast narrowing 을 수행한다.
-4. 각 chunk에 대해 점수를 계산한다.
+1. Read chunk rows from `v_scc_chunk_preview`.
+2. Extract tokens and focus tokens from the query.
+3. Perform fast narrowing of `require_id` candidates based on `issue` and `qa_pair`.
+4. Compute scores for each chunk.
 
-점수 계산 요소:
+Score components:
 
 - semantic score
 - lexical coverage
 - focus coverage
-- state/evidence/specificity/tech/text length 계열 가중치
+- state/evidence/specificity/tech/text length weights
 - `chunk_type` bonus
 - resolution stage bonus
 - generic greeting/signature penalty
 - weak match penalty
 
-### 8.3 query intent 반영
+### 8.3 Query Intent Handling
 
-질문 의도를 3가지로 구분한다.
+Query intent is classified into three categories:
 
 - `needsResolution`
 - `hasSymptom`
 - `asksStatus`
 
-예:
+Examples:
 
-- `"어떻게", "방법", "가이드"` -> 해결 의도
-- `"오류", "불가", "실패"` -> 증상 질의
-- `"상태", "완료", "언제"` -> 상태 질의
+- `"어떻게", "방법", "가이드"` -> resolution intent
+- `"오류", "불가", "실패"` -> symptom query
+- `"상태", "완료", "언제"` -> status query
 
-이 intent 에 따라 `issue/action/resolution/qa_pair` 트랙의 점수 배합이 달라진다.
+The score blend across `issue/action/resolution/qa_pair` tracks varies depending on this intent.
 
-### 8.4 vector 검색 흐름
+### 8.4 Vector Search Flow
 
-1. 사용자 질문을 embedding provider 로 임베딩한다.
-2. 동일 `embedding_model`, `embedding_dim` 조건으로 `scc_chunk_embeddings`를 조회한다.
-3. `pgvector` 검색이 가능하면 `embedding_vec`로 cosine distance 정렬을 수행한다.
-4. 실패 시 `embedding_values` + `embedding_norm`을 이용한 array scan fallback 을 수행한다.
-5. vector 후보를 rule 후보와 merge 한다.
+1. Embed the user query using the embedding provider.
+2. Query `scc_chunk_embeddings` filtered by the same `embedding_model` and `embedding_dim`.
+3. If `pgvector` search is available, sort by cosine distance using `embedding_vec`.
+4. On failure, fall back to array scan using `embedding_values` + `embedding_norm`.
+5. Merge vector candidates with rule candidates.
 
-현재 중요한 점:
+Important notes:
 
-- `PGVECTOR_SEARCH_ENABLED=true`면 pgvector 경로를 우선 시도
-- 현재 ANN 인덱스는 없어도 SQL 레벨 vector 연산은 동작한다
-- 실패 시 `PGVECTOR_QUERY_FAILED_FALLBACK_ARRAY_SCAN` 진단값이 나올 수 있다
+- If `PGVECTOR_SEARCH_ENABLED=true`, the pgvector path is attempted first.
+- Vector operations work at the SQL level even without an ANN index.
+- On failure, the diagnostic value `PGVECTOR_QUERY_FAILED_FALLBACK_ARRAY_SCAN` may appear.
 
-### 8.5 최종 랭킹
+### 8.5 Final Ranking
 
-require 단위로 집계한 뒤 다음을 조합해 최종 점수를 만든다.
+Aggregated at the `require` level, then combined using:
 
 - rule score
 - answer track score
@@ -384,48 +385,48 @@ require 단위로 집계한 뒤 다음을 조합해 최종 점수를 만든다.
 - vector score
 - resolution + qa_pair completeness bonus
 
-현재 구현상 최종 혼합 비율:
+Current blend ratio:
 
-- vector signal 있음: `0.65 * rule + 0.35 * vector`
-- vector signal 없음: `rule only`
+- With vector signal: `0.65 * rule + 0.35 * vector`
+- Without vector signal: `rule only`
 
-후보 응답:
+Response candidates:
 
-- 최대 `5개`의 `candidates`
-- `confidence >= 0.45`이면 `bestRequireId`, `bestSccId`, `bestAnswerText`를 채운다
+- Maximum of `5` candidates
+- If `confidence >= 0.45`, fills `bestRequireId`, `bestSccId`, `bestAnswerText`
 
-## 9. 현재 LLM 구조
+## 9. Current LLM Structure
 
-핵심 구현 파일:
+Key implementation files:
 
-- [llm.service.ts](C:/Users/shpark6/Desktop/AI작업/coviAI/workspace-fastify/src/modules/chat/llm.service.ts)
-- [server.ts](C:/Users/shpark6/Desktop/AI작업/coviAI/workspace-fastify/src/app/server.ts)
+- [llm.service.ts](workspace-fastify/src/modules/chat/llm.service.ts)
+- [server.ts](workspace-fastify/src/app/server.ts)
 
-### 9.1 LLM 호출 방식
+### 9.1 LLM Call Method
 
-현재는 Google Gemini `generateContent` API 사용.
+Currently uses Google Gemini `generateContent` API.
 
-기본 모델:
+Default model:
 
 - `gemini-2.5-flash`
 
-호출 전제:
+Prerequisites:
 
-- `GOOGLE_API_KEY`가 `process.env`에 있어야 함
-- 없으면 LLM 호출 불가
+- `GOOGLE_API_KEY` must be set in `process.env`
+- LLM cannot be called without it
 
-키가 없을 때 동작:
+Behavior when key is missing:
 
 - `llmUsed = false`
 - `llmError = GOOGLE_API_KEY_MISSING`
-- deterministic fallback 또는 검색 결과 요약만 반환
+- Returns deterministic fallback or retrieval summary only
 
-### 9.2 LLM에 넘기는 데이터
+### 9.2 Data Passed to LLM
 
-LLM은 DB 전체를 직접 보지 않는다.  
-다음 정보만 프롬프트로 받는다.
+The LLM does not directly access the DB.
+It only receives the following in the prompt:
 
-- 사용자 `query`
+- User `query`
 - `best_require_id`
 - `best_scc_id`
 - `best_chunk_type`
@@ -434,47 +435,47 @@ LLM은 DB 전체를 직접 보지 않는다.
 - `retrieval_mode`
 - `vector_used`
 - `vector_error`
-- 상위 `candidates` 목록
+- Top `candidates` list
 
-즉, 현재 구조는 "검색 + 후보 비교 + 설명 생성"이지, "LLM이 DB를 직접 탐색"하는 구조는 아니다.
+The current structure is "search + candidate comparison + explanation generation", not "LLM directly searching the DB".
 
-### 9.3 현재 답변 포맷
+### 9.3 Current Answer Format
 
-설명형 강화 이후 목표 포맷:
+Target format after explanation enhancement:
 
-1. 핵심 답변
-2. 적용 방법
-3. 확인 포인트
-4. 참고 링크
+1. Core answer
+2. How to apply
+3. Checkpoints
+4. Reference link
 
-현재 프롬프트 룰:
+Current prompt rules:
 
-- retrieval context 와 candidates 안의 정보만 사용
-- 추측 금지
-- candidate 에 없는 `selectedRequireId` 금지
-- 완전 일치가 없더라도 유사 사례가 있으면 "유사사례 기반 안내" 허용
+- Use only information from retrieval_context and candidates
+- No speculation
+- `selectedRequireId` must exist in candidates
+- Even without an exact match, "similar case guidance" is allowed if related candidates exist
 
-### 9.4 LLM 스킵 정책
+### 9.4 LLM Skip Policy
 
-현재 서버 로직:
+Current server logic:
 
-- 설명형 질의(`어떻게`, `방법`, `하는 법`, `가이드`, `절차`, `설정`, `추가`, `코드`, `구성`)는 LLM을 스킵하지 않음
-- 그 외에는 환경변수 설정에 따라 high-confidence case 에서 LLM 스킵 가능
+- Explanatory queries (`어떻게`, `방법`, `하는 법`, `가이드`, `절차`, `설정`, `추가`, `코드`, `구성`) never skip LLM
+- Others can skip LLM on high-confidence cases depending on env var settings
 
-현재 `.env.example` 기본값:
+Current `.env.example` defaults:
 
 - `LLM_SKIP_ON_HIGH_CONFIDENCE=false`
 - `LLM_CANDIDATE_TOP_N=5`
 - `LLM_TIMEOUT_MS=7000`
 
-의도:
+Intent:
 
-- "다국어 코드 추가하는 법" 같은 how-to 질의는 설명형 답변 품질을 우선
-- 단순 유사 이력 안내는 향후 필요 시 성능 우선 모드로 다시 돌릴 수 있음
+- How-to queries like "how to add multilingual codes" prioritize explanatory answer quality
+- Simple similar-history guidance can be switched to performance-first mode later if needed
 
-### 9.5 응답 진단 필드
+### 9.5 Response Diagnostic Fields
 
-`/chat` 응답에는 다음 진단 필드가 포함된다.
+The `/chat` response includes the following diagnostic fields:
 
 - `vectorUsed`
 - `retrievalMode`
@@ -491,41 +492,41 @@ LLM은 DB 전체를 직접 보지 않는다.
 - `timings.llmMs`
 - `timings.totalMs`
 
-## 10. 현재 성능/정확도 관련 메모
+## 10. Performance / Accuracy Notes
 
-### 10.1 성능 병목 후보
+### 10.1 Performance Bottleneck Candidates
 
-현재 `/chat`의 주요 지연 구간:
+Main latency sources in `/chat`:
 
-1. 질문 임베딩 API 호출
-2. PostgreSQL vector 검색
-3. LLM 생성 API 호출
+1. Query embedding API call
+2. PostgreSQL vector search
+3. LLM generation API call
 
-특히 느려질 수 있는 조건:
+Conditions that can slow things down:
 
-- `GOOGLE_API_KEY`가 있고 LLM 설명형 답변이 활성화된 경우
-- `gemini-embedding-001`의 3072 차원 때문에 ANN 인덱스가 없는 경우
-- vector 검색이 full-scan 성격으로 동작하는 경우
+- `GOOGLE_API_KEY` is set and LLM explanatory answers are enabled
+- No ANN index due to `gemini-embedding-001` 3072-dimension limit
+- Vector search running as a full scan
 
-### 10.2 정확도 보정 포인트
+### 10.2 Accuracy Tuning Points
 
-이미 반영된 사항:
+Already applied:
 
-- 동의어 그룹 확장
-- focus token 기반 require narrowing
-- generic greeting/signature penalty
-- explanation query 는 LLM 강제 경로
+- Synonym group expansion
+- Focus token-based require narrowing
+- Generic greeting/signature penalty
+- Explanation queries forced through LLM path
 
-아직 추가 여지 있는 사항:
+Still room for improvement:
 
-- 도메인별 synonym dictionary 확대
-- query intent 별 score 정책을 테이블화
-- 평가셋 기반 Top1 / Top3 정량 튜닝
-- `qa_pair` / `resolution` / `action` 간 가중치 정교화
+- Expand domain-specific synonym dictionaries
+- Tabularize score policies per query intent
+- Top1 / Top3 quantitative tuning using an eval set
+- Refine weights among `qa_pair` / `resolution` / `action`
 
-## 11. 실행 방법
+## 11. How to Run
 
-### 11.1 개발 서버
+### 11.1 Development Server
 
 ```powershell
 cd C:\Users\shpark6\Desktop\AI작업\coviAI\workspace-fastify
@@ -535,44 +536,44 @@ npm run build
 npm run dev
 ```
 
-기본 포트:
+Default port:
 
 - `3101`
 
-확인 URL:
+Verification URLs:
 
 - `http://localhost:3101/health`
 - `http://localhost:3101/test/chat`
 
-### 11.2 LLM 키 설정 예시
+### 11.2 LLM Key Setup Example
 
 PowerShell:
 
 ```powershell
 $env:LLM_PROVIDER="google"
-$env:GOOGLE_API_KEY="실제키"
+$env:GOOGLE_API_KEY="your-actual-key"
 $env:GOOGLE_MODEL="gemini-2.5-flash"
 $env:LLM_TIMEOUT_MS="7000"
 npm run dev
 ```
 
-주의:
+Note:
 
-- `.env.example`는 자동 반영되지 않는다.
-- 반드시 현재 실행 중인 쉘에 환경변수를 넣어야 한다.
+- `.env.example` is not auto-loaded.
+- Environment variables must be injected into the currently running shell.
 
-## 12. DB 구축/운영 스크립트
+## 12. DB Setup / Operations Scripts
 
-### 12.1 스크립트 목록
+### 12.1 Script List
 
-| 명령 | 역할 |
+| Command | Role |
 | --- | --- |
-| `npm run db:init:vector` | `ai_core` 스키마/기본 테이블/모니터링 view 생성 |
-| `npm run db:fix:stable-chunk-view` | deterministic `chunk_id` 적용 |
-| `npm run db:enable:pgvector` | `embedding_vec` 컬럼 백필 및 pgvector 활성화 |
-| `npm run ingest:sync:scc-embeddings` | 누락/변경 chunk 임베딩 적재 |
+| `npm run db:init:vector` | Create `ai_core` schema / base tables / monitoring views |
+| `npm run db:fix:stable-chunk-view` | Apply deterministic `chunk_id` |
+| `npm run db:enable:pgvector` | Backfill `embedding_vec` column and activate pgvector |
+| `npm run ingest:sync:scc-embeddings` | Ingest missing or changed chunk embeddings |
 
-### 12.2 추천 초기 세팅 순서
+### 12.2 Recommended Initial Setup Order
 
 ```powershell
 npm run db:init:vector
@@ -581,42 +582,42 @@ npm run db:enable:pgvector
 npm run ingest:sync:scc-embeddings -- --provider google --batch-size 50 --max-batches 5
 ```
 
-### 12.3 임베딩 적재 방식
+### 12.3 Embedding Ingestion Logic
 
-선정 기준:
+Selection criteria:
 
-- `v_scc_chunk_preview`에 존재
-- `chunk_text` 길이 > 0
+- Exists in `v_scc_chunk_preview`
+- `chunk_text` length > 0
 - `chunk_type in ('issue', 'action', 'resolution', 'qa_pair')`
-- 해당 `embedding_model` row 가 없거나 `text_hash`가 달라진 경우
+- No row for that `embedding_model` or `text_hash` has changed
 
-즉:
+That means:
 
-- 동일 모델 기준 중복 row는 새로 insert 하지 않음
-- 텍스트가 바뀌면 update
-- `chunk_id + embedding_model` 기준 upsert
+- Duplicate rows for the same model are not re-inserted
+- If text changes, the row is updated
+- Upsert based on `chunk_id + embedding_model`
 
-### 12.4 Google 임베딩 주의점
+### 12.4 Google Embedding Cautions
 
-현재 free tier 사용 이력이 있었고, 과거 `429 quota exceeded`가 발생한 적이 있다.
+The free tier has been used previously, and `429 quota exceeded` has occurred.
 
-관련 환경변수:
+Related env vars:
 
 - `GOOGLE_EMBEDDING_MIN_INTERVAL_MS`
 - `GOOGLE_EMBEDDING_MAX_RETRIES`
 
-과거 확인된 오류:
+Past confirmed errors:
 
 - `text-embedding-004` -> 404 model not found
-- `gemini-embedding-001` -> 무료 플랜 quota 초과 시 429 가능
+- `gemini-embedding-001` -> 429 possible on free tier quota exceeded
 
-## 13. 현재 Git 상태
+## 13. Current Git State
 
-브랜치:
+Branch:
 
 - `main`
 
-최근 커밋:
+Recent commits:
 
 - `1ccb419 docs: README 데이터 모델 ERD 시각화 추가`
 - `8c9a48e docs: 임베딩 설정과 /chat 응답 진단 필드 문서화`
@@ -624,7 +625,7 @@ npm run ingest:sync:scc-embeddings -- --provider google --batch-size 50 --max-ba
 - `bcb159b feat(ingest): 임베딩 동기화 안정화와 재시도 로직 적용`
 - `73bdb00 feat(db): chunk 뷰 고정 ID 보정 스크립트 추가`
 
-현재 미커밋 변경:
+Currently uncommitted changes:
 
 - `.env.example`
 - `README.md`
@@ -637,42 +638,42 @@ npm run ingest:sync:scc-embeddings -- --provider google --batch-size 50 --max-ba
 - `src/modules/chat/llm.service.ts`
 - `scripts/enable-pgvector-search.mjs` (untracked)
 
-중요:
+Important:
 
-- 위 변경사항 중 일부는 이미 동작 검증이 끝난 상태지만 아직 커밋되지 않았다.
-- 다음 에이전트는 먼저 `git status`와 `git diff`를 확인한 뒤 작업을 이어가는 것이 안전하다.
+- Some of the above changes have already been validated but not yet committed.
+- The next agent should run `git status` and `git diff` before starting work.
 
-## 14. 다음 에이전트가 우선 확인할 것
+## 14. First Things to Check as the Next Agent
 
-1. `GOOGLE_API_KEY`가 실제 런타임 쉘에 설정되어 있는지 확인
-2. `/chat` 응답에서 `llmUsed`, `llmSkipped`, `timings` 확인
-3. `ai_core.scc_chunk_embeddings` row 수와 `v_scc_chunk_preview` row 수가 계속 일치하는지 확인
-4. `db:enable:pgvector` 실행 결과로 ANN 인덱스가 없는 상태인지 확인
-5. `다국어 코드 추가하는 법`, `휴가신청서 상신 불가` 같은 대표 질의로 정확도 재검증
+1. Verify `GOOGLE_API_KEY` is set in the actual runtime shell.
+2. Check `llmUsed`, `llmSkipped`, and `timings` in the `/chat` response.
+3. Confirm `ai_core.scc_chunk_embeddings` row count continues to match `v_scc_chunk_preview`.
+4. Confirm ANN index is absent after running `db:enable:pgvector`.
+5. Re-validate accuracy with representative queries like "다국어 코드 추가하는 법" and "휴가신청서 상신 불가".
 
-## 15. 추천 다음 작업
+## 15. Recommended Next Tasks
 
-우선순위 기준 추천:
+Priority order:
 
-1. 평가용 질문셋을 만들어 Top1 / Top3 정확도를 수치화
-2. `qa_pair`, `resolution`, `action` 가중치 정책을 명시적으로 테이블화
-3. 질의 유형별 프롬프트 템플릿 분리
-4. pgvector 차원 제한을 우회할 전략 결정
-   - 저차원 embedding 모델 재선정
-   - `halfvec` 검토
-   - 차원 축소 전략 검토
-5. `/chat` 응답 로깅과 실패 케이스 저장 구조 추가
+1. Build an evaluation query set and quantify Top1 / Top3 accuracy.
+2. Explicitly tabularize the weight policy for `qa_pair`, `resolution`, and `action`.
+3. Separate prompt templates by query type.
+4. Decide on a strategy to work around the pgvector dimension limit:
+   - Select a lower-dimension embedding model
+   - Evaluate `halfvec`
+   - Evaluate dimensionality reduction
+5. Add `/chat` response logging and failed-case storage.
 
-## 16. 빠른 점검용 SQL
+## 16. Quick Check SQL
 
-### row count 확인
+### Row count check
 
 ```sql
 select count(*) from ai_core.v_scc_chunk_preview;
 select count(*) from ai_core.scc_chunk_embeddings;
 ```
 
-### 모델별 임베딩 분포
+### Embedding distribution by model
 
 ```sql
 select embedding_model, embedding_dim, count(*)
@@ -681,7 +682,7 @@ group by embedding_model, embedding_dim
 order by count(*) desc;
 ```
 
-### 적재 상태
+### Ingestion state
 
 ```sql
 select *
@@ -689,7 +690,7 @@ from ai_core.embedding_ingest_state
 order by updated_at desc;
 ```
 
-### pgvector extension 확인
+### pgvector extension check
 
 ```sql
 select extname, extversion
@@ -697,7 +698,7 @@ from pg_extension
 where extname = 'vector';
 ```
 
-### 인덱스 확인
+### Index check
 
 ```sql
 select indexname, indexdef
@@ -707,162 +708,158 @@ where schemaname='ai_core'
 order by indexname;
 ```
 
-## 17. 핵심 결론
+## 17. Key Summary
 
-현재 상태는 다음과 같이 요약할 수 있다.
+The current state can be summarized as follows:
 
-- chunk view 기반 검색 구조는 살아있다.
-- `scc_chunk_embeddings`는 source chunk 와 동일한 `13255`건으로 채워져 있다.
-- pgvector extension 은 설치되었고 `embedding_vec`도 존재한다.
-- 하지만 현재 `3072` 차원 embedding 때문에 ANN 인덱스는 없다.
-- `/chat`는 rule + vector 기반으로 후보를 뽑고, 설명형 질의는 LLM으로 답변을 생성하도록 조정되어 있다.
-- LLM 품질은 아직 검색 후보 품질에 크게 의존한다.
-- 다음 작업의 핵심은 "정확도 평가 체계"와 "검색/프롬프트 정책 고도화"다.
+- The chunk view-based search structure is operational.
+- `scc_chunk_embeddings` is filled with `13255` rows matching the source chunk count.
+- The pgvector extension is installed and `embedding_vec` exists.
+- However, there is no ANN index due to the `3072`-dimension embedding.
+- `/chat` retrieves candidates using rule + vector, and generates explanatory answers via LLM for explanation-type queries.
+- LLM quality still depends heavily on retrieval candidate quality.
+- The next key focus is "accuracy evaluation framework" and "search/prompt policy refinement".
 
-## 18. ���� 3 �ε��
+## 18. Phase 3 Checklist
 
-���� ���� �򰡴� `���� 2 �Ĺ� ~ ���� 3 ����`�̴�.  
-���� 3 �Ϸ��� �ǹ̴� "�˻� ��Ȯ��, �亯 �ϰ���, ��� ����, � Ʃ���� ������ ������������ RAG"��.
+Phase 3 completion means: "accurate retrieval, high-quality answers, evaluation dataset, and a well-tuned RAG pipeline".
 
-### 18.1 üũ����Ʈ
+### 18.1 Checklist
 
-1. Retrieval ����ȭ
-- `query rewrite` �ߺ� ġȯ ���� ����
-- synonym ���� ����
-- rule/vector/fusion ����ġ ������
-- relevance filter �Ӱ谪 Ʃ��
-- `qa_pair`, `resolution`, `issue`, `action` Ÿ�� �켱���� ������
+1. Retrieval improvement
+   - Add `query rewrite` duplicate replacement synonym logic
+   - Expand synonym dictionary
+   - Tune rule/vector/fusion weights
+   - Tune relevance filter threshold
+   - Refine priority among `qa_pair`, `resolution`, `issue`, `action` types
 
-2. Vector �˻� ����ȭ
-- ���� �Ӻ��� ��� ����ȭ
-- `vectorUsed=true`, `retrievalMode=hybrid` �ǿ ����
-- pgvector �ε��� ���� Ȯ��
-- quota �ʰ� �ÿ��� rule-only fallback ����
+2. Vector search stabilization
+   - Stabilize query embedding generation
+   - Verify `vectorUsed=true`, `retrievalMode=hybrid` in responses
+   - Confirm pgvector index status
+   - Add rule-only fallback when quota is exceeded
 
-3. Answer ���� ǰ��
-- fallback �亯�� ����� �ȳ��� �������� �ϰ�ȭ
-- `similarIssueUrl`�� ���� �ʵ�� �亯 ������ ��� ����
-- `answerSource`(`llm`, `deterministic_fallback`, `rule_only`) �߰� ����
-- raw � ���� ���� ��ȭ
+3. Answer generation quality
+   - Improve fallback answer guidance to be more informative
+   - Add answer structure using `similarIssueUrl` and related fields
+   - Add `answerSource` (`llm`, `deterministic_fallback`, `rule_only`) tracking
+   - Improve raw text cleansing
 
-4. ��ü�� ����
-- ��ǥ ������ 20~50�� �ۼ�
-- `expectedRequireId`, `expectedChunkType`, `answerable` ����
-- Top1 / Top3 ���߷� ���� ���� ���� Ȯ��
+4. Eval dataset
+   - Create 20–50 evaluation items
+   - Include `expectedRequireId`, `expectedChunkType`, `answerable` fields
+   - Confirm Top1 / Top3 accuracy targets are achievable
 
-5. � ������
-- `timings` ����ȭ (`ruleMs`, `embeddingMs`, `vectorMs`, `llmMs`)
-- `/retrieval/search`�� �������� �ĺ� ���� �ٰ� ���� ���� ���� ����
-- `vectorError`, `llmError`, `llmSkipReason`, fallback ���� �α� �ϰ�ȭ
+5. Observability
+   - Granularize `timings` (`ruleMs`, `embeddingMs`, `vectorMs`, `llmMs`)
+   - Add `/retrieval/search` endpoint to retrieve raw candidates with scores
+   - Enhance logging of `vectorError`, `llmError`, `llmSkipReason`, and fallback paths
 
-6. ����/��� ����
-- LLM skip ��å ����
-- timeout, cache TTL, Top-K Ʃ��
-- �ܺ� �Ӻ���/LLM ��� �ÿ��� `/chat` ���� ���� ����
+6. Tuning / Config
+   - Finalize LLM skip policy
+   - Tune timeout, cache TTL, Top-K
+   - Add graceful degradation when external embedding/LLM is unavailable
 
-### 18.2 �ܰ躰 ���� ����
+### 18.2 Step-by-Step Plan
 
-1. Step 1: `query rewrite` ���� ����
-2. Step 2: �򰡼� �ۼ�
-3. Step 3: vector ��� ����ȭ
-4. Step 4: answer source / fallback ���� ����
-5. Step 5: timings ����ȭ
-6. Step 6: ����ġ Ʃ�� �ݺ�
+1. Step 1: Implement `query rewrite` synonym logic
+2. Step 2: Create eval dataset
+3. Step 3: Stabilize vector search
+4. Step 4: Finalize answer source / fallback behavior
+5. Step 5: Granularize timings
+6. Step 6: Repeat weight tuning
 
-### 18.3 �Ϸ� ���� ����
+### 18.3 Completion Criteria
 
-1. ��ǥ ���������� Top1 / Top3 ���߷� ���� ����
-2. `/retrieval/search`�� �ĺ� ���� �ٰ� Ȯ�� ����
-3. `generatedAnswer`�� ������ ����� �ȳ��� ���� ����
-4. vector ��� �ÿ��� `/chat` ���� ����
-5. ����ð��� ���� ������ �α�/���信�� ���� ����
-6. ��ڰ� ����� ���� ������ ������ �� ����
+1. Confirm Top1 / Top3 accuracy with the eval dataset
+2. Confirm `/retrieval/search` returns raw candidates with scores
+3. Confirm `generatedAnswer` includes informative guidance
+4. Confirm `/chat` works correctly with vector search
+5. Log and monitor timings with consistent formatting
+6. Users can find relevant records without extra effort
 
-## 19. �򰡼� �ڻ�
+## 19. Eval Dataset Artifacts
 
-Step 2 ����� �Ʒ� ������ �߰��Ǿ���.
+Added in Step 2:
 
 - `docs/eval/README.md`
 - `docs/eval/scc_eval_set.seed.json`
 
-�ǵ�:
+Intent:
 
-- ��ǥ ������ �������� Top1 / Top3 ���߷��� �����ϱ� ���� �ʱ� �õ� �ڻ�
-- `/chat`, `/retrieval/search`�� ���� ���������� �ݺ� �����ϱ� ���� ������
-- �缺 ��ʿ� ���� ��ʸ� �Բ� �����Ͽ� retrieval �������� ���ε� Ȯ�� ����
+- Initial seed dataset for measuring Top1 / Top3 accuracy with the eval dataset
+- Structured for repeated automated runs against `/chat` and `/retrieval/search`
+- Includes both answerable and negative cases to track retrieval boundaries
 
-���� �õ� ����:
+Initial seed composition:
 
-- �缺 ����: 13��
-- ���� ����: 4��
-- �ֿ� �±�: `symptom`, `howto`, `approval`, `attendance`, `document-view`, `negative`
+- Answerable: 13 items
+- Negative: 4 items
+- Key tags: `symptom`, `howto`, `approval`, `attendance`, `document-view`, `negative`
 
-���� �۾��ڴ� �� �������� �������� �Ʒ��� �����ϸ� �ȴ�.
+The next agent can verify the following against these items:
 
-1. `/retrieval/search`�� Top1 / Top3 ���� ���� Ȯ��
-2. `/chat`���� `generatedAnswer`, `similarIssueUrl`, `llmSkipped`, `timings` Ȯ��
-3. Ʃ�� ��/�� ��� ��
+1. Confirm Top1 / Top3 ranking from `/retrieval/search`
+2. Check `generatedAnswer`, `similarIssueUrl`, `llmSkipped`, `timings` from `/chat`
+3. Tune thresholds based on pass/fail results
 
-## 20. Step 3 진행 메모
+## 20. Step 3 Progress Notes
 
-- 질의 임베딩 모델은 `EMBEDDING_MODEL_AUTO_ALIGN=true`일 때 DB에 실제 적재된 주력 모델로 자동 정렬된다.
-- 현재 live 적재 모델은 `google:gemini-embedding-2-preview`이며 차원은 `768`이다.
-- `npm run db:check:vector`로 현재 적재 모델, 차원, coverage를 먼저 확인한 뒤 `/retrieval/search`에서 `vectorModelTag`, `vectorStrategy`, `vectorCandidateCount`를 같이 본다.
+- When `EMBEDDING_MODEL_AUTO_ALIGN=true`, the query embedding model auto-aligns to the dominant model currently ingested in the DB.
+- The current live ingested model is `google:gemini-embedding-2-preview` with dimension `768`.
+- Run `npm run db:check:vector` first to check the current model, dimension, and coverage, then look at `vectorModelTag`, `vectorStrategy`, `vectorCandidateCount` in `/retrieval/search`.
 
-## 21. Step 4 진행 메모
+## 21. Step 4 Progress Notes
 
-- `/chat` 응답에는 `answerSource`와 `answerSourceReason`가 추가되었다.
-- 값 의미:
-  - `llm`: LLM 생성 답변이 최종 채택된 경우
-  - `deterministic_fallback`: hybrid retrieval 후 deterministic 포맷 답변으로 대체된 경우
-  - `rule_only`: vector 경로 미사용 또는 실패 상태에서 rule 기반 deterministic 답변이 반환된 경우
-- deterministic fallback 답변은 `핵심 안내 / 유사 사례 / 처리 내역 / 확인 포인트 / 참고 링크` 형식으로 고정했다.
+- `answerSource` and `answerSourceReason` have been added to the `/chat` response.
+- Value meanings:
+  - `llm`: LLM-generated answer was adopted as final
+  - `deterministic_fallback`: Replaced with deterministic-format answer after hybrid retrieval
+  - `rule_only`: Rule-based deterministic answer returned when vector path is unused or failed
+- The deterministic fallback answer format is fixed as: `핵심 안내 / 유사 사례 / 처리 내역 / 확인 포인트 / 참고 링크`
 
-## 22. Step 5 진행 메모
+## 22. Step 5 Progress Notes
 
-- `/chat`, `/retrieval/search` 응답의 `timings`가 세분화되었다.
-- 현재 포함 필드:
-  - `ruleMs`: rule retrieval 및 rule score 계산 시간
-  - `embeddingMs`: 질문 임베딩 생성 시간
-  - `vectorMs`: vector similarity 조회 시간
-  - `rerankMs`: fusion/relevance/rerank 계산 시간
-  - `retrievalMs`: retrieval 전체 시간
-  - `llmMs`: LLM 생성 시간(`/chat` 전용)
-  - `totalMs`: API 전체 시간(`/chat` 전용)
-  - `cacheHit`: retrieval cache 사용 여부
-- live `/retrieval/search`에서 상세 timings 노출 확인 완료.
+- `timings` in `/chat` and `/retrieval/search` responses have been granularized.
+- Currently included fields:
+  - `ruleMs`: Rule retrieval and rule score computation time
+  - `embeddingMs`: Query embedding generation time
+  - `vectorMs`: Vector similarity query time
+  - `rerankMs`: Fusion/relevance/rerank computation time
+  - `retrievalMs`: Total retrieval time
+  - `llmMs`: LLM generation time (`/chat` only)
+  - `totalMs`: Total API time (`/chat` only)
+  - `cacheHit`: Whether retrieval cache was used
+- Detailed timings confirmed visible in live `/retrieval/search`.
 
-## 23. Step 6 1차 결과
+## 23. Step 6 First Run
 
-- 평가 명령: 
-pm run eval:retrieval`r
-- 평가 기준: ule_only`r
-- 결과:
-  - Top1Hit: 13/13 (100%)`r
-  - Top3Hit: 13/13 (100%)`r
-  - ChunkTypeHit: 13/13 (100%)`r
-  - NegativeCorrect: 4/4 (100%)`r
-- 현재 .env는 정상 로드되지만, 질문 임베딩 단계에서 GOOGLE_EMBEDDING_HTTP_429가 발생하여 실제 vector search는 미사용 상태다.
-- 따라서 hybrid 재측정은 Google embedding quota 회복 후 다시 진행해야 한다.
-
-
-## 24. Step 6 1차 결과 정리
-
-- 평가 명령: npm run eval:retrieval
-- 평가 기준: rule_only
-- 결과:
+- Command: `npm run eval:retrieval`
+- Basis: `rule_only`
+- Result:
   - Top1Hit: 13/13 (100%)
   - Top3Hit: 13/13 (100%)
   - ChunkTypeHit: 13/13 (100%)
   - NegativeCorrect: 4/4 (100%)
-- .env는 정상 로드되지만 질문 임베딩 단계에서 GOOGLE_EMBEDDING_HTTP_429가 발생하여 실제 vector search는 현재 미사용 상태다.
-- 따라서 hybrid 재측정은 Google embedding quota 회복 후 다시 진행해야 한다.
+- .env loads correctly, but GOOGLE_EMBEDDING_HTTP_429 occurs during query embedding, so vector search is currently unused.
+- Hybrid re-measurement must be re-run after Google embedding quota recovers.
 
+## 24. Step 6 First Run Summary
+
+- Command: `npm run eval:retrieval`
+- Basis: `rule_only`
+- Result:
+  - Top1Hit: 13/13 (100%)
+  - Top3Hit: 13/13 (100%)
+  - ChunkTypeHit: 13/13 (100%)
+  - NegativeCorrect: 4/4 (100%)
+- .env loads correctly, but GOOGLE_EMBEDDING_HTTP_429 occurs at query embedding stage; vector search is currently unused.
+- Hybrid re-measurement pending until Google embedding quota recovers.
 
 ## 25. Step 6 Rule-only Summary
 
-- Command: npm run eval:retrieval
-- Basis: rule_only
+- Command: `npm run eval:retrieval`
+- Basis: `rule_only`
 - Result:
   - Top1Hit: 13/13 (100%)
   - Top3Hit: 13/13 (100%)
@@ -871,12 +868,11 @@ pm run eval:retrieval`r
 - .env is loaded correctly, but query embedding currently fails with GOOGLE_EMBEDDING_HTTP_429.
 - Hybrid re-measurement is pending until Google embedding quota recovers.
 
-
 ## 26. Step 6 Hybrid Recheck
 
-- Command: npm run eval:retrieval
-- Dataset: docs/eval/scc_eval_set.seed.json
-- Runtime artifact: docs/eval/hybrid_recheck.latest.json
+- Command: `npm run eval:retrieval`
+- Dataset: `docs/eval/scc_eval_set.seed.json`
+- Runtime artifact: `docs/eval/hybrid_recheck.latest.json`
 - Result:
   - Top1Hit: 13/13 (100%)
   - Top3Hit: 13/13 (100%)
@@ -885,32 +881,30 @@ pm run eval:retrieval`r
   - hybridCount: 17
   - vectorUsedCount: 17
 - Conclusion:
-  - query embedding, pgvector retrieval, and hybrid ranking are active
-  - no score-table patch was applied in phase 2 because the current seed set showed no false positives or misses
-  - next tuning target is a larger production-like Korean query set
-
+  - Query embedding, pgvector retrieval, and hybrid ranking are active.
+  - No score-table patch was applied in phase 2 because the current seed set showed no false positives or misses.
+  - Next tuning target is a larger production-like Korean query set.
 
 ## 27. Step 6 Phase 3
 
 - Dataset size was expanded to 38 items (29 answerable, 9 negative).
 - Retrieval tuning in phase 3 focused on domain vocabulary expansion, not major score-table changes.
 - Added operational-domain tokens and variants for browser cache, popup settings, messenger, message-id, HTML paste, tax invoice, approval box visibility, and date/time layout queries.
-- Added EVAL_QUERY_DELAY_MS support to scripts/eval-scc-retrieval.mjs for rate-limit-friendly evaluation.
+- Added `EVAL_QUERY_DELAY_MS` support to `scripts/eval-scc-retrieval.mjs` for rate-limit-friendly evaluation.
 - Observed result on the expanded set:
   - Top1Hit: 27/29 (93.1%)
   - Top3Hit: 29/29 (100%)
   - ChunkTypeHit: 28/29 (96.55%)
   - NegativeCorrect: 9/9 (100%)
 - Remaining misses are mostly same-topic neighboring SCC cases rather than hard false positives.
-- Repeated evaluation can fall back to rule_only when Google embedding returns QUERY_EMBEDDING_COOLDOWN_ACTIVE. Use EVAL_QUERY_DELAY_MS and run inside a fresh quota window when hybrid-only verification is required.
-
+- Repeated evaluation can fall back to `rule_only` when Google embedding returns `QUERY_EMBEDDING_COOLDOWN_ACTIVE`. Use `EVAL_QUERY_DELAY_MS` and run inside a fresh quota window when hybrid-only verification is required.
 
 ## 28. Evaluation Policy and Chat Quality
 
 - Representative SCC policy: use a representative SCC for generic operational questions when several SCC records describe the same symptom or fix.
 - Exact SCC policy: require exact SCC only when the query contains strong identifiers such as company name, form name, SCC ID, or document number.
-- Cooldown policy: treat QUERY_EMBEDDING_COOLDOWN_ACTIVE as an operational limit, not as a retrieval-policy miss.
-- /chat quality artifact: docs/eval/chat_quality.phase3.latest.json
+- Cooldown policy: treat `QUERY_EMBEDDING_COOLDOWN_ACTIVE` as an operational limit, not as a retrieval-policy miss.
+- /chat quality artifact: `docs/eval/chat_quality.phase3.latest.json`
 - /chat quality summary on the 38-item set:
   - exactBestHit: 27/29 (93.1%)
   - top3SupportHit: 29/29 (100%)
@@ -919,13 +913,12 @@ pm run eval:retrieval`r
   - negativeGuarded: 9/9 (100%)
 - Remaining /chat quality issue: EV-029 can fall back to safe default without a link inside a cooldown window, but succeeds in isolated hybrid evaluation.
 
-
 ## 29. Phase 4 Evaluation (50-item set)
 
 - dataset size: 50 items
 - composition: 37 answerable, 13 negative
-- retrieval artifact: docs/eval/retrieval.phase4.latest.json
-- chat artifact: docs/eval/chat_quality.phase4.latest.json
+- retrieval artifact: `docs/eval/retrieval.phase4.latest.json`
+- chat artifact: `docs/eval/chat_quality.phase4.latest.json`
 - retrieval result on the 50-item set:
   - Top1Hit: 35/37 (94.59%)
   - Top3Hit: 37/37 (100%)
@@ -979,7 +972,7 @@ pm run eval:retrieval`r
 - acceptedRequireIds includes `8095a700-bbf4-441e-84d4-f19852f391d0` for the browser-cache persistence issue.
 - EV-032 remains exact-only because unrelated SCCs can outrank it during degraded retrieval and should not be accepted as representative.
 - A JSP sample widget has been added:
-  - docs/integration/chat_widget.sample.jsp
+  - `docs/integration/chat_widget.sample.jsp`
 - The JSP sample renders only the stable `display` contract from `/chat`:
   - `display.title`
   - `display.answerText`

@@ -112,25 +112,26 @@ graph TB
 
 ## 🚀 성능 최적화
 
-### 최근 적용된 최적화 (2026-03-23)
+### 최근 적용된 최적화 (2026-03-26)
 
-#### 문제점
-- 초기 질의 응답 시간: ~10초 (ruleMs: 3.4초)
-- Focus tokens 경로 사용 시: ~20초 (ruleMs: 9.8초)
+#### LLM 답변 품질 개선
+- **문제**: LLM 프롬프트에 전달되는 qa_pair 텍스트가 160자로 잘려 [ANSWER] 부분이 누락됨
+- **증상**: LLM이 "해결책이 없습니다"로 오답 생성 (실제 SCC에는 처리 내역 존재)
+- **해결**: 프롬프트 텍스트 길이 제한 확장
+  - `PROMPT_CONTEXT_TEXT_LENGTH`: 240 → 1,200자
+  - `PROMPT_SUPPORT_TEXT_LENGTH`: 160 → 1,200자
+  - `buildAnswerPrompt` qa_pair: 200 → 1,500자
+  - `bestQaPairText` 원본을 candidate preview보다 우선 사용
 
-#### 해결 방안
-1. **Focus tokens 경로 비활성화**
-   - 일반적인 토큰 매칭 시 너무 많은 require_ids 반환 (400개)
-   - 오히려 성능 저하 발생
+#### 캐시 메모리 관리
+- 1분 주기로 만료된 캐시 항목 자동 정리 추가
+- 대상: queryEmbeddingCache, retrievalCache, embeddingModelResolutionCache, llmAnswerCache
 
-2. **ORDER BY 절 제거**
-   - 4개 컬럼 정렬이 3.4초 소요
-   - 후속 scoring/reranking 단계에서 정렬하므로 불필요
-   - LIMIT 500만 사용하여 DB가 최적 인덱스 선택 가능
+### 이전 최적화 (2026-03-23)
 
-3. **결과**
-   - ruleMs: 3.4초 → **0.3~1.3초** (약 70-90% 개선)
-   - 총 응답 시간: ~10초 → **~8초**
+#### 검색 속도 개선
+- ruleMs: 3.4초 → **0.3~1.3초** (약 70-90% 개선)
+- 총 응답 시간: ~10초 → **~8초**
 
 #### 성능 측정 로그
 ```json
@@ -394,6 +395,8 @@ sequenceDiagram
 
 - [x] **Docker 컨테이너화** (docker-compose.yml, Nginx 리버스 프록시)
 - [x] **클라우드 마이그레이션 준비** (온프레미스 → AWS/GCP/Azure)
+- [x] **LLM 답변 품질 개선** (프롬프트 텍스트 길이 제한 확장)
+- [x] **캐시 메모리 관리** (만료 항목 주기적 자동 정리)
 - [ ] 캐싱 전략 도입 (Redis)
 - [ ] 데이터베이스 인덱스 최적화 (chunk_type, require_id)
 - [ ] 답변 품질 피드백 시스템
@@ -402,6 +405,15 @@ sequenceDiagram
 - [ ] 모니터링 및 로깅 (Prometheus, Grafana)
 
 ## 📝 변경 이력
+
+### 2026-03-26 (최신)
+- ✅ **LLM 답변 품질 수정** — 프롬프트 텍스트 길이 제한 확장으로 qa_pair [ANSWER] 누락 문제 해결
+- ✅ **캐시 주기적 정리** — 만료된 캐시 항목 1분 주기 자동 정리로 메모리 누수 방지
+- ✅ **Docker Compose 환경변수 전면 명세화** — Runtime/Google API/Vector DB/LLM/Embedding 섹션 분류
+- ✅ **healthcheck 개선** — wget 방식 → node fetch 방식, start_period 단축 (40s → 10s)
+- ✅ **프론트엔드 대화 삭제 버그 수정** — 삭제 후 새 대화 생성 상태 처리 로직 수정
+- ✅ **CLAUDE.md 영문화** — 전체 문서 영어 번역 및 한국어 답변 필수 조건 명시
+- ✅ **다국어 DB 검색 유틸리티** — search-multilang.mjs 개발 진단 스크립트 추가
 
 ### 2026-03-26
 - ✅ **Docker Compose 배포 환경 구축** (Frontend + Backend + Nginx)
