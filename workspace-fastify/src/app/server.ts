@@ -1,8 +1,18 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyCors from "@fastify/cors";
 import { renderChatTestPage } from "../modules/chat/chatTestPage.js";
-import { runChatSearch, runChatSearchDebug } from "../modules/chat/chat.service.js";
-import { generateChatAnswer, generateChatAnswerStream } from "../modules/chat/llm.service.js";
+import {
+  runChatSearch,
+  runChatSearchDebug,
+  startCacheCleanupInterval,
+  stopCacheCleanupInterval,
+} from "../modules/chat/chat.service.js";
+import {
+  generateChatAnswer,
+  generateChatAnswerStream,
+  startLlmCacheCleanupInterval,
+  stopLlmCacheCleanupInterval,
+} from "../modules/chat/llm.service.js";
 import type {
   ChatRequestBody,
   ChatResponseBody,
@@ -269,6 +279,10 @@ export function buildServer(): FastifyInstance {
       level: process.env.LOG_LEVEL ?? "info"
     }
   });
+
+  // 주기적 캐시 정리 시작 (1분마다)
+  startCacheCleanupInterval(60_000);
+  startLlmCacheCleanupInterval(60_000);
 
   // Development allowlist for browser calls from local JSP/UI.
   void app.register(fastifyCors, {
@@ -608,6 +622,8 @@ export function buildServer(): FastifyInstance {
   });
 
   app.addHook("onClose", async () => {
+    stopCacheCleanupInterval();
+    stopLlmCacheCleanupInterval();
     await closeVectorPool();
   });
 

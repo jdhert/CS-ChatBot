@@ -473,6 +473,84 @@ function setCachedValue<T>(
   }
 }
 
+/**
+ * 만료된 캐시 항목을 정리합니다.
+ * 주기적으로 호출되어 메모리 누수를 방지합니다.
+ */
+function cleanupExpiredCacheEntries(): void {
+  const now = Date.now();
+  let totalDeleted = 0;
+
+  // queryEmbeddingCache 정리
+  for (const [key, entry] of queryEmbeddingCache.entries()) {
+    if (entry.expiresAt <= now) {
+      queryEmbeddingCache.delete(key);
+      totalDeleted++;
+    }
+  }
+
+  // retrievalCache 정리
+  for (const [key, entry] of retrievalCache.entries()) {
+    if (entry.expiresAt <= now) {
+      retrievalCache.delete(key);
+      totalDeleted++;
+    }
+  }
+
+  // embeddingModelResolutionCache 정리
+  for (const [key, entry] of embeddingModelResolutionCache.entries()) {
+    if (entry.expiresAt <= now) {
+      embeddingModelResolutionCache.delete(key);
+      totalDeleted++;
+    }
+  }
+
+  // queryEmbeddingCooldowns 정리 (5분 이상 된 항목)
+  const cooldownExpiry = now - 5 * 60 * 1000;
+  for (const [key, timestamp] of queryEmbeddingCooldowns.entries()) {
+    if (timestamp <= cooldownExpiry) {
+      queryEmbeddingCooldowns.delete(key);
+      totalDeleted++;
+    }
+  }
+
+  if (totalDeleted > 0) {
+    console.log(`[Cache Cleanup] Deleted ${totalDeleted} expired entries. Sizes: embedding=${queryEmbeddingCache.size}, retrieval=${retrievalCache.size}, cooldowns=${queryEmbeddingCooldowns.size}, model=${embeddingModelResolutionCache.size}`);
+  }
+}
+
+let cacheCleanupInterval: NodeJS.Timeout | null = null;
+
+/**
+ * 주기적 캐시 정리를 시작합니다.
+ * 기본값: 1분마다 실행
+ */
+export function startCacheCleanupInterval(intervalMs: number = 60_000): void {
+  if (cacheCleanupInterval !== null) {
+    console.log("[Cache Cleanup] Interval already running");
+    return;
+  }
+
+  console.log(`[Cache Cleanup] Starting interval (every ${intervalMs}ms)`);
+  cacheCleanupInterval = setInterval(() => {
+    cleanupExpiredCacheEntries();
+  }, intervalMs);
+
+  // 즉시 한 번 실행
+  cleanupExpiredCacheEntries();
+}
+
+/**
+ * 주기적 캐시 정리를 중지합니다.
+ */
+export function stopCacheCleanupInterval(): void {
+  if (cacheCleanupInterval !== null) {
+    clearInterval(cacheCleanupInterval);
+    cacheCleanupInterval = null;
+    console.log("[Cache Cleanup] Interval stopped");
+  }
+}
+
 function resolveEmbeddingProvider(raw: string | undefined): EmbeddingProvider {
   const normalized = (raw ?? DEFAULT_EMBEDDING_PROVIDER).trim().toLowerCase();
   if (normalized === "google") {
