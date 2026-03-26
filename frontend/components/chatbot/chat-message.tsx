@@ -74,7 +74,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
             </div>
           ) : null}
 
-          {!isUser && !contentToDisplay ? (
+          {!isUser && (!contentToDisplay || message.status === "generating") ? (
             <div className="flex items-center gap-2 text-muted-foreground">
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />

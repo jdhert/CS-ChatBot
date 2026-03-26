@@ -548,13 +548,18 @@ export function buildServer(): FastifyInstance {
         "X-Accel-Buffering": "no"
       });
 
-      // Send metadata first
+      // Send metadata first — 프론트에서 링크/상태를 즉시 표시할 수 있도록 similarIssueUrl 포함
+      const similarIssueUrl = result.bestRequireId
+        ? `${COVISION_SERVICE_VIEW_BASE_URL}?req_id=${result.bestRequireId}&system=Menu01&alias=Menu01.Service.List&mnid=705`
+        : null;
       const metadata = {
         bestRequireId: result.bestRequireId,
         bestSccId: result.bestSccId,
         confidence: result.confidence,
         answerSource: "llm_stream",
-        retrievalMode: result.retrievalMode
+        retrievalMode: result.retrievalMode,
+        similarIssueUrl,
+        linkLabel: similarIssueUrl ? "유사 이력 바로가기" : null,
       };
       reply.raw.write(`data: ${JSON.stringify({ type: "metadata", data: metadata })}\n\n`);
 

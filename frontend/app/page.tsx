@@ -276,44 +276,53 @@ export default function ChatbotPage() {
 
               if (event.type === "metadata") {
                 metadata = event.data
-                console.log("[STREAM] Metadata received:", metadata)
-              } else if (event.type === "chunk") {
-                accumulatedText += event.data
-                console.log("[STREAM] Chunk received, total length:", accumulatedText.length)
-                // 즉시 업데이트 (ChatGPT/Gemini 스타일)
+                // metadata 수신 즉시 링크/상태 표시 — 첫 chunk 전 5초 공백 제거
+                const earlyLinkUrl = typeof metadata?.similarIssueUrl === "string"
+                  ? metadata.similarIssueUrl
+                  : null
+                const earlyLinkLabel = earlyLinkUrl ? "유사 이력 바로가기" : null
                 setCurrentMessages((prev) =>
                   prev.map((msg) =>
-                    msg.id === assistantMessageId ? { ...msg, content: accumulatedText } : msg
+                    msg.id === assistantMessageId
+                      ? {
+                          ...msg,
+                          content: "답변을 생성하고 있습니다...",
+                          linkUrl: earlyLinkUrl,
+                          linkLabel: earlyLinkLabel,
+                          status: "generating",
+                        }
+                      : msg
+                  )
+                )
+              } else if (event.type === "chunk") {
+                accumulatedText += event.data
+                // 첫 chunk 도착 시 "생성 중" 텍스트를 실제 내용으로 교체하며 실시간 렌더링
+                setCurrentMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMessageId ? { ...msg, content: accumulatedText, status: "streaming" } : msg
                   )
                 )
               } else if (event.type === "done") {
-                console.log("[STREAM] Stream done")
-                // Final update with metadata
-                if (metadata) {
-                  // Generate link URL from bestRequireId if available
-                  let linkUrl: string | null = null
-                  let linkLabel: string | null = null
-
-                  if (metadata.bestRequireId && typeof metadata.bestRequireId === "string") {
-                    linkUrl = `https://cs.covision.co.kr/WebSite/Basic/ServiceManagement/Service_View.aspx?req_id=${metadata.bestRequireId}&system=Menu01&alias=Menu01.Service.List&mnid=705`
-                    linkLabel = "유사 이력 바로가기"
-                  }
-
-                  setCurrentMessages((prev) =>
-                    prev.map((msg) =>
-                      msg.id === assistantMessageId
-                        ? {
-                            ...msg,
-                            content: accumulatedText,
-                            ...metadata,
-                            linkUrl,
-                            linkLabel,
-                            isNewMessage: false, // 스트리밍 완료 후에는 타이핑 효과 비활성화
-                          }
-                        : msg
-                    )
+                // 스트리밍 완료 — 링크/메타데이터 최종 확정
+                const finalLinkUrl = typeof metadata?.similarIssueUrl === "string"
+                  ? metadata.similarIssueUrl
+                  : null
+                const finalLinkLabel = finalLinkUrl ? "유사 이력 바로가기" : null
+                setCurrentMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? {
+                          ...msg,
+                          content: accumulatedText,
+                          ...metadata,
+                          linkUrl: finalLinkUrl,
+                          linkLabel: finalLinkLabel,
+                          status: "matched",
+                          isNewMessage: false,
+                        }
+                      : msg
                   )
-                }
+                )
               }
             } catch {
               // Skip invalid JSON
