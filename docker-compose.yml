@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # AI Core Backend (Fastify)
+  backend:
+    build:
+      context: ./workspace-fastify
+      dockerfile: Dockerfile
+    container_name: ai-core-backend
+    environment:
+      - NODE_ENV=production
+      - PORT=3101
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - VECTOR_DB_HOST=${VECTOR_DB_HOST:-DB_HOST_REMOVED}
+      - VECTOR_DB_PORT=${VECTOR_DB_PORT:-5432}
+      - VECTOR_DB_NAME=${VECTOR_DB_NAME:-ai2}
+      - VECTOR_DB_USER=${VECTOR_DB_USER:-novian}
+      - VECTOR_DB_PASSWORD=${VECTOR_DB_PASSWORD:-REMOVED}
+      - PGVECTOR_SEARCH_ENABLED=${PGVECTOR_SEARCH_ENABLED:-true}
+      - EMBEDDING_MODEL_AUTO_ALIGN=${EMBEDDING_MODEL_AUTO_ALIGN:-true}
+    expose:
+      - "3101"
+    restart: unless-stopped
+    networks:
+      - ai-core-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3101/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend (Next.js)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ai-core-frontend
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=/api
+    expose:
+      - "3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ai-core-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: ai-core-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+    networks:
+      - ai-core-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  ai-core-network:
+    driver: bridge
+
+volumes:
+  nginx-logs:
