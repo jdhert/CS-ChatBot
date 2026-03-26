@@ -40,4 +40,4 @@ USER fastify
 
 EXPOSE 3101
 
-CMD ["node", "dist/app/server.js"]
+CMD ["node", "dist/app/index.js"]

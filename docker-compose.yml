@@ -8,27 +8,57 @@ services:
       dockerfile: Dockerfile
     container_name: ai-core-backend
     environment:
+      # Runtime
       - NODE_ENV=production
+      - HOST=${HOST:-0.0.0.0}
       - PORT=3101
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - REQUEST_TIMEOUT_MS=${REQUEST_TIMEOUT_MS:-30000}
+      # Google API
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GOOGLE_MODEL=${GOOGLE_MODEL:-gemini-2.5-flash}
+      # Vector Database
       - VECTOR_DB_HOST=${VECTOR_DB_HOST:-DB_HOST_REMOVED}
       - VECTOR_DB_PORT=${VECTOR_DB_PORT:-5432}
       - VECTOR_DB_NAME=${VECTOR_DB_NAME:-ai2}
       - VECTOR_DB_USER=${VECTOR_DB_USER:-novian}
       - VECTOR_DB_PASSWORD=${VECTOR_DB_PASSWORD:-REMOVED}
+      - VECTOR_DB_SCHEMA=${VECTOR_DB_SCHEMA:-ai_core}
       - PGVECTOR_SEARCH_ENABLED=${PGVECTOR_SEARCH_ENABLED:-true}
+      # Retrieval Settings
+      - RETRIEVAL_SCOPE_DEFAULT=${RETRIEVAL_SCOPE_DEFAULT:-all}
+      - RETRIEVAL_TOP_K=${RETRIEVAL_TOP_K:-5}
+      - RETRIEVAL_CACHE_TTL_MS=${RETRIEVAL_CACHE_TTL_MS:-30000}
+      # LLM Settings
+      - LLM_PROVIDER=${LLM_PROVIDER:-google}
+      - LLM_TIMEOUT_MS=${LLM_TIMEOUT_MS:-15000}
+      - LLM_SKIP_ON_HIGH_CONFIDENCE=${LLM_SKIP_ON_HIGH_CONFIDENCE:-false}
+      - LLM_SKIP_MIN_CONFIDENCE=${LLM_SKIP_MIN_CONFIDENCE:-0.75}
+      - LLM_TWO_STEP_MAX_CONFIDENCE=${LLM_TWO_STEP_MAX_CONFIDENCE:-0.55}
+      - LLM_CANDIDATE_TOP_N=${LLM_CANDIDATE_TOP_N:-5}
+      - LLM_MAX_OUTPUT_TOKENS=${LLM_MAX_OUTPUT_TOKENS:-4096}
+      - LLM_ANSWER_CACHE_TTL_MS=${LLM_ANSWER_CACHE_TTL_MS:-30000}
+      # Embedding Settings
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-google}
+      - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-gemini-embedding-2-preview}
+      - GOOGLE_EMBEDDING_OUTPUT_DIM=${GOOGLE_EMBEDDING_OUTPUT_DIM:-768}
+      - GOOGLE_EMBEDDING_MIN_INTERVAL_MS=${GOOGLE_EMBEDDING_MIN_INTERVAL_MS:-700}
+      - GOOGLE_EMBEDDING_MAX_RETRIES=${GOOGLE_EMBEDDING_MAX_RETRIES:-8}
       - EMBEDDING_MODEL_AUTO_ALIGN=${EMBEDDING_MODEL_AUTO_ALIGN:-true}
+      - EMBEDDING_MODEL_RESOLVE_TTL_MS=${EMBEDDING_MODEL_RESOLVE_TTL_MS:-300000}
+      - EMBEDDING_FAILURE_COOLDOWN_MS=${EMBEDDING_FAILURE_COOLDOWN_MS:-300000}
+      - QUERY_EMBEDDING_CACHE_TTL_MS=${QUERY_EMBEDDING_CACHE_TTL_MS:-3600000}
     expose:
       - "3101"
     restart: unless-stopped
     networks:
       - ai-core-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3101/health"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3101/health').catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 10s
 
   # Frontend (Next.js)
   frontend:
@@ -48,11 +78,11 @@ services:
     networks:
       - ai-core-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000').catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 10s
 
   # Nginx Reverse Proxy
   nginx:
@@ -72,10 +102,11 @@ services:
     networks:
       - ai-core-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/health"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:80/health" , "||", "exit", "1"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 5s
 
 networks:
   ai-core-network:
