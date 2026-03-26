@@ -50,8 +50,8 @@ const DEFAULT_LLM_CANDIDATE_TOP_N = 3;
 const DEFAULT_LLM_SKIP_ON_HIGH_CONFIDENCE = true;
 const DEFAULT_LLM_SKIP_MIN_CONFIDENCE = 0.7;
 const DEFAULT_LLM_MAX_OUTPUT_TOKENS = 256;
-const PROMPT_CONTEXT_TEXT_LENGTH = 240;
-const PROMPT_SUPPORT_TEXT_LENGTH = 160;
+const PROMPT_CONTEXT_TEXT_LENGTH = 1200;
+const PROMPT_SUPPORT_TEXT_LENGTH = 1200;
 
 interface CacheEntry<T> {
   expiresAt: number;
@@ -97,6 +97,59 @@ function setCachedValue<T>(cache: Map<string, CacheEntry<T>>, key: string, value
     if (typeof firstKey === "string") {
       cache.delete(firstKey);
     }
+  }
+}
+
+/**
+ * 만료된 LLM 캐시 항목을 정리합니다.
+ * 주기적으로 호출되어 메모리 누수를 방지합니다.
+ */
+function cleanupExpiredLlmCacheEntries(): void {
+  const now = Date.now();
+  let totalDeleted = 0;
+
+  // llmAnswerCache 정리
+  for (const [key, entry] of llmAnswerCache.entries()) {
+    if (entry.expiresAt <= now) {
+      llmAnswerCache.delete(key);
+      totalDeleted++;
+    }
+  }
+
+  if (totalDeleted > 0) {
+    console.log(`[LLM Cache Cleanup] Deleted ${totalDeleted} expired entries. Cache size: ${llmAnswerCache.size}`);
+  }
+}
+
+let llmCacheCleanupInterval: NodeJS.Timeout | null = null;
+
+/**
+ * 주기적 LLM 캐시 정리를 시작합니다.
+ * 기본값: 1분마다 실행
+ */
+export function startLlmCacheCleanupInterval(intervalMs: number = 60_000): void {
+  if (llmCacheCleanupInterval !== null) {
+    console.log("[LLM Cache Cleanup] Interval already running");
+    return;
+  }
+
+  console.log(`[LLM Cache Cleanup] Starting interval (every ${intervalMs}ms)`);
+  llmCacheCleanupInterval = setInterval(() => {
+    cleanupExpiredLlmCacheEntries();
+  }, intervalMs);
+
+  // 즉시 한 번 실행
+  cleanupExpiredLlmCacheEntries();
+}
+
+/**
+ * 주기적 LLM 캐시 정리를 중지합니다.
+ */
+export function stopLlmCacheCleanupInterval(): void {
+  if (llmCacheCleanupInterval !== null) {
+    clearInterval(llmCacheCleanupInterval);
+    llmCacheCleanupInterval = null;
+    console.log("[LLM Cache Cleanup] Interval stopped");
   }
 }
 
@@ -301,27 +354,27 @@ function buildAnswerPrompt(
   // Use longer snippets to capture more actual data (codes, settings, procedures)
   const issueText =
     toPromptSnippet(
-      selectedCandidate.issuePreview ??
-      (selectedCandidate.requireId === retrieval.bestRequireId ? retrieval.bestIssueText : null),
-      200
+      (selectedCandidate.requireId === retrieval.bestRequireId ? retrieval.bestIssueText : null) ??
+      selectedCandidate.issuePreview,
+      600
     );
   const qaPairText =
     toPromptSnippet(
-      selectedCandidate.qaPairPreview ??
-      (selectedCandidate.requireId === retrieval.bestRequireId ? retrieval.bestQaPairText : null),
-      200
+      (selectedCandidate.requireId === retrieval.bestRequireId ? retrieval.bestQaPairText : null) ??
+      selectedCandidate.qaPairPreview,
+      1500
     );
   const resolutionText =
     toPromptSnippet(
-      selectedCandidate.resolutionPreview ??
-      (selectedCandidate.requireId === retrieval.bestRequireId ? retrieval.bestResolutionText : null),
-      200
+      (selectedCandidate.requireId === retrieval.bestRequireId ? retrieval.bestResolutionText : null) ??
+      selectedCandidate.resolutionPreview,
+      800
     );
   const actionText =
     toPromptSnippet(
-      selectedCandidate.actionPreview ??
-      (selectedCandidate.requireId === retrieval.bestRequireId ? retrieval.bestActionText : null),
-      200
+      (selectedCandidate.requireId === retrieval.bestRequireId ? retrieval.bestActionText : null) ??
+      selectedCandidate.actionPreview,
+      800
     );
 
   return [
