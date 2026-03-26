@@ -844,7 +844,9 @@ async function* invokeGeminiTextStream(
         ],
         generationConfig: {
           temperature,
-          maxOutputTokens
+          maxOutputTokens,
+          // gemini-2.5-flash의 thinking 단계 비활성화 (TTFT 단축)
+          ...(model.includes("2.5") ? { thinkingConfig: { thinkingBudget: 0 } } : {})
         }
       }),
       signal: controller.signal
