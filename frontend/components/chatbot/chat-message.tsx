@@ -96,32 +96,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
           ) : null}
-
-          {!isUser &&
-          (message.status || message.answerSource || message.retrievalMode || typeof message.confidence === "number") ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {message.status ? (
-                <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] text-secondary-foreground">
-                  status: {message.status}
-                </span>
-              ) : null}
-              {message.answerSource ? (
-                <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] text-secondary-foreground">
-                  source: {message.answerSource}
-                </span>
-              ) : null}
-              {message.retrievalMode ? (
-                <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] text-secondary-foreground">
-                  retrieval: {message.retrievalMode}
-                </span>
-              ) : null}
-              {typeof message.confidence === "number" ? (
-                <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] text-secondary-foreground">
-                  confidence: {message.confidence}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
         </div>
 
         <span className={cn("px-1 text-[10px] text-muted-foreground", isUser ? "text-right" : "text-left")}>

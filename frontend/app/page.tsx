@@ -155,8 +155,15 @@ export default function ChatbotPage() {
         setCurrentMessages(nextConv.messages)
         saveActiveSessionId(nextConv.id)
       } else {
-        // 대화가 없으면 새 대화 시작
-        handleNewConversation()
+        // 대화가 없으면 새 대화 시작 (삭제 후의 상태를 기반으로)
+        const newConv = createNewConversation()
+        setActiveConversationId(newConv.id)
+        setCurrentMessages([])
+        saveActiveSessionId(newConv.id)
+
+        const updatedConversations = [newConv, ...newConversations]
+        setConversations(updatedConversations)
+        saveConversations(updatedConversations)
       }
     }
   }
@@ -204,7 +211,7 @@ export default function ChatbotPage() {
     setIsTyping(false) // 스트리밍 메시지 자체가 보이므로 로딩 인디케이터는 숨김
 
     try {
-      const response = await fetch("/api/chat", {
+      const response = await fetch("/api/chat/stream", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -250,67 +257,72 @@ export default function ChatbotPage() {
       let accumulatedText = ""
       let metadata: Record<string, unknown> | null = null
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split("\n")
-        buffer = lines.pop() ?? ""
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split("\n")
+          buffer = lines.pop() ?? ""
 
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed || !trimmed.startsWith("data: ")) continue
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (!trimmed || !trimmed.startsWith("data: ")) continue
 
-          try {
-            const jsonStr = trimmed.slice(6)
-            const event = JSON.parse(jsonStr)
+            try {
+              const jsonStr = trimmed.slice(6)
+              const event = JSON.parse(jsonStr)
 
-            if (event.type === "metadata") {
-              metadata = event.data
-              console.log("[STREAM] Metadata received:", metadata)
-            } else if (event.type === "chunk") {
-              accumulatedText += event.data
-              console.log("[STREAM] Chunk received, total length:", accumulatedText.length)
-              // 즉시 업데이트 (ChatGPT/Gemini 스타일)
-              setCurrentMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantMessageId ? { ...msg, content: accumulatedText } : msg
-                )
-              )
-            } else if (event.type === "done") {
-              console.log("[STREAM] Stream done")
-              // Final update with metadata
-              if (metadata) {
-                // Generate link URL from bestRequireId if available
-                let linkUrl: string | null = null
-                let linkLabel: string | null = null
-
-                if (metadata.bestRequireId && typeof metadata.bestRequireId === "string") {
-                  linkUrl = `https://cs.covision.co.kr/WebSite/Basic/ServiceManagement/Service_View.aspx?req_id=${metadata.bestRequireId}&system=Menu01&alias=Menu01.Service.List&mnid=705`
-                  linkLabel = "유사 이력 바로가기"
-                }
-
+              if (event.type === "metadata") {
+                metadata = event.data
+                console.log("[STREAM] Metadata received:", metadata)
+              } else if (event.type === "chunk") {
+                accumulatedText += event.data
+                console.log("[STREAM] Chunk received, total length:", accumulatedText.length)
+                // 즉시 업데이트 (ChatGPT/Gemini 스타일)
                 setCurrentMessages((prev) =>
                   prev.map((msg) =>
-                    msg.id === assistantMessageId
-                      ? {
-                          ...msg,
-                          content: accumulatedText,
-                          ...metadata,
-                          linkUrl,
-                          linkLabel,
-                          isNewMessage: false, // 스트리밍 완료 후에는 타이핑 효과 비활성화
-                        }
-                      : msg
+                    msg.id === assistantMessageId ? { ...msg, content: accumulatedText } : msg
                   )
                 )
+              } else if (event.type === "done") {
+                console.log("[STREAM] Stream done")
+                // Final update with metadata
+                if (metadata) {
+                  // Generate link URL from bestRequireId if available
+                  let linkUrl: string | null = null
+                  let linkLabel: string | null = null
+
+                  if (metadata.bestRequireId && typeof metadata.bestRequireId === "string") {
+                    linkUrl = `https://cs.covision.co.kr/WebSite/Basic/ServiceManagement/Service_View.aspx?req_id=${metadata.bestRequireId}&system=Menu01&alias=Menu01.Service.List&mnid=705`
+                    linkLabel = "유사 이력 바로가기"
+                  }
+
+                  setCurrentMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === assistantMessageId
+                        ? {
+                            ...msg,
+                            content: accumulatedText,
+                            ...metadata,
+                            linkUrl,
+                            linkLabel,
+                            isNewMessage: false, // 스트리밍 완료 후에는 타이핑 효과 비활성화
+                          }
+                        : msg
+                    )
+                  )
+                }
               }
+            } catch {
+              // Skip invalid JSON
             }
-          } catch {
-            // Skip invalid JSON
           }
         }
+      } finally {
+        // 스트림 리더 정리 (메모리 누수 방지)
+        reader.releaseLock()
       }
     } catch (error) {
       const errorMessage: Message = {
