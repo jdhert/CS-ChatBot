@@ -11,6 +11,8 @@
     "eval:retrieval": "npm run build && node scripts/eval-scc-retrieval.mjs",
     "eval:chat": "npm run build && node scripts/eval-scc-chat-quality.mjs",
     "db:init:vector": "node scripts/init-vector-schema.mjs",
+    "db:init:query-log": "node scripts/init-query-log.mjs",
+    "db:init:fts-index": "node scripts/init-fts-index.mjs",
     "db:fix:stable-chunk-view": "node scripts/fix-stable-chunk-view.mjs",
     "db:enable:pgvector": "node scripts/enable-pgvector-search.mjs",
     "db:check:vector": "node scripts/check-vector-readiness.mjs",

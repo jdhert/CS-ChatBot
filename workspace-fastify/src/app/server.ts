@@ -19,10 +19,70 @@ import type {
   RetrievalDebugRequestBody,
   RetrievalScope
 } from "../modules/chat/chat.types.js";
-import { closeVectorPool } from "../platform/db/vectorClient.js";
+import { closeVectorPool, getVectorPool } from "../platform/db/vectorClient.js";
 
 const COVISION_SERVICE_VIEW_BASE_URL =
   "https://cs.covision.co.kr/WebSite/Basic/ServiceManagement/Service_View.aspx";
+
+// ─── 쿼리 로그 ────────────────────────────────────────────────────────────────
+interface QueryLogEntry {
+  query: string;
+  retrievalScope?: string;
+  confidence?: number;
+  bestRequireId?: string | null;
+  bestSccId?: string | null;
+  chunkType?: string | null;
+  vectorUsed?: boolean;
+  retrievalMode?: string;
+  answerSource?: string | null;
+  llmUsed?: boolean;
+  llmSkipped?: boolean;
+  llmSkipReason?: string | null;
+  isNoMatch: boolean;
+  ruleMs?: number;
+  embeddingMs?: number;
+  vectorMs?: number;
+  rerankMs?: number;
+  retrievalMs?: number;
+  llmMs?: number;
+  totalMs?: number;
+}
+
+// fire-and-forget: 응답 속도에 영향 없도록 await 하지 않음
+function logQuery(entry: QueryLogEntry): void {
+  const pool = getVectorPool();
+  pool.query(
+    `insert into ai_core.query_log
+      (query, retrieval_scope, confidence, best_require_id, best_scc_id,
+       chunk_type, vector_used, retrieval_mode, answer_source,
+       llm_used, llm_skipped, llm_skip_reason, is_no_match,
+       rule_ms, embedding_ms, vector_ms, rerank_ms, retrieval_ms, llm_ms, total_ms)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+    [
+      entry.query,
+      entry.retrievalScope ?? null,
+      entry.confidence ?? null,
+      entry.bestRequireId ?? null,
+      entry.bestSccId ? BigInt(entry.bestSccId) : null,
+      entry.chunkType ?? null,
+      entry.vectorUsed ?? null,
+      entry.retrievalMode ?? null,
+      entry.answerSource ?? null,
+      entry.llmUsed ?? null,
+      entry.llmSkipped ?? null,
+      entry.llmSkipReason ?? null,
+      entry.isNoMatch,
+      entry.ruleMs ?? null,
+      entry.embeddingMs ?? null,
+      entry.vectorMs ?? null,
+      entry.rerankMs ?? null,
+      entry.retrievalMs ?? null,
+      entry.llmMs ?? null,
+      entry.totalMs ?? null,
+    ]
+  ).catch(() => { /* 로그 실패는 무시 */ });
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // 보안 차단 키워드 목록 - 악의적 의도가 명확한 패턴만 차단
 // "비밀번호 변경", "password 변경" 같은 정당한 CS 문의는 허용
@@ -439,6 +499,29 @@ export function buildServer(): FastifyInstance {
 
       const totalMs = Date.now() - totalStartedAt;
 
+      logQuery({
+        query,
+        retrievalScope: scope,
+        confidence: result.confidence,
+        bestRequireId: selectedRequireId,
+        bestSccId: selectedSccId,
+        chunkType: result.bestChunkType,
+        vectorUsed: result.vectorUsed,
+        retrievalMode: result.retrievalMode,
+        answerSource,
+        llmUsed: llmResult.llmUsed,
+        llmSkipped,
+        llmSkipReason,
+        isNoMatch: false,
+        ruleMs: result.timings?.ruleMs,
+        embeddingMs: result.timings?.embeddingMs,
+        vectorMs: result.timings?.vectorMs,
+        rerankMs: result.timings?.rerankMs,
+        retrievalMs,
+        llmMs,
+        totalMs,
+      });
+
       return reply.code(200).send({
         ...result,
         bestRequireId: selectedRequireId,
@@ -537,7 +620,22 @@ export function buildServer(): FastifyInstance {
         const hasCandidates = result.candidates && result.candidates.length > 0;
         const topScore = hasCandidates ? result.candidates[0].score : 0;
 
-        // 후보는 있지만 confidence 부족한 경우 vs 아예 관련 없는 경우 구분
+        logQuery({
+          query,
+          retrievalScope: scope,
+          confidence: result.confidence,
+          bestRequireId: null,
+          vectorUsed: result.vectorUsed,
+          retrievalMode: result.retrievalMode,
+          isNoMatch: true,
+          ruleMs: result.timings?.ruleMs,
+          embeddingMs: result.timings?.embeddingMs,
+          vectorMs: result.timings?.vectorMs,
+          rerankMs: result.timings?.rerankMs,
+          retrievalMs: result.timings?.retrievalMs,
+          totalMs: Date.now() - (retrievalStartedAt - retrievalMs),
+        });
+
         const noMatchMessage = hasCandidates && topScore >= 0.3
           ? "관련 유사 사례를 찾았지만 정확도가 충분하지 않습니다.\n\n더 구체적인 증상이나 메뉴명을 포함해서 다시 질문해 주시면 더 정확한 결과를 찾을 수 있습니다."
           : "관련 처리 이력을 찾지 못했습니다.\n\n• 오류 메시지나 증상을 구체적으로 입력해 주세요\n• 메뉴명 또는 기능명을 함께 입력하면 더 잘 찾을 수 있습니다\n• 예: '전자결재 상신 버튼이 안 눌려요', '급여 계산 오류 발생'";
@@ -584,6 +682,28 @@ export function buildServer(): FastifyInstance {
 
       // Send done signal
       request.log.info({ totalChunks: chunkCount }, "Stream completed");
+
+      logQuery({
+        query,
+        retrievalScope: scope,
+        confidence: result.confidence,
+        bestRequireId: result.bestRequireId,
+        bestSccId: result.bestSccId,
+        chunkType: result.bestChunkType,
+        vectorUsed: result.vectorUsed,
+        retrievalMode: result.retrievalMode,
+        answerSource: "llm_stream",
+        llmUsed: true,
+        llmSkipped: false,
+        isNoMatch: false,
+        ruleMs: result.timings?.ruleMs,
+        embeddingMs: result.timings?.embeddingMs,
+        vectorMs: result.timings?.vectorMs,
+        rerankMs: result.timings?.rerankMs,
+        retrievalMs,
+        totalMs: Date.now() - retrievalStartedAt,
+      });
+
       reply.raw.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
       reply.raw.end();
     } catch (error) {
