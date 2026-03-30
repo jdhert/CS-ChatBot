@@ -32,12 +32,13 @@ interface ChatApiResponse {
   display?: ChatDisplay
   generatedAnswer?: string | null
   message?: string | null
+  logId?: string | null
 }
 
 const quickFallbackAnswer =
   "현재 AI Core 응답을 가져오지 못했습니다. 잠시 후 다시 시도하거나, 구체적인 오류 문구와 화면 경로를 함께 입력해 주세요."
 
-function toMessageFromDisplay(display: ChatDisplay | undefined, fallbackText: string): Message {
+function toMessageFromDisplay(display: ChatDisplay | undefined, fallbackText: string, logId?: string | null): Message {
   return {
     id: crypto.randomUUID(),
     sender: "bot",
@@ -50,6 +51,7 @@ function toMessageFromDisplay(display: ChatDisplay | undefined, fallbackText: st
     answerSource: display?.answerSource ?? null,
     retrievalMode: display?.retrievalMode ?? null,
     confidence: typeof display?.confidence === "number" ? display.confidence : null,
+    logId: logId ?? null,
   }
 }
 
@@ -257,6 +259,7 @@ export default function ChatbotPage() {
       let buffer = ""
       let accumulatedText = ""
       let metadata: Record<string, unknown> | null = null
+      let capturedLogId: string | null = null
 
       try {
         while (true) {
@@ -277,6 +280,7 @@ export default function ChatbotPage() {
 
               if (event.type === "metadata") {
                 metadata = event.data
+                if (typeof event.data?.logId === "string") capturedLogId = event.data.logId
                 // metadata 수신 즉시 링크/상태 표시 — 첫 chunk 전 5초 공백 제거
                 const earlyLinkUrl = typeof metadata?.similarIssueUrl === "string"
                   ? metadata.similarIssueUrl
@@ -318,6 +322,7 @@ export default function ChatbotPage() {
                           ...metadata,
                           linkUrl: finalLinkUrl,
                           linkLabel: finalLinkLabel,
+                          logId: capturedLogId,
                           status: "matched",
                           isNewMessage: false,
                         }
