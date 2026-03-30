@@ -1,6 +1,6 @@
 "use client"
 
-import { Bot, ExternalLink, User } from "lucide-react"
+import { Bot, ExternalLink, Info, ShieldAlert, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTypingEffect } from "@/hooks/use-typing-effect"
 
@@ -33,17 +33,16 @@ function formatTimestamp(timestamp: Date | string): string {
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.sender === "user"
+  const isNoMatch = !isUser && message.answerSource === "no_match"
+  const isSecurityBlocked = !isUser && message.status === "SECURITY_BLOCKED"
 
-  // 스트리밍 메시지는 타이핑 효과 없이 실시간으로 표시 (더 자연스러운 스트리밍 경험)
-  // isNewMessage가 true면 스트리밍 중이므로 타이핑 효과 비활성화
-  const shouldShowTypingEffect = false // 스트리밍 중에는 타이핑 효과 사용 안함
+  const shouldShowTypingEffect = false
   const { displayedText } = useTypingEffect({
     text: message.content,
-    speed: 8, // 8ms per character
+    speed: 8,
     enabled: shouldShowTypingEffect,
   })
 
-  // 스트리밍 메시지의 실제 표시 텍스트 (타이핑 효과 없이 직접 표시)
   const contentToDisplay = isUser ? message.content : message.content
 
   return (
@@ -53,10 +52,22 @@ export function ChatMessage({ message }: ChatMessageProps) {
           "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
           isUser
             ? "bg-muted text-muted-foreground"
-            : "bg-gradient-to-br from-primary to-blue-400 text-white shadow-md",
+            : isSecurityBlocked
+              ? "bg-red-100 text-red-500 dark:bg-red-900/30 dark:text-red-400"
+              : isNoMatch
+                ? "bg-amber-100 text-amber-500 dark:bg-amber-900/30 dark:text-amber-400"
+                : "bg-gradient-to-br from-primary to-blue-400 text-white shadow-md",
         )}
       >
-        {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+        {isUser ? (
+          <User className="h-4 w-4" />
+        ) : isSecurityBlocked ? (
+          <ShieldAlert className="h-4 w-4" />
+        ) : isNoMatch ? (
+          <Info className="h-4 w-4" />
+        ) : (
+          <Bot className="h-4 w-4" />
+        )}
       </div>
 
       <div className="flex max-w-[78%] flex-col gap-1">
@@ -65,11 +76,24 @@ export function ChatMessage({ message }: ChatMessageProps) {
             "rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm",
             isUser
               ? "rounded-tr-sm bg-muted text-foreground"
-              : "rounded-tl-sm bg-card text-card-foreground border border-border",
+              : isSecurityBlocked
+                ? "rounded-tl-sm border border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300"
+                : isNoMatch
+                  ? "rounded-tl-sm border border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                  : "rounded-tl-sm bg-card text-card-foreground border border-border",
           )}
         >
           {!isUser && message.title ? (
-            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-primary">
+            <div
+              className={cn(
+                "mb-2 text-xs font-semibold uppercase tracking-[0.08em]",
+                isSecurityBlocked
+                  ? "text-red-500 dark:text-red-400"
+                  : isNoMatch
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-primary",
+              )}
+            >
               {message.title}
             </div>
           ) : null}

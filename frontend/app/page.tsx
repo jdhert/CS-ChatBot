@@ -231,12 +231,13 @@ export default function ChatbotPage() {
       if (contentType?.includes("application/json")) {
         // Handle JSON response (no match or error)
         const jsonData = await response.json()
+        const isSecurityBlocked = jsonData.error === "SECURITY_BLOCKED"
         const noMatchMessage: Message = {
           id: crypto.randomUUID(),
           sender: "bot",
           timestamp: new Date(),
-          title: "검색 결과",
-          content: jsonData.message || "검색 결과가 없습니다. 다른 키워드로 시도해보세요.",
+          title: isSecurityBlocked ? "보안 정책" : "유사 사례 없음",
+          content: jsonData.message || "관련 처리 이력을 찾지 못했습니다.\n\n더 구체적인 증상이나 메뉴명을 포함해서 다시 질문해 주세요.",
           status: jsonData.error || "no_match",
           answerSource: "no_match",
         }

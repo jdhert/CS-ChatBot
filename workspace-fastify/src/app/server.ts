@@ -534,9 +534,19 @@ export function buildServer(): FastifyInstance {
       );
 
       if (!hasRetrievalMatch) {
+        const hasCandidates = result.candidates && result.candidates.length > 0;
+        const topScore = hasCandidates ? result.candidates[0].score : 0;
+
+        // 후보는 있지만 confidence 부족한 경우 vs 아예 관련 없는 경우 구분
+        const noMatchMessage = hasCandidates && topScore >= 0.3
+          ? "관련 유사 사례를 찾았지만 정확도가 충분하지 않습니다.\n\n더 구체적인 증상이나 메뉴명을 포함해서 다시 질문해 주시면 더 정확한 결과를 찾을 수 있습니다."
+          : "관련 처리 이력을 찾지 못했습니다.\n\n• 오류 메시지나 증상을 구체적으로 입력해 주세요\n• 메뉴명 또는 기능명을 함께 입력하면 더 잘 찾을 수 있습니다\n• 예: '전자결재 상신 버튼이 안 눌려요', '급여 계산 오류 발생'";
+
         return reply.code(200).send({
           error: "NO_MATCH",
-          message: "검색 결과가 없습니다."
+          confidence: result.confidence,
+          hasCandidates,
+          message: noMatchMessage
         });
       }
 
