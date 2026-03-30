@@ -1143,6 +1143,62 @@ function computeRuleChunkScoreForQueries(
   return best;
 }
 
+// FTS 결과 행 (base 테이블에서 직접 조회)
+interface FtsRow {
+  sccId: string;
+  requireId: string;
+  chunkType: string;
+  chunkText: string;
+}
+
+// GIN FTS 인덱스를 사용해 쿼리와 관련된 require_id 집합을 빠르게 조회
+// v_scc_chunk_preview 전체 스캔 없이 base 테이블에서 직접 검색
+async function fetchFtsChunkRows(pool: ReturnType<typeof getVectorPool>, queries: string[]): Promise<FtsRow[]> {
+  // 2글자 이상 토큰만 추출, 중복 제거, 최대 10개
+  const tokens = [...new Set(
+    queries.flatMap(q => q.split(/[\s,.\-!?;:()\[\]{}]+/).filter(t => t.length >= 2))
+  )].slice(0, 10);
+
+  if (tokens.length === 0) return [];
+
+  // OR 조건 tsquery 생성: '토큰1' | '토큰2' | ...
+  const tsQueryStr = tokens.map(t => `'${t.replace(/'/g, "''")}'`).join(" | ");
+
+  const sql = `
+    select
+      r.scc_id::text       as "sccId",
+      r.require_id::text   as "requireId",
+      'issue'              as "chunkType",
+      coalesce(r.title,'') || ' ' || coalesce(r.context,'') as "chunkText"
+    from public.scc_request r
+    where to_tsvector('simple', coalesce(r.title,'') || ' ' || coalesce(r.context,''))
+          @@ to_tsquery('simple', $1)
+      and char_length(coalesce(r.title,'') || coalesce(r.context,'')) > 10
+    limit 80
+
+    union all
+
+    select
+      rp.scc_id::text      as "sccId",
+      rp.require_id::text  as "requireId",
+      'resolution'         as "chunkType",
+      coalesce(rp.reply,'') as "chunkText"
+    from public.scc_reply rp
+    where to_tsvector('simple', coalesce(rp.reply,''))
+          @@ to_tsquery('simple', $1)
+      and char_length(coalesce(rp.reply,'')) > 10
+    limit 80
+  `;
+
+  try {
+    const result = await pool.query<FtsRow>(sql, [tsQueryStr]);
+    return result.rows;
+  } catch {
+    // FTS 실패 시 조용히 빈 배열 반환 (인덱스 미생성 환경 대비)
+    return [];
+  }
+}
+
 async function fetchChunkRows(scope: RetrievalScope, queries: string[]): Promise<ChunkRow[]> {
   if (scope === "manual") {
     return [];
@@ -1168,18 +1224,35 @@ async function fetchChunkRows(scope: RetrievalScope, queries: string[]): Promise
       and chunk_type in ('issue', 'action', 'resolution', 'qa_pair')
   `;
 
-  // DISABLED: Focus tokens path was slower (9.8s) than fallback (3.4s)
-  // Reason: Generic tokens match too many require_ids (400), making query slow
-  // const focusTokens = [...new Set(queries.flatMap((query) => getFocusTokens(query)))].slice(0, 8);
+  // Pass 1: LIMIT 500 + FTS 동시 실행
+  const [limitResult, ftsRows] = await Promise.all([
+    pool.query<ChunkRow>(`${baseSelect}\nlimit 500`),
+    fetchFtsChunkRows(pool, queries),
+  ]);
 
-  // Optimized: No ORDER BY for speed - ranking happens in scoring phase anyway
-  // Simple LIMIT-only query is fastest. Database can use any available index.
-  const fullSql = `
-    ${baseSelect}
-    limit 500
-  `;
-  const full = await pool.query<ChunkRow>(fullSql);
-  return full.rows;
+  // LIMIT 500에 이미 포함된 require_id 집합
+  const sampledRequireIds = new Set(limitResult.rows.map(r => r.requireId));
+
+  // FTS 결과 중 LIMIT 500에 없는 항목만 synthetic ChunkRow로 추가
+  // (feature 점수는 기본값 사용 — vector-only 합성 행과 동일한 방식)
+  const syntheticRows: ChunkRow[] = ftsRows
+    .filter(r => !sampledRequireIds.has(r.requireId) && r.chunkText.trim().length > 0)
+    .map(r => ({
+      sccId: r.sccId,
+      requireId: r.requireId,
+      chunkType: r.chunkType as ChunkRow["chunkType"],
+      chunkText: r.chunkText,
+      stateWeight: 0.30,
+      resolvedWeight: 0.30,
+      evidenceWeight: 0.20,
+      textLenScore: 0.20,
+      techSignalScore: 0.10,
+      specificityScore: 0.20,
+      closurePenaltyScore: 0.0,
+      resolutionStage: 0,
+    }));
+
+  return [...limitResult.rows, ...syntheticRows];
 }
 
 function normalizeCosineSimilarity(raw: number): number {
