@@ -2,7 +2,7 @@
 
 코비전 사내 지원 시스템을 위한 AI 기반 질의응답 챗봇 플랫폼
 
-<img src="https://github.com/user-attachments/assets/70b7c078-9a6d-45de-9e60-8ac52d871dcb" width="1024" height="559" alt="CS-AI Chatbot - Your Modern CS Assistant" />
+<img width="733" height="409" alt="image" src="https://github.com/user-attachments/assets/32431f4c-de18-4b05-84cb-4cfb1e90b332" />
 
 ## 📋 프로젝트 개요
 
