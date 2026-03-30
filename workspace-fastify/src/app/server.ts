@@ -26,6 +26,7 @@ const COVISION_SERVICE_VIEW_BASE_URL =
 
 // ─── 쿼리 로그 ────────────────────────────────────────────────────────────────
 interface QueryLogEntry {
+  logUuid: string;
   query: string;
   retrievalScope?: string;
   confidence?: number;
@@ -53,12 +54,13 @@ function logQuery(entry: QueryLogEntry): void {
   const pool = getVectorPool();
   pool.query(
     `insert into ai_core.query_log
-      (query, retrieval_scope, confidence, best_require_id, best_scc_id,
+      (log_uuid, query, retrieval_scope, confidence, best_require_id, best_scc_id,
        chunk_type, vector_used, retrieval_mode, answer_source,
        llm_used, llm_skipped, llm_skip_reason, is_no_match,
        rule_ms, embedding_ms, vector_ms, rerank_ms, retrieval_ms, llm_ms, total_ms)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
     [
+      entry.logUuid,
       entry.query,
       entry.retrievalScope ?? null,
       entry.confidence ?? null,
@@ -365,6 +367,7 @@ export function buildServer(): FastifyInstance {
 
   app.post<{ Body: ChatRequestBody }>("/chat", async (request, reply) => {
     const totalStartedAt = Date.now();
+    const logUuid = crypto.randomUUID();
     const query = request.body?.query?.trim();
     const scopeRaw = request.body?.retrievalScope?.trim().toLowerCase();
     const scopeDefault = (process.env.RETRIEVAL_SCOPE_DEFAULT ?? "all").toLowerCase();
@@ -500,6 +503,7 @@ export function buildServer(): FastifyInstance {
       const totalMs = Date.now() - totalStartedAt;
 
       logQuery({
+        logUuid,
         query,
         retrievalScope: scope,
         confidence: result.confidence,
@@ -523,6 +527,7 @@ export function buildServer(): FastifyInstance {
       });
 
       return reply.code(200).send({
+        logId: logUuid,
         ...result,
         bestRequireId: selectedRequireId,
         bestSccId: selectedSccId,
@@ -564,6 +569,7 @@ export function buildServer(): FastifyInstance {
   });
 
   app.post<{ Body: ChatRequestBody }>("/chat/stream", async (request, reply) => {
+    const logUuid = crypto.randomUUID();
     const query = request.body?.query?.trim();
     const scopeRaw = request.body?.retrievalScope?.trim().toLowerCase();
     const scopeDefault = (process.env.RETRIEVAL_SCOPE_DEFAULT ?? "all").toLowerCase();
@@ -621,6 +627,7 @@ export function buildServer(): FastifyInstance {
         const topScore = hasCandidates ? result.candidates[0].score : 0;
 
         logQuery({
+          logUuid,
           query,
           retrievalScope: scope,
           confidence: result.confidence,
@@ -661,6 +668,7 @@ export function buildServer(): FastifyInstance {
         ? `${COVISION_SERVICE_VIEW_BASE_URL}?req_id=${result.bestRequireId}&system=Menu01&alias=Menu01.Service.List&mnid=705`
         : null;
       const metadata = {
+        logId: logUuid,
         bestRequireId: result.bestRequireId,
         bestSccId: result.bestSccId,
         confidence: result.confidence,
@@ -684,6 +692,7 @@ export function buildServer(): FastifyInstance {
       request.log.info({ totalChunks: chunkCount }, "Stream completed");
 
       logQuery({
+        logUuid,
         query,
         retrievalScope: scope,
         confidence: result.confidence,
@@ -714,6 +723,28 @@ export function buildServer(): FastifyInstance {
           message: "Failed to stream answer."
         });
       }
+    }
+  });
+
+  // ─── 사용자 피드백 ────────────────────────────────────────────────────────────
+  app.post<{ Body: { logId: string; feedback: "up" | "down" } }>("/feedback", async (request, reply) => {
+    const { logId, feedback } = request.body ?? {};
+    if (!logId || !["up", "down"].includes(feedback)) {
+      return reply.code(400).send({ error: "INVALID_PAYLOAD", message: "`logId` and `feedback` (up|down) are required." });
+    }
+    const pool = getVectorPool();
+    try {
+      const result = await pool.query(
+        `update ai_core.query_log set user_feedback = $1 where log_uuid = $2`,
+        [feedback, logId]
+      );
+      if (result.rowCount === 0) {
+        return reply.code(404).send({ error: "NOT_FOUND", message: "No log entry found for the given logId." });
+      }
+      return reply.code(200).send({ ok: true });
+    } catch (error) {
+      request.log.error(error, "failed to save feedback");
+      return reply.code(500).send({ error: "FEEDBACK_FAILED", message: "Failed to save feedback." });
     }
   });
 
