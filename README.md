@@ -2,7 +2,8 @@
 
 코비전 사내 지원 시스템을 위한 AI 기반 질의응답 챗봇 플랫폼
 
-<img width="733" height="409" alt="image" src="https://github.com/user-attachments/assets/32431f4c-de18-4b05-84cb-4cfb1e90b332" />
+<img width="1024" height="572" alt="image" src="https://github.com/user-attachments/assets/e297a7eb-cfe2-4f90-8ca7-4aa4b4891982" />
+
 
 ## 📋 프로젝트 개요
 
