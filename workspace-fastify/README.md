@@ -184,6 +184,17 @@ Google 임베딩으로 적재:
 npm run ingest:sync:scc-embeddings -- --provider google --batch-size 100 --max-batches 50
 ```
 
+Google 임베딩 운영 권장 배치(2026-03-30 검증):
+```bash
+npm run ingest:sync:scc-embeddings -- --provider google --batch-size 100 --max-batches 8 --priority-mode answer_first
+```
+
+운영 메모:
+- `answer_first` 모드는 `qa_pair -> resolution -> issue -> action` 순으로 우선 적재
+- `100 x 10`은 처리 가능하지만 free tier 기준 `429`/abort가 발생할 수 있어 기본 운영값으로는 `100 x 8`을 권장
+- `GOOGLE_EMBEDDING_MIN_INTERVAL_MS=1500` 설정 시 현재 환경에서 안정적으로 완료됨
+- 증분 적재이므로 실패해도 앞선 batch는 유지되고 다음 실행에서 이어서 진행됨
+
 벡터 상태 점검:
 ```bash
 npm run db:check:vector
@@ -226,6 +237,26 @@ npm run db:check:vector
 2. 후보 추출 평가셋 기반 정량 튜닝(Top1/Top3 정확도)
 3. pgvector 권한 확보 후 벡터 검색 성능/정확도 고도화
 4. JSP ajax 연동 계약 고정 및 운영 로깅 강화
+
+## 임베딩 운영 현황 (2026-03-30)
+
+- source chunk rows: `44,955`
+- embedded rows (`google:gemini-embedding-2-preview`): `17,355`
+- pending rows: `27,600`
+- current coverage: `38.61%`
+
+최근 검증 결과:
+- `50 x 5` 안정적으로 완료
+- `50 x 10` 안정적으로 완료
+- `100 x 10`은 처리 가능하지만 후반에 `429` retry가 관측됨
+- `100 x 8 + GOOGLE_EMBEDDING_MIN_INTERVAL_MS=1500`는 성공적으로 완료됨
+
+현재 권장 운영 패턴:
+1. `EMBEDDING_PRIORITY_MODE=answer_first`
+2. `GOOGLE_EMBEDDING_MIN_INTERVAL_MS=1500`
+3. `batch-size=100`
+4. `max-batches=8`
+5. 동일 명령 반복 실행으로 누적 적재
 
 ## 레벨 3 로드맵
 
