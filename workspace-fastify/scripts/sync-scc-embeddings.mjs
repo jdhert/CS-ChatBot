@@ -14,6 +14,7 @@ const DEFAULT_MAX_BATCHES = 50;
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_GOOGLE_MIN_INTERVAL_MS = 700;
 const DEFAULT_GOOGLE_MAX_RETRIES = 8;
+const DEFAULT_PRIORITY_MODE = "chunk_id";
 
 function parseIntSafe(raw, fallback) {
   const parsed = Number.parseInt(raw ?? "", 10);
@@ -28,6 +29,11 @@ function parsePort(raw, fallback) {
 function resolveProvider(raw) {
   const normalized = (raw ?? DEFAULT_PROVIDER).trim().toLowerCase();
   return normalized === "google" ? "google" : "openai";
+}
+
+function resolvePriorityMode(raw) {
+  const normalized = (raw ?? DEFAULT_PRIORITY_MODE).trim().toLowerCase();
+  return normalized === "answer_first" ? "answer_first" : "chunk_id";
 }
 
 function resolveModel(provider, raw) {
@@ -58,7 +64,8 @@ function parseArgs(argv) {
     modelRaw: undefined,
     batchSize: DEFAULT_BATCH_SIZE,
     maxBatches: DEFAULT_MAX_BATCHES,
-    dryRun: false
+    dryRun: false,
+    priorityMode: resolvePriorityMode(process.env.EMBEDDING_PRIORITY_MODE)
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -85,6 +92,11 @@ function parseArgs(argv) {
     }
     if (current === "--dry-run") {
       args.dryRun = true;
+      continue;
+    }
+    if (current === "--priority-mode" && argv[i + 1]) {
+      args.priorityMode = resolvePriorityMode(argv[i + 1]);
+      i += 1;
     }
   }
 
@@ -93,7 +105,8 @@ function parseArgs(argv) {
     model: resolveModel(args.provider, args.modelRaw),
     batchSize: args.batchSize,
     maxBatches: args.maxBatches,
-    dryRun: args.dryRun
+    dryRun: args.dryRun,
+    priorityMode: args.priorityMode
   };
 }
 
@@ -300,7 +313,32 @@ async function createEmbeddings(inputs, provider, model, apiKey, timeoutMs) {
   return createOpenAiEmbeddings(inputs, model, apiKey, timeoutMs);
 }
 
-async function fetchCandidateRows(pool, modelTagValue, batchSize) {
+function resolveOrderByClause(priorityMode) {
+  if (priorityMode === "answer_first") {
+    return `
+      order by
+        case
+          when e.chunk_id is null then 0
+          else 1
+        end,
+        case v.chunk_type
+          when 'qa_pair' then 0
+          when 'resolution' then 1
+          when 'issue' then 2
+          when 'action' then 3
+          else 9
+        end,
+        v.chunk_id
+    `;
+  }
+
+  return `
+    order by v.chunk_id
+  `;
+}
+
+async function fetchCandidateRows(pool, modelTagValue, batchSize, priorityMode) {
+  const orderByClause = resolveOrderByClause(priorityMode);
   const sql = `
     select
       v.chunk_id::text as chunk_id,
@@ -318,7 +356,7 @@ async function fetchCandidateRows(pool, modelTagValue, batchSize) {
         e.chunk_id is null
         or e.text_hash is distinct from md5(v.chunk_text)
       )
-    order by v.chunk_id
+    ${orderByClause}
     limit $2
   `;
 
@@ -466,6 +504,7 @@ async function main() {
   const timeoutMs = parseIntSafe(process.env.LLM_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
   const useEmbeddingVecColumn = await hasEmbeddingVecColumn(pool);
   console.log(`[info] embedding_vec_column=${useEmbeddingVecColumn}`);
+  console.log(`[info] priority_mode=${args.priorityMode}`);
 
   let totalSelected = 0;
   let totalEmbedded = 0;
@@ -475,7 +514,12 @@ async function main() {
 
   try {
     for (let batchIndex = 1; batchIndex <= args.maxBatches; batchIndex += 1) {
-      const rows = await fetchCandidateRows(pool, modelTagValue, args.batchSize);
+      const rows = await fetchCandidateRows(
+        pool,
+        modelTagValue,
+        args.batchSize,
+        args.priorityMode
+      );
 
       if (rows.length === 0) {
         break;
