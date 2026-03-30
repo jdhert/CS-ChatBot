@@ -25,7 +25,7 @@ CS 챗봇 시스템의 데이터베이스 구조와 스키마 문서입니다.
 **데이터 규모:**
 - Source chunks: 13,255개
 - Embeddings: 13,255개
-- Embedding dimension: 3,072 (Google Gemini)
+- Embedding dimension: 768 (Google Gemini)
 
 ---
 
@@ -72,15 +72,15 @@ erDiagram
 
     SCC_CHUNK_EMBEDDINGS {
         uuid chunk_id PK
-        text embedding_model PK "google:gemini-embedding-001"
+        text embedding_model PK "google:gemini-embedding-2-preview"
         bigint scc_id
         uuid require_id
         text chunk_type
         text chunk_text
         text text_hash "MD5 hash"
-        integer embedding_dim "3072"
+        integer embedding_dim "768"
         float8_array embedding_values
-        vector_3072 embedding_vec "pgvector type"
+        vector_768 embedding_vec "pgvector type"
         float8 embedding_norm
         timestamp source_ingested_at
         timestamp embedded_at
@@ -115,7 +115,7 @@ flowchart LR
     H --> I[scc_chunk_embeddings]
     I --> J[Embedding API]
     J --> K[Google Gemini]
-    K --> L[3072-dim vector]
+    K --> L[768-dim vector]
     L --> I
 ```
 
@@ -140,7 +140,7 @@ CREATE TABLE ai_core.scc_chunk_embeddings (
   text_hash         TEXT,
   embedding_dim     INTEGER,
   embedding_values  FLOAT8[],
-  embedding_vec     VECTOR(3072),
+  embedding_vec     VECTOR(768),
   embedding_norm    FLOAT8,
   source_ingested_at TIMESTAMPTZ,
   embedded_at       TIMESTAMPTZ DEFAULT NOW(),
@@ -155,15 +155,15 @@ CREATE TABLE ai_core.scc_chunk_embeddings (
 | 컬럼 | 타입 | NULL | 설명 |
 |------|------|------|------|
 | `chunk_id` | UUID | NOT NULL | 청크 고유 ID (deterministic) |
-| `embedding_model` | TEXT | NOT NULL | 임베딩 모델명 (예: `google:gemini-embedding-001`) |
+| `embedding_model` | TEXT | NOT NULL | 임베딩 모델명 (예: `google:gemini-embedding-2-preview`) |
 | `scc_id` | BIGINT | NULL | SCC 원본 ID |
 | `require_id` | UUID | NULL | 요구사항 ID |
 | `chunk_type` | TEXT | NULL | 청크 타입 (issue/action/resolution/qa_pair) |
 | `chunk_text` | TEXT | NULL | 청크 텍스트 (원본) |
 | `text_hash` | TEXT | NULL | 텍스트 MD5 해시 (변경 감지용) |
-| `embedding_dim` | INTEGER | NULL | 임베딩 차원 (3072) |
+| `embedding_dim` | INTEGER | NULL | 임베딩 차원 (768) |
 | `embedding_values` | FLOAT8[] | NULL | 임베딩 배열 (fallback) |
-| `embedding_vec` | VECTOR(3072) | NULL | pgvector 타입 (검색용) |
+| `embedding_vec` | VECTOR(768) | NULL | pgvector 타입 (검색용) |
 | `embedding_norm` | FLOAT8 | NULL | 벡터 노름 |
 | `source_ingested_at` | TIMESTAMPTZ | NULL | 소스 데이터 수집 시각 |
 | `embedded_at` | TIMESTAMPTZ | NOT NULL | 임베딩 생성 시각 |
@@ -195,7 +195,7 @@ GROUP BY embedding_model, embedding_dim;
 **결과:**
 | embedding_model | embedding_dim | row_count |
 |-----------------|---------------|-----------|
-| `google:gemini-embedding-001` | 3072 | 13,255 |
+| `google:gemini-embedding-2-preview` | 768 | 13,255 |
 
 ---
 
@@ -312,7 +312,7 @@ GROUP BY embedding_model;
 **결과 예시:**
 | embedding_model | source_chunk_rows | embedded_chunks | coverage_pct |
 |-----------------|-------------------|-----------------|--------------|
-| `google:gemini-embedding-001` | 13,255 | 13,255 | 100.00 |
+| `google:gemini-embedding-2-preview` | 13,255 | 13,255 | 100.00 |
 
 ---
 
@@ -333,7 +333,7 @@ CREATE UNIQUE INDEX ON ai_core.scc_chunk_embeddings (chunk_id, embedding_model);
 ```
 
 **ANN Index (Vector Search):**
-현재 없음 (3072 차원은 HNSW 인덱스 미지원)
+현재 없음 (HNSW 인덱스 추가 예정)
 
 ### 권장 인덱스
 
@@ -434,7 +434,7 @@ SELECT
 FROM ai_core.v_scc_chunk_preview v
 LEFT JOIN ai_core.scc_chunk_embeddings e
   ON e.chunk_id = v.chunk_id
-  AND e.embedding_model = 'google:gemini-embedding-001'
+  AND e.embedding_model = 'google:gemini-embedding-2-preview'
 WHERE e.chunk_id IS NULL
 LIMIT 10;
 ```
@@ -447,7 +447,7 @@ SELECT
   chunk_text,
   1 - (embedding_vec <=> $1::VECTOR) AS similarity
 FROM ai_core.scc_chunk_embeddings
-WHERE embedding_model = 'google:gemini-embedding-001'
+WHERE embedding_model = 'google:gemini-embedding-2-preview'
   AND chunk_type IN ('issue', 'action', 'resolution', 'qa_pair')
 ORDER BY embedding_vec <=> $1::VECTOR
 LIMIT 10;
@@ -463,7 +463,7 @@ SELECT
     (SELECT COUNT(*) FROM ai_core.v_scc_chunk_preview), 2
   ) AS coverage_pct
 FROM ai_core.scc_chunk_embeddings
-WHERE embedding_model = 'google:gemini-embedding-001';
+WHERE embedding_model = 'google:gemini-embedding-2-preview';
 ```
 
 ### 5. 중복 chunk_id 검사
