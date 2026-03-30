@@ -1027,6 +1027,9 @@ function detectQueryIntent(query: string): QueryIntent {
     "에러",
     "실패",
     "안됨",
+    "안돼",
+    "안됩니다",
+    "되지 않",
     "불가",
     "문제",
     "느려",
@@ -2313,8 +2316,15 @@ async function computeChatSearch(
 
       const hasVectorSignal = item.bestVectorSimilarity > -2;
       const vectorScore = hasVectorSignal ? normalizeCosineSimilarity(item.bestVectorSimilarity) : 0;
+      // bestRelevanceScore < 0 means this item was never scored by the rule engine
+      // (it entered only via vector merging, not in the 500-row rule sample).
+      // Treat ruleScore=0 as "unscored" rather than "poor match" and use a
+      // vector-weighted formula so strong vector signals aren't buried.
+      const isVectorOnly = item.bestRelevanceScore < 0;
       const blendedScore = hasVectorSignal
-        ? clamp01(0.65 * ruleScore + 0.35 * vectorScore)
+        ? isVectorOnly && vectorScore > 0.82
+          ? clamp01(0.5 * vectorScore)
+          : clamp01(0.65 * ruleScore + 0.35 * vectorScore)
         : ruleScore;
       const rerankBonus = computeHeuristicRerankBonus(query, intent, item);
       return {

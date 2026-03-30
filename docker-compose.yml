@@ -36,7 +36,7 @@ services:
       - LLM_SKIP_MIN_CONFIDENCE=${LLM_SKIP_MIN_CONFIDENCE:-0.75}
       - LLM_TWO_STEP_MAX_CONFIDENCE=${LLM_TWO_STEP_MAX_CONFIDENCE:-0.55}
       - LLM_CANDIDATE_TOP_N=${LLM_CANDIDATE_TOP_N:-3}
-      - LLM_MAX_OUTPUT_TOKENS=${LLM_MAX_OUTPUT_TOKENS:-1024}
+      - LLM_MAX_OUTPUT_TOKENS=${LLM_MAX_OUTPUT_TOKENS:-1536}
       - LLM_ANSWER_CACHE_TTL_MS=${LLM_ANSWER_CACHE_TTL_MS:-30000}
       # Embedding Settings
       - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-google}
@@ -102,7 +102,7 @@ services:
     networks:
       - ai-core-network
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:80/health" , "||", "exit", "1"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
       interval: 30s
       timeout: 10s
       retries: 3
