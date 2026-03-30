@@ -1182,6 +1182,36 @@ async function fetchChunkRows(scope: RetrievalScope, queries: string[]): Promise
   return full.rows;
 }
 
+// Vector 후보 중 500-row 룰 샘플에 없는 require_id를 targeted 조회하여 rule scoring 보완
+async function fetchChunkRowsByRequireIds(requireIds: string[]): Promise<ChunkRow[]> {
+  if (requireIds.length === 0) {
+    return [];
+  }
+
+  const pool = getVectorPool();
+  const sql = `
+    select
+      scc_id::text as "sccId",
+      require_id::text as "requireId",
+      chunk_type as "chunkType",
+      chunk_text as "chunkText",
+      coalesce(state_weight, resolved_weight, 0.30)::float8 as "stateWeight",
+      coalesce(resolved_weight, state_weight, 0.30)::float8 as "resolvedWeight",
+      coalesce(evidence_weight, 0.20)::float8 as "evidenceWeight",
+      coalesce(text_len_score, 0.20)::float8 as "textLenScore",
+      coalesce(tech_signal_score, 0.10)::float8 as "techSignalScore",
+      coalesce(specificity_score, 0.20)::float8 as "specificityScore",
+      coalesce(closure_penalty_score, 0.0)::float8 as "closurePenaltyScore",
+      coalesce(resolution_stage, 0)::int4 as "resolutionStage"
+    from ai_core.v_scc_chunk_preview
+    where char_length(coalesce(chunk_text, '')) > 0
+      and chunk_type in ('issue', 'action', 'resolution', 'qa_pair')
+      and require_id = any($1::uuid[])
+  `;
+  const result = await pool.query<ChunkRow>(sql, [requireIds]);
+  return result.rows;
+}
+
 function normalizeCosineSimilarity(raw: number): number {
   return clamp01((raw + 1) / 2);
 }
@@ -2264,6 +2294,24 @@ async function computeChatSearch(
   const ruleMs = ruleFetchResult.durationMs + (Date.now() - ruleScoringStartedAt);
 
   mergeVectorCandidates(byRequire, vectorResult.rows);
+
+  // Vector 후보 중 500-row 룰 샘플에 포함되지 않아 rule scoring이 안된 require_id를 보완
+  // bestRelevanceScore < 0 이면 한 번도 rule scoring을 받지 않은 vector-only 후보
+  const unscored = [...byRequire.values()]
+    .filter((item) => item.bestRelevanceScore < 0 && item.bestVectorSimilarity > -2)
+    .map((item) => item.requireId);
+
+  if (unscored.length > 0) {
+    const supplementRows = await fetchChunkRowsByRequireIds(unscored);
+    for (const row of supplementRows) {
+      const chunkScore = computeRuleChunkScoreForQueries(queryVariants.lexical, row, intent);
+      const current = byRequire.get(row.requireId);
+      if (current) {
+        updateAggregateWithRuleScore(current, row, chunkScore);
+      }
+    }
+  }
+
   const aggregates = [...byRequire.values()];
   const rerankStartedAt = Date.now();
   const lexicalRankMap = buildRankMap(aggregates, (item) => Math.max(item.bestRelevanceScore, item.topScore));
