@@ -667,6 +667,16 @@ export function buildServer(): FastifyInstance {
       const similarIssueUrl = result.bestRequireId
         ? `${COVISION_SERVICE_VIEW_BASE_URL}?req_id=${result.bestRequireId}&system=Menu01&alias=Menu01.Service.List&mnid=705`
         : null;
+      // Top3 후보를 카드 표시용으로 정제 (previewText 80자 truncate)
+      const top3Candidates = result.candidates.slice(0, 3).map((c) => ({
+        requireId: c.requireId,
+        sccId: c.sccId,
+        score: c.score,
+        chunkType: c.chunkType,
+        previewText: (c.issuePreview ?? c.qaPairPreview ?? c.previewText ?? "").slice(0, 100),
+        linkUrl: buildSimilarIssueUrl(c.requireId),
+      }));
+
       const metadata = {
         logId: logUuid,
         bestRequireId: result.bestRequireId,
@@ -676,6 +686,7 @@ export function buildServer(): FastifyInstance {
         retrievalMode: result.retrievalMode,
         similarIssueUrl,
         linkLabel: similarIssueUrl ? "유사 이력 바로가기" : null,
+        top3Candidates,
       };
       reply.raw.write(`data: ${JSON.stringify({ type: "metadata", data: metadata })}\n\n`);
 

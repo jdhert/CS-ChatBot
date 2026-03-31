@@ -260,6 +260,7 @@ export default function ChatbotPage() {
       let accumulatedText = ""
       let metadata: Record<string, unknown> | null = null
       let capturedLogId: string | null = null
+      let capturedTop3: unknown[] | null = null
 
       try {
         while (true) {
@@ -281,6 +282,7 @@ export default function ChatbotPage() {
               if (event.type === "metadata") {
                 metadata = event.data
                 if (typeof event.data?.logId === "string") capturedLogId = event.data.logId
+                if (Array.isArray(event.data?.top3Candidates)) capturedTop3 = event.data.top3Candidates
                 // metadata 수신 즉시 링크/상태 표시 — 첫 chunk 전 5초 공백 제거
                 const earlyLinkUrl = typeof metadata?.similarIssueUrl === "string"
                   ? metadata.similarIssueUrl
@@ -323,6 +325,7 @@ export default function ChatbotPage() {
                           linkUrl: finalLinkUrl,
                           linkLabel: finalLinkLabel,
                           logId: capturedLogId,
+                          top3Candidates: capturedTop3 ?? undefined,
                           status: "matched",
                           isNewMessage: false,
                         }
