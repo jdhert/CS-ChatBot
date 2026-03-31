@@ -56,7 +56,10 @@ function toMessageFromDisplay(display: ChatDisplay | undefined, fallbackText: st
 }
 
 export default function ChatbotPage() {
-  const [isDarkMode, setIsDarkMode] = useState(false)
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window === "undefined") return false
+    return localStorage.getItem("darkMode") === "true"
+  })
   const [isTyping, setIsTyping] = useState(false)
 
   // 대화 관리
@@ -92,6 +95,7 @@ export default function ChatbotPage() {
     } else {
       document.documentElement.classList.remove("dark")
     }
+    localStorage.setItem("darkMode", String(isDarkMode))
   }, [isDarkMode])
 
   // 대화 저장
@@ -170,6 +174,37 @@ export default function ChatbotPage() {
     }
   }
 
+  // 채팅 내보내기
+  function handleExportChat() {
+    if (currentMessages.length === 0) return
+
+    const lines: string[] = [
+      "=== 코비전 CS AI Core 대화 내보내기 ===",
+      `내보낸 시각: ${new Date().toLocaleString("ko-KR")}`,
+      "",
+    ]
+
+    for (const msg of currentMessages) {
+      const ts = new Date(msg.timestamp)
+      const time = ts.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
+      const sender = msg.sender === "user" ? "사용자" : (msg.title ?? "AI Core")
+      lines.push(`[${time}] ${sender}`)
+      lines.push(msg.content)
+      if (msg.linkUrl) lines.push(`  링크: ${msg.linkUrl}`)
+      lines.push("")
+    }
+
+    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `chat_export_${new Date().toISOString().slice(0, 10)}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   // 메시지 전송 (스트리밍 방식)
   async function submitMessage(content: string) {
     // 활성 대화가 없으면 새로 생성
@@ -201,7 +236,7 @@ export default function ChatbotPage() {
       timestamp: new Date(),
       title: "AI Core",
       content: "",
-      status: null,
+      status: "searching", // 검색 시작 상태
       answerSource: null,
       retrievalMode: null,
       confidence: null,
@@ -264,7 +299,7 @@ export default function ChatbotPage() {
       let accumulatedText = ""
       let metadata: Record<string, unknown> | null = null
       let capturedLogId: string | null = null
-      let capturedTop3: unknown[] | null = null
+      let capturedTop3: import("@/components/chatbot/chat-message").CandidateCard[] | null = null
 
       try {
         while (true) {
@@ -286,7 +321,7 @@ export default function ChatbotPage() {
               if (event.type === "metadata") {
                 metadata = event.data
                 if (typeof event.data?.logId === "string") capturedLogId = event.data.logId
-                if (Array.isArray(event.data?.top3Candidates)) capturedTop3 = event.data.top3Candidates
+                if (Array.isArray(event.data?.top3Candidates)) capturedTop3 = event.data.top3Candidates as import("@/components/chatbot/chat-message").CandidateCard[]
                 // metadata 수신 즉시 링크/상태 표시 — 첫 chunk 전 5초 공백 제거
                 const earlyLinkUrl = typeof metadata?.similarIssueUrl === "string"
                   ? metadata.similarIssueUrl
@@ -386,6 +421,7 @@ export default function ChatbotPage() {
           isDarkMode={isDarkMode}
           onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
           onSendMessage={submitMessage}
+          onExportChat={handleExportChat}
         />
       </main>
     </div>

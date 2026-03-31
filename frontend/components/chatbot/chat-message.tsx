@@ -1,6 +1,6 @@
 "use client"
 
-import { Bot, Check, Copy, ExternalLink, Info, ShieldAlert, ThumbsDown, ThumbsUp, User } from "lucide-react"
+import { Bot, Check, ChevronDown, ChevronUp, Copy, ExternalLink, Info, ShieldAlert, ThumbsDown, ThumbsUp, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTypingEffect } from "@/hooks/use-typing-effect"
 import ReactMarkdown from "react-markdown"
@@ -35,6 +35,7 @@ export interface Message {
 
 interface ChatMessageProps {
   message: Message
+  onSuggestedQuestion?: (q: string) => void
 }
 
 function formatTimestamp(timestamp: Date | string): string {
@@ -165,47 +166,98 @@ const CHUNK_TYPE_LABEL: Record<string, string> = {
   qa_pair: "Q&A",
 }
 
-function CandidateCards({ candidates }: { candidates: CandidateCard[] }) {
-  if (candidates.length === 0) return null
+function SuggestedQuestions({ candidates, onSelect }: { candidates: CandidateCard[]; onSelect: (q: string) => void }) {
+  // top1은 링크 버튼으로 이미 표시되므로 index 1, 2만 사용
+  const suggestions = candidates
+    .slice(1, 3)
+    .map((c) => {
+      const firstLine = c.previewText.split("\n")[0].trim()
+      return firstLine.length > 42 ? firstLine.slice(0, 42) + "…" : firstLine
+    })
+    .filter((t) => t.length > 0)
+
+  if (suggestions.length === 0) return null
 
   return (
-    <div className="mt-3 flex flex-col gap-1.5">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">유사 이력</p>
-      {candidates.map((c, i) => (
-        <a
-          key={c.requireId}
-          href={c.linkUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="group flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs transition-colors hover:bg-muted"
-        >
-          <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
-            {i + 1}
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <span className="font-medium text-foreground">SCC {c.sccId}</span>
-              <span className="rounded bg-primary/10 px-1 py-0.5 text-[10px] text-primary">
-                {CHUNK_TYPE_LABEL[c.chunkType] ?? c.chunkType}
-              </span>
-              <span className="ml-auto text-[10px] text-muted-foreground">
-                {Math.round(c.score * 100)}%
-              </span>
-            </div>
-            <p className="mt-0.5 line-clamp-2 break-words text-muted-foreground">{c.previewText}</p>
-          </div>
-          <ExternalLink className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-        </a>
-      ))}
+    <div className="mt-3">
+      <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">관련 질문</p>
+      <div className="flex flex-wrap gap-1.5">
+        {suggestions.map((text, i) => (
+          <button
+            key={i}
+            onClick={() => onSelect(text)}
+            className="rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs text-foreground transition-colors hover:bg-primary/10 hover:border-primary/50"
+          >
+            {text}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+function CandidateCards({ candidates }: { candidates: CandidateCard[] }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  if (candidates.length === 0) return null
+
+  return (
+    <div className="mt-3">
+      {/* 토글 버튼 */}
+      <button
+        onClick={() => setIsExpanded((v) => !v)}
+        className="flex items-center gap-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+      >
+        {isExpanded ? (
+          <ChevronUp className="h-3 w-3" />
+        ) : (
+          <ChevronDown className="h-3 w-3" />
+        )}
+        유사 이력 {candidates.length}건
+        {!isExpanded && <span className="text-[10px] opacity-60">— 더 보기</span>}
+      </button>
+
+      {/* 카드 목록 (펼쳐진 경우만) */}
+      {isExpanded && (
+        <div className="mt-2 flex flex-col gap-1.5">
+          {candidates.map((c, i) => (
+            <a
+              key={c.requireId}
+              href={c.linkUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="group flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs transition-colors hover:bg-muted"
+            >
+              <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+                {i + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium text-foreground">SCC {c.sccId}</span>
+                  <span className="rounded bg-primary/10 px-1 py-0.5 text-[10px] text-primary">
+                    {CHUNK_TYPE_LABEL[c.chunkType] ?? c.chunkType}
+                  </span>
+                  <span className="ml-auto text-[10px] text-muted-foreground">
+                    {Math.round(c.score * 100)}%
+                  </span>
+                </div>
+                <p className="mt-0.5 line-clamp-2 break-words text-muted-foreground">{c.previewText}</p>
+              </div>
+              <ExternalLink className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function ChatMessage({ message, onSuggestedQuestion }: ChatMessageProps) {
   const isUser = message.sender === "user"
   const isNoMatch = !isUser && message.answerSource === "no_match"
   const isSecurityBlocked = !isUser && message.status === "SECURITY_BLOCKED"
-  const isGenerating = !isUser && (!message.content || message.status === "generating")
+  const isSearching = !isUser && message.status === "searching"
+  const isGenerating = !isUser && (!isSearching && (!message.content || message.status === "generating"))
 
   const shouldShowTypingEffect = false
   const { displayedText } = useTypingEffect({
@@ -215,11 +267,12 @@ export function ChatMessage({ message }: ChatMessageProps) {
   })
 
   const contentToDisplay = message.content
-  const showActions = !isUser && !isNoMatch && !isSecurityBlocked && !isGenerating
+  const showActions = !isUser && !isNoMatch && !isSecurityBlocked && !isGenerating && !isSearching
   const showCandidates =
     showActions &&
     Array.isArray(message.top3Candidates) &&
     message.top3Candidates.length > 1  // Top1만 있으면 이미 링크 버튼으로 표시됨
+  const showSuggestions = showCandidates && onSuggestedQuestion != null
 
   return (
     <div className={cn("flex gap-3", isUser ? "flex-row-reverse" : "flex-row")}>
@@ -276,7 +329,14 @@ export function ChatMessage({ message }: ChatMessageProps) {
           ) : null}
 
           {/* 본문 */}
-          {isGenerating ? (
+          {isSearching ? (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary" />
+              <span className="text-xs">유사 이력을 검색하고 있습니다...</span>
+            </div>
+          ) : isGenerating ? (
             <div className="flex items-center gap-2 text-muted-foreground">
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />
@@ -304,6 +364,11 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
           {/* Top3 유사 이력 카드 */}
           {showCandidates && <CandidateCards candidates={message.top3Candidates!} />}
+
+          {/* 관련 질문 추천 chips */}
+          {showSuggestions && (
+            <SuggestedQuestions candidates={message.top3Candidates!} onSelect={onSuggestedQuestion!} />
+          )}
         </div>
 
         {/* 타임스탬프 + 복사 + 피드백 */}
