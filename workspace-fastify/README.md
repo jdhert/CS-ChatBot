@@ -59,7 +59,8 @@ Client
 ```json
 {
   "status": "ok",
-  "service": "workspace-fastify"
+  "service": "workspace-fastify",
+  "cache": { "size": 3, "maxEntries": 500, "ttlMs": 1800000 }
 }
 ```
 
@@ -214,16 +215,52 @@ npm run db:check:vector
 - 임베딩: `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `OPENAI_EMBEDDING_MODEL`, `GOOGLE_EMBEDDING_MODEL`, `EMBEDDING_MODEL_AUTO_ALIGN`, `EMBEDDING_MODEL_RESOLVE_TTL_MS`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`
 - 벡터 검색 모드: `PGVECTOR_SEARCH_ENABLED` (`true` 권장)
 - Google 임베딩 속도/재시도: `GOOGLE_EMBEDDING_MIN_INTERVAL_MS`, `GOOGLE_EMBEDDING_MAX_RETRIES`
+- 자동 인제스트 스케줄러:
+  - `INGEST_AUTO_ENABLED` — `true` 시 서버 기동 시 자동 임베딩 동기화 활성 (기본: `false`)
+  - `INGEST_INTERVAL_HOURS` — 실행 주기 (기본: `6`)
+  - `INGEST_BATCH_SIZE` — 배치 크기 (기본: `50`)
+  - `INGEST_MAX_BATCHES` — 최대 배치 수 (기본: `10`)
 
 권장 설정 예시:
 - Google 임베딩 테스트: `EMBEDDING_PROVIDER=google`, `GOOGLE_API_KEY=...`, `GOOGLE_EMBEDDING_MODEL=gemini-embedding-2-preview`
 - free tier 429 대응: `GOOGLE_EMBEDDING_MIN_INTERVAL_MS=700` 권장, 429 발생 시 자동 재시도
 - 모델 자동 정렬: `EMBEDDING_MODEL_AUTO_ALIGN=true` 권장, 런타임 설정 모델에 적재 데이터가 없으면 DB 주력 모델로 자동 전환
 - OpenAI 전환 시: `EMBEDDING_PROVIDER=openai`, `OPENAI_API_KEY=...`, `OPENAI_EMBEDDING_MODEL=text-embedding-3-small`
+- 자동 인제스트 활성화: `INGEST_AUTO_ENABLED=true`, `INGEST_INTERVAL_HOURS=6`
 
 참고:
 - 현재 코드에서 `.env.example`는 샘플 문서입니다(자동 로딩 아님).
 - 실제 실행 프로세스 환경변수에 값을 주입해야 합니다.
+
+## 프론트엔드 채팅 UI (2026-03-31 기준)
+
+Docker Compose 환경에서 `http://localhost` 로 접근 가능한 Next.js 기반 검증 UI입니다.
+
+### 주요 기능
+
+| 기능 | 설명 |
+|---|---|
+| 스트리밍 답변 | SSE 기반 실시간 텍스트 스트리밍 |
+| 단계별 상태 표시 | 검색 중 → 생성 중 → 스트리밍 순으로 진행 상태 안내 |
+| 멀티턴 대화 | 최근 6개 메시지 컨텍스트 LLM에 전달 |
+| 대화 관리 | 대화 생성/선택/삭제, localStorage 영속화 |
+| 마크다운 렌더링 | 답변 본문을 react-markdown으로 렌더링 |
+| Top1 링크 버튼 | 최우선 유사 이력 링크를 답변 하단에 표시 |
+| Top3 유사 이력 | 접기/펼치기 토글로 추가 후보 확인 가능 |
+| 관련 질문 추천 | Top2/3 previewText 기반 chip 클릭 시 즉시 질문 전송 |
+| 채팅 내보내기 | 헤더 다운로드 버튼으로 `.txt` 파일 저장 |
+| 답변 복사 | 클립보드 복사 버튼 |
+| 피드백 | 👍👎 버튼으로 `query_log` 업데이트 |
+| 다크모드 | 상태 localStorage 영속화 (새로고침 후 유지) |
+
+### 인메모리 쿼리 캐시
+
+동일한 `query + scope` 조합은 최초 응답 이후 캐시에서 즉시 재생됩니다.
+
+- TTL: 30분
+- 최대 엔트리: 500개
+- 캐시 히트 시 SSE metadata에 `cacheHit: true` 포함
+- `/health` 응답의 `cache.size`로 현재 엔트리 수 확인 가능
 
 ## 현재 한계와 다음 단계
 
