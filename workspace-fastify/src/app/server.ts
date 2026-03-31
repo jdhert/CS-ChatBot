@@ -21,6 +21,13 @@ import type {
   RetrievalScope
 } from "../modules/chat/chat.types.js";
 import { closeVectorPool, getVectorPool } from "../platform/db/vectorClient.js";
+import {
+  getCachedResult,
+  setCachedResult,
+  evictExpiredEntries,
+  getCacheStats,
+} from "../platform/cache/queryCache.js";
+import { startIngestScheduler, type IngestSchedulerHandle } from "../platform/scheduler/ingestScheduler.js";
 
 const COVISION_SERVICE_VIEW_BASE_URL =
   "https://cs.covision.co.kr/WebSite/Basic/ServiceManagement/Service_View.aspx";
@@ -361,6 +368,17 @@ export function buildServer(): FastifyInstance {
   startCacheCleanupInterval(60_000);
   startLlmCacheCleanupInterval(60_000);
 
+  // 쿼리 결과 캐시 만료 항목 정리 (5분마다)
+  const queryCacheCleanupTimer = setInterval(evictExpiredEntries, 5 * 60_000);
+  queryCacheCleanupTimer.unref?.();
+
+  // 자동 인제스트 스케줄러
+  const ingestScheduler: IngestSchedulerHandle = startIngestScheduler({
+    info: (msg) => app.log.info(msg),
+    warn: (msg) => app.log.warn(msg),
+    error: (msg) => app.log.error(msg),
+  });
+
   // Development allowlist for browser calls from local JSP/UI.
   void app.register(fastifyCors, {
     origin: [
@@ -372,7 +390,8 @@ export function buildServer(): FastifyInstance {
   app.get("/health", async () => {
     return {
       status: "ok",
-      service: "workspace-fastify"
+      service: "workspace-fastify",
+      cache: getCacheStats(),
     };
   });
 
@@ -622,6 +641,24 @@ export function buildServer(): FastifyInstance {
       });
     }
 
+    // ─── 캐시 히트 처리 ───────────────────────────────────────────────────────
+    const cachedResult = getCachedResult(query, scope);
+    if (cachedResult) {
+      request.log.info({ query, scope }, "Cache hit — replaying cached stream result");
+      reply.raw.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+      reply.raw.write(`data: ${JSON.stringify({ type: "metadata", data: { ...cachedResult.metadata, cacheHit: true } })}\n\n`);
+      reply.raw.write(`data: ${JSON.stringify({ type: "chunk", data: cachedResult.fullText })}\n\n`);
+      reply.raw.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
+      reply.raw.end();
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     try {
       const retrievalStartedAt = Date.now();
       const result = await runChatSearch(query, scope);
@@ -709,8 +746,10 @@ export function buildServer(): FastifyInstance {
 
       // Stream the answer
       let chunkCount = 0;
+      let accumulatedText = "";
       for await (const chunk of generateChatAnswerStream(query, result, conversationHistory)) {
         chunkCount++;
+        accumulatedText += chunk;
         const timestamp = Date.now();
         request.log.info({ chunkCount, timestamp, chunkLength: chunk.length }, "Sending chunk");
         reply.raw.write(`data: ${JSON.stringify({ type: "chunk", data: chunk })}\n\n`);
@@ -718,6 +757,15 @@ export function buildServer(): FastifyInstance {
 
       // Send done signal
       request.log.info({ totalChunks: chunkCount }, "Stream completed");
+
+      // 스트리밍 완료 후 결과를 캐시에 저장 (LLM 응답이 있을 때만)
+      if (accumulatedText.length > 0) {
+        setCachedResult(query, scope, {
+          metadata,
+          fullText: accumulatedText,
+          cachedAt: Date.now(),
+        });
+      }
 
       logQuery({
         logUuid,
@@ -818,6 +866,7 @@ export function buildServer(): FastifyInstance {
   app.addHook("onClose", async () => {
     stopCacheCleanupInterval();
     stopLlmCacheCleanupInterval();
+    ingestScheduler.stop();
     await closeVectorPool();
   });
 
