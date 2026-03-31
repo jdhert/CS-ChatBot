@@ -220,7 +220,11 @@ export default function ChatbotPage() {
         },
         body: JSON.stringify({
           query: content,
-          retrievalScope: "all", // Manual + SCC 통합 검색
+          retrievalScope: "all",
+          conversationHistory: currentMessages
+            .filter((m) => m.sender === "user" || (m.sender === "bot" && m.content && m.status === "matched"))
+            .slice(-6)
+            .map((m) => ({ role: m.sender === "user" ? "user" : "assistant", content: m.content })),
         }),
       })
 

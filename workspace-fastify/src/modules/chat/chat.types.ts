@@ -21,9 +21,15 @@ export interface RetrievalTimings {
   cacheHit?: boolean;
 }
 
+export interface ConversationTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface ChatRequestBody {
   query: string;
   retrievalScope?: RetrievalScope;
+  conversationHistory?: ConversationTurn[];
 }
 
 export interface RetrievalDebugRequestBody extends ChatRequestBody {}

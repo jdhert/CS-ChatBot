@@ -1,4 +1,4 @@
-﻿import type { ChatResponseBody } from "./chat.types.js";
+﻿import type { ChatResponseBody, ConversationTurn } from "./chat.types.js";
 
 interface LlmAnswerResult {
   generatedAnswer: string | null;
@@ -259,7 +259,7 @@ function buildSelectionPrompt(query: string, retrieval: ChatResponseBody): strin
   ].join("\n");
 }
 
-function buildPrompt(query: string, retrieval: ChatResponseBody): string {
+function buildPrompt(query: string, retrieval: ChatResponseBody, history?: ConversationTurn[]): string {
   const candidateTopN = Math.min(
     Math.max(parseEnvInt(process.env.LLM_CANDIDATE_TOP_N, DEFAULT_LLM_CANDIDATE_TOP_N), 1),
     5
@@ -295,11 +295,21 @@ function buildPrompt(query: string, retrieval: ChatResponseBody): string {
   const vectorUsed = retrieval.vectorUsed;
   const vectorError = retrieval.vectorError ?? "none";
 
+  // 대화 이력 블록 (최대 2 turn)
+  const historyBlock = history && history.length > 0
+    ? [
+        "",
+        "conversation_history (직전 대화 — 현재 query의 맥락 파악에만 활용, 검색 결과는 반드시 아래 retrieval_context 사용):",
+        ...history.slice(-4).map((t) => `  ${t.role === "user" ? "사용자" : "어시스턴트"}: ${t.content.slice(0, 200)}`),
+      ]
+    : [];
+
   return [
     "You are a support assistant for enterprise maintenance history data.",
     "Your task is to compare candidate cases and pick the most relevant case for the query.",
     "You must obey the RULESET strictly.",
     "Return ONLY valid JSON without markdown.",
+    ...historyBlock,
     "",
     `query: ${query}`,
     "",
@@ -350,7 +360,8 @@ function buildPrompt(query: string, retrieval: ChatResponseBody): string {
 function buildAnswerPrompt(
   query: string,
   retrieval: ChatResponseBody,
-  selectedCandidate: NonNullable<ReturnType<typeof resolveCandidateByRequireId>>
+  selectedCandidate: NonNullable<ReturnType<typeof resolveCandidateByRequireId>>,
+  history?: ConversationTurn[]
 ): string {
   // Use longer snippets to capture more actual data (codes, settings, procedures)
   const issueText =
@@ -378,8 +389,17 @@ function buildAnswerPrompt(
       800
     );
 
+  const historyBlock = history && history.length > 0
+    ? [
+        "",
+        "대화 이력 (맥락 파악용 — 검색 결과는 반드시 아래 Available context 사용):",
+        ...history.slice(-4).map((t) => `  ${t.role === "user" ? "사용자" : "어시스턴트"}: ${t.content.slice(0, 200)}`),
+      ]
+    : [];
+
   return [
     "You are a technical support assistant. Answer the user's question in Korean using the provided context.",
+    ...historyBlock,
     "",
     `Question: ${query}`,
     "",
@@ -900,7 +920,8 @@ async function generateWithGemini(
   query: string,
   retrieval: ChatResponseBody,
   apiKey: string,
-  model: string
+  model: string,
+  history?: ConversationTurn[]
 ): Promise<LlmAnswerResult> {
   const twoStepMaxConfidence = parseEnvNumber(
     process.env.LLM_TWO_STEP_MAX_CONFIDENCE,
@@ -916,7 +937,7 @@ async function generateWithGemini(
       const selectedCandidate = resolveCandidateByRequireId(selection.selectedRequireId, retrieval);
       if (selectedCandidate) {
         const answerCall = await invokeGeminiText(
-          buildAnswerPrompt(query, retrieval, selectedCandidate),
+          buildAnswerPrompt(query, retrieval, selectedCandidate, history),
           apiKey,
           model
         );
@@ -958,7 +979,7 @@ async function generateWithGemini(
   }
 
   const plainTextCall = await invokeGeminiText(
-    buildAnswerPrompt(query, retrieval, bestCandidate),
+    buildAnswerPrompt(query, retrieval, bestCandidate, history),
     apiKey,
     model
   );
@@ -1001,7 +1022,8 @@ async function generateWithGemini(
 
 export async function generateChatAnswer(
   query: string,
-  retrieval: ChatResponseBody
+  retrieval: ChatResponseBody,
+  history?: ConversationTurn[]
 ): Promise<LlmAnswerResult> {
   const provider = (process.env.LLM_PROVIDER ?? "google").toLowerCase();
   const model = process.env.GOOGLE_MODEL ?? "gemini-1.5-flash";
@@ -1082,7 +1104,7 @@ export async function generateChatAnswer(
     return direct;
   }
 
-  const generated = await generateWithGemini(query, retrieval, apiKey, model);
+  const generated = await generateWithGemini(query, retrieval, apiKey, model, history);
   if (generated.llmUsed && generated.llmError === null && generated.generatedAnswer) {
     setCachedValue(llmAnswerCache, cacheKey, generated, llmCacheTtlMs);
   }
@@ -1091,7 +1113,8 @@ export async function generateChatAnswer(
 
 export async function* generateChatAnswerStream(
   query: string,
-  retrieval: ChatResponseBody
+  retrieval: ChatResponseBody,
+  history?: ConversationTurn[]
 ): AsyncGenerator<string, void, undefined> {
   const provider = (process.env.LLM_PROVIDER ?? "google").toLowerCase();
   const model = process.env.GOOGLE_MODEL ?? "gemini-2.0-flash-exp";
@@ -1121,7 +1144,7 @@ export async function* generateChatAnswerStream(
     }
 
     // Use answer prompt instead of JSON prompt for better streaming
-    const prompt = buildAnswerPrompt(query, retrieval, bestCandidate);
+    const prompt = buildAnswerPrompt(query, retrieval, bestCandidate, history);
     for await (const chunk of invokeGeminiTextStream(prompt, apiKey, model)) {
       yield chunk;
     }

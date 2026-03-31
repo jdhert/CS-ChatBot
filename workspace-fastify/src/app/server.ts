@@ -16,6 +16,7 @@ import {
 import type {
   ChatRequestBody,
   ChatResponseBody,
+  ConversationTurn,
   RetrievalDebugRequestBody,
   RetrievalScope
 } from "../modules/chat/chat.types.js";
@@ -83,6 +84,20 @@ function logQuery(entry: QueryLogEntry): void {
       entry.totalMs ?? null,
     ]
   ).catch(() => { /* 로그 실패는 무시 */ });
+}
+// 대화 이력 정제: 최대 4 turn, role/content 타입 검증
+function sanitizeHistory(raw: unknown): ConversationTurn[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((t): t is ConversationTurn =>
+      t !== null &&
+      typeof t === "object" &&
+      (t.role === "user" || t.role === "assistant") &&
+      typeof t.content === "string" &&
+      t.content.trim().length > 0
+    )
+    .slice(-4)
+    .map((t) => ({ role: t.role, content: t.content.slice(0, 500) }));
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -372,6 +387,7 @@ export function buildServer(): FastifyInstance {
     const scopeRaw = request.body?.retrievalScope?.trim().toLowerCase();
     const scopeDefault = (process.env.RETRIEVAL_SCOPE_DEFAULT ?? "all").toLowerCase();
     const scope = (scopeRaw ?? scopeDefault) as RetrievalScope;
+    const conversationHistory = sanitizeHistory(request.body?.conversationHistory);
 
     if (!query) {
       return reply.code(400).send({
@@ -437,7 +453,7 @@ export function buildServer(): FastifyInstance {
         llmResultRaw.generatedAnswer = buildDeterministicAnswer(result, result.similarIssueUrl);
       } else {
         const llmStartedAt = Date.now();
-        llmResultRaw = await generateChatAnswer(query, result);
+        llmResultRaw = await generateChatAnswer(query, result, conversationHistory);
         llmMs = Date.now() - llmStartedAt;
       }
 
@@ -574,6 +590,7 @@ export function buildServer(): FastifyInstance {
     const scopeRaw = request.body?.retrievalScope?.trim().toLowerCase();
     const scopeDefault = (process.env.RETRIEVAL_SCOPE_DEFAULT ?? "all").toLowerCase();
     const scope = (scopeRaw ?? scopeDefault) as RetrievalScope;
+    const conversationHistory = sanitizeHistory(request.body?.conversationHistory);
 
     if (!query) {
       return reply.code(400).send({
@@ -692,7 +709,7 @@ export function buildServer(): FastifyInstance {
 
       // Stream the answer
       let chunkCount = 0;
-      for await (const chunk of generateChatAnswerStream(query, result)) {
+      for await (const chunk of generateChatAnswerStream(query, result, conversationHistory)) {
         chunkCount++;
         const timestamp = Date.now();
         request.log.info({ chunkCount, timestamp, chunkLength: chunk.length }, "Sending chunk");
