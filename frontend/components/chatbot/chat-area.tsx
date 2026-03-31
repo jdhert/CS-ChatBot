@@ -12,6 +12,7 @@ interface ChatAreaProps {
   isDarkMode: boolean
   onToggleDarkMode: () => void
   onSendMessage: (message: string) => void
+  onExportChat?: () => void
 }
 
 export function ChatArea({
@@ -20,6 +21,7 @@ export function ChatArea({
   isDarkMode,
   onToggleDarkMode,
   onSendMessage,
+  onExportChat,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -29,7 +31,7 @@ export function ChatArea({
 
   return (
     <div className="flex h-full flex-1 flex-col overflow-hidden bg-background">
-      <ChatHeader isDarkMode={isDarkMode} onToggleDarkMode={onToggleDarkMode} />
+      <ChatHeader isDarkMode={isDarkMode} onToggleDarkMode={onToggleDarkMode} onExportChat={onExportChat} />
 
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-col gap-4 p-6">
@@ -56,7 +58,7 @@ export function ChatArea({
           {messages.length === 0 && <QuickActions onSelect={onSendMessage} />}
 
           {messages.map((message) => (
-            <ChatMessage key={message.id} message={message} />
+            <ChatMessage key={message.id} message={message} onSuggestedQuestion={onSendMessage} />
           ))}
 
           {isTyping && <TypingIndicator />}
