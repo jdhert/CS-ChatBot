@@ -10,11 +10,19 @@
 CoviAI는 사내 매뉴얼, 이력 데이터, FAQ 등을 기반으로 사용자 질의에 대해 실시간으로 답변을 제공하는 RAG(Retrieval-Augmented Generation) 기반 챗봇 시스템입니다.
 
 ### 현재 데이터 규모
-- **임베딩 벡터**: 13,255개 청크
+- **임베딩 벡터**: 44,955개 청크 (소스 기준) / 17,355개 적재 완료
 - **벡터 차원**: 768 (Google Gemini Embedding 2)
-- **임베딩 커버리지**: 100%
+- **임베딩 커버리지**: ~38.6% (증분 적재 진행 중)
 - **청크 타입**: issue, action, resolution, qa_pair
 - **검색 방식**: Hybrid (Rule-based + Vector Similarity)
+
+### 평가 결과 (2026-03-31 기준, 50건 운영성 질의셋)
+| 지표 | 결과 |
+|---|---|
+| Top1 정확도 | 37/37 (100%) |
+| Top3 정확도 | 37/37 (100%) |
+| 청크 타입 정확도 | 37/37 (100%) |
+| 부정 질의 차단 | 13/13 (100%) |
 
 ## 🏗️ 시스템 아키텍처
 
@@ -41,12 +49,15 @@ graph TB
         B1[SSE 스트리밍]
         B2[RAG 검색 엔진]
         B3[Google Gemini API]
+        B4[인메모리 쿼리 캐시]
+        B5[자동 인제스트 스케줄러]
     end
 
     subgraph "Data Layer"
         C[PostgreSQL + pgvector<br/>DB_HOST_REMOVED:5432]
-        C1[Vector 검색<br/>768-dim]
+        C1[Vector 검색<br/>768-dim HNSW]
         C2[메타데이터<br/>ai_core schema]
+        C3[쿼리 로그<br/>query_log]
     end
 
     CLIENT -->|HTTP| NGINX
@@ -57,9 +68,12 @@ graph TB
     B --> B1
     B --> B2
     B --> B3
+    B --> B4
+    B --> B5
     B -->|SQL| C
     C --> C1
     C --> C2
+    C --> C3
 
     style CLIENT fill:#f9f9f9,stroke:#333,stroke-width:2px
     style NGINX fill:#009639,stroke:#333,stroke-width:2px
@@ -73,8 +87,9 @@ graph TB
 #### Frontend
 - **Framework**: Next.js 16.2.0 (App Router)
 - **UI**: React 19, Tailwind CSS
+- **마크다운**: react-markdown + remark-gfm
 - **상태 관리**: React Hooks
-- **저장소**: localStorage (대화 이력 영구 보관)
+- **저장소**: localStorage (대화 이력 · 다크모드 영구 보관)
 
 #### Backend
 - **Framework**: Fastify (Node.js)
@@ -83,6 +98,7 @@ graph TB
 - **데이터베이스**: PostgreSQL + pgvector 0.8.2
 - **LLM**: Google Gemini 2.5 Flash
 - **Embedding**: Google Gemini Embedding 2 (768-dim)
+- **캐시**: 인메모리 Map (TTL 30분, 최대 500 엔트리)
 
 #### Infrastructure
 - **컨테이너화**: Docker, Docker Compose
@@ -94,73 +110,73 @@ graph TB
 
 ### 1. 실시간 스트리밍 응답
 - Server-Sent Events (SSE) 기반 실시간 응답 스트리밍
-- 타이핑 애니메이션으로 자연스러운 UX 제공
-- 청크 단위 점진적 렌더링
+- 단계별 상태 표시: **검색 중** → **생성 중** → **스트리밍**
+- 마크다운 렌더링으로 구조화된 답변 표시
 
 ### 2. 하이브리드 RAG 검색
-- **Rule-based 검색**: 키워드 기반 정확한 매칭
-- **Vector 검색**: 시맨틱 유사도 기반 검색 (pgvector)
-- **Reranking**: 최종 결과 재정렬로 정확도 향상
+- **Rule-based 검색**: 키워드 기반 정확한 매칭 + GIN FTS 2-pass 샘플링
+- **Vector 검색**: 시맨틱 유사도 기반 검색 (pgvector HNSW 인덱스)
+- **Reranking**: LLM 기반 최종 후보 재정렬
 
 ### 3. 대화 이력 관리
 - localStorage 기반 영구 보관 (최대 50개 대화)
-- 날짜별 그룹화 (오늘, 어제, 지난 7일, 이전)
-- 대화 제목 자동 생성
-- 대화 삭제 및 전환 기능
+- 대화 제목 자동 생성 / 삭제 / 전환
+- 멀티턴 컨텍스트 (최근 6개 메시지 LLM에 전달)
 
-### 4. 메타데이터 기반 링크 제공
-- 유사 이력 바로가기 링크 자동 생성
-- 답변 출처 표시 (Manual/SCC)
-- 신뢰도(Confidence) 점수 표시
+### 4. 유사 이력 참조
+- Top1 링크 버튼: 최우선 유사 SCC 이력 바로가기
+- Top3 유사 이력 카드: 접기/펼치기 토글로 추가 후보 확인
+- 관련 질문 추천 chips: 클릭 시 즉시 질문 전송
+
+### 5. 사용자 편의 기능
+- 답변 복사 버튼 (클립보드)
+- 피드백 버튼 (👍👎 → query_log 업데이트)
+- 채팅 내보내기 (.txt 파일 다운로드)
+- 다크모드 (localStorage 영속화)
+
+### 6. 운영 기능
+- 쿼리 로그 자동 기록 (`ai_core.query_log`)
+- 인메모리 쿼리 캐시 (동일 질문 반복 시 즉시 응답)
+- 자동 인제스트 스케줄러 (미임베딩 청크 주기적 동기화)
+- 보안 차단 키워드 필터 (SQL Injection, 해킹, 개인정보 등)
 
 ## 🚀 성능 최적화
 
-### 최근 적용된 최적화 (2026-03-26)
+### 최근 적용된 최적화 (2026-03-31)
+
+#### 인메모리 쿼리 캐시
+- **목적**: 동일/유사 질문 반복 입력 시 LLM·임베딩 API 호출 제거
+- **구현**: Map 기반 TTL 캐시 (TTL 30분, 최대 500 엔트리)
+- **효과**: 캐시 히트 시 응답 시간 수백 ms → 즉시 응답
+- **확인**: `/health` 응답의 `cache.size`로 현재 엔트리 수 확인 가능
+
+#### 단계별 상태 표시
+- **목적**: 첫 SSE 이벤트 도착 전 공백 시간 제거
+- **구현**: 메시지 전송 즉시 "유사 이력을 검색하고 있습니다..." 표시 → metadata 수신 시 "답변 생성 중..." → 스트리밍 시작
+
+#### GIN FTS 2-pass 샘플링
+- **목적**: LIMIT 500 샘플링 시 특정 SCC가 누락되는 문제 해결
+- **구현**: `scc_request` / `scc_reply` GIN tsvector 인덱스 기반 병렬 FTS → synthetic ChunkRow 병합
+
+### 이전 최적화 (2026-03-26)
 
 #### LLM 개인정보 노출 방지
-- **문제**: LLM이 SCC qa_pair 원문에서 실제 고객 이름("김상원 대리" 등)을 추출해 답변에 포함
-- **원인**: LLM이 "[QUESTION] 안녕하십니까, 김상원 대리입니다..." 텍스트를 답변 대상으로 오해
-- **해결**: `PROMPT_RULESET`에 개인정보 금지 규칙 추가 — context 내 이름/회사명/내선번호/이메일을 답변에 포함 금지
+- SCC 원문 내 이름/회사명/내선번호가 답변에 포함되지 않도록 PROMPT_RULESET 규칙 추가
 
 #### 검색 임계값 부동소수점 수정
-- **문제**: `best.score >= 0.45` 비교에서 실제 점수가 0.4499...인 경우 `round2()` 표시는 0.45이나 매칭 실패
-- **원인**: 벡터 전용 후보(ruleScore=0)는 블렌딩 후 점수가 임계값에 근접하게 계산됨
-- **해결**: `hasConfidentBest` 비교를 `round2(best.score) >= DEFAULT_SCORE_THRESHOLD`로 변경
-- **영향**: "야간근무 일정은 어떻게 생성해?" 등 유사 질의 매칭 복구
+- `best.score >= 0.45` 비교를 `round2(score) >= 0.45`로 변경하여 벡터 전용 후보 누락 문제 해결
 
-#### 초기 로딩 script.js 404 제거
-- **문제**: 페이지 최초 렌더링 시 `/_vercel/insights/script.js` 404 에러 발생
-- **원인**: `@vercel/analytics` 패키지가 Vercel CDN에서 스크립트를 로드하나 로컬/Docker 환경에서는 미존재
-- **해결**: `layout.tsx`에서 `<Analytics />` 컴포넌트 및 import 제거
-
-#### LLM 답변 품질 개선
-- **문제**: LLM 프롬프트에 전달되는 qa_pair 텍스트가 160자로 잘려 [ANSWER] 부분이 누락됨
-- **증상**: LLM이 "해결책이 없습니다"로 오답 생성 (실제 SCC에는 처리 내역 존재)
-- **해결**: 프롬프트 텍스트 길이 제한 확장
-  - `PROMPT_CONTEXT_TEXT_LENGTH`: 240 → 1,200자
-  - `PROMPT_SUPPORT_TEXT_LENGTH`: 160 → 1,200자
-  - `buildAnswerPrompt` qa_pair: 200 → 1,500자
-  - `bestQaPairText` 원본을 candidate preview보다 우선 사용
-
-#### 캐시 메모리 관리
-- 1분 주기로 만료된 캐시 항목 자동 정리 추가
-- 대상: queryEmbeddingCache, retrievalCache, embeddingModelResolutionCache, llmAnswerCache
-
-### 이전 최적화 (2026-03-23)
-
-#### 검색 속도 개선
+#### 검색 속도 개선 (2026-03-23)
 - ruleMs: 3.4초 → **0.3~1.3초** (약 70-90% 개선)
-- 총 응답 시간: ~10초 → **~8초**
 
-#### 성능 측정 로그
 ```json
 {
   "retrievalMs": 1442,
   "timings": {
-    "ruleMs": 297,        // 3.4s → 0.3s (90% 개선)
-    "embeddingMs": 884,   // 벡터 임베딩 생성
-    "vectorMs": 36,       // 벡터 검색
-    "rerankMs": 213       // 재정렬
+    "ruleMs": 297,
+    "embeddingMs": 884,
+    "vectorMs": 36,
+    "rerankMs": 213
   }
 }
 ```
@@ -168,49 +184,43 @@ graph TB
 ## 📁 프로젝트 구조
 
 ```
-coviAI/                       # Monorepo 루트
+coviAI/                             # Monorepo 루트
 │
-├── frontend/                 # Next.js 프론트엔드
+├── frontend/                       # Next.js 프론트엔드
 │   ├── app/
-│   │   ├── page.tsx         # 메인 챗봇 페이지
-│   │   └── api/chat/        # API 라우트
+│   │   ├── page.tsx               # 메인 챗봇 페이지
+│   │   └── api/chat/              # API 라우트 (stream proxy)
 │   ├── components/
-│   │   └── chatbot/         # 챗봇 UI 컴포넌트
+│   │   └── chatbot/               # 챗봇 UI 컴포넌트
+│   │       ├── chat-message.tsx   # 메시지 + Top3 카드 + 피드백
+│   │       ├── chat-area.tsx      # 채팅 영역
+│   │       ├── chat-header.tsx    # 헤더 (내보내기 버튼)
+│   │       └── chat-input.tsx     # 입력창
 │   ├── lib/
-│   │   └── conversations.ts # 대화 이력 관리
-│   └── package.json         # Frontend 의존성
+│   │   └── conversations.ts       # 대화 이력 관리
+│   └── package.json
 │
-├── workspace-fastify/        # Fastify 백엔드
+├── workspace-fastify/              # Fastify 백엔드
 │   ├── src/
 │   │   ├── app/
-│   │   │   ├── index.ts     # 서버 진입점
-│   │   │   └── server.ts    # 라우트 정의
-│   │   ├── modules/
-│   │   │   └── chat/
-│   │   │       └── chat.service.ts  # RAG 검색 로직
-│   │   └── db/
-│   │       ├── mariadb.ts   # Source DB 연결
-│   │       └── postgres.ts  # Vector DB 연결
-│   ├── scripts/
-│   │   ├── check-chunk-stability.mjs
-│   │   └── fix-stable-chunk-view.mjs
-│   ├── .env.example
-│   └── package.json         # Backend 의존성
+│   │   │   └── server.ts          # 라우트 + 캐시 + 스케줄러 통합
+│   │   ├── modules/chat/
+│   │   │   ├── chat.service.ts    # RAG 검색 + GIN FTS + 하이브리드 랭킹
+│   │   │   ├── llm.service.ts     # Gemini LLM 스트리밍
+│   │   │   └── chat.types.ts      # 타입 정의
+│   │   └── platform/
+│   │       ├── cache/
+│   │       │   └── queryCache.ts  # 인메모리 쿼리 캐시 (Map + TTL)
+│   │       ├── scheduler/
+│   │       │   └── ingestScheduler.ts  # 자동 인제스트 스케줄러
+│   │       └── db/
+│   │           └── vectorClient.ts     # PostgreSQL 연결 풀
+│   ├── scripts/                   # DB 초기화 · 임베딩 적재 스크립트
+│   └── docs/eval/                 # 평가셋 및 결과 산출물
 │
-├── docs/                     # 프로젝트 문서
-│   ├── docker.md            # Docker 배포 가이드
-│   ├── API.md               # API 명세서
-│   └── DATABASE.md          # 데이터베이스 스키마
-│
-├── nginx/                    # Nginx 리버스 프록시 설정
-│   └── nginx.conf           # CORS 해결, 80 포트 통합
-│
-├── docker-compose.yml        # Docker Compose 오케스트레이션
-├── .env.example              # 환경 변수 템플릿
-├── .dockerignore             # Docker 빌드 최적화
-├── CLAUDE.md                 # AI 에이전트 프로젝트 컨텍스트
-│
-├── .gitignore
+├── nginx/                         # Nginx 리버스 프록시 설정
+├── docker-compose.yml             # Docker Compose 오케스트레이션
+├── CLAUDE.md                      # AI 에이전트 인수인계 문서
 └── README.md
 ```
 
@@ -218,32 +228,17 @@ coviAI/                       # Monorepo 루트
 
 ### 방법 1: Docker Compose (권장) 🐳
 
-**사전 요구사항**
-- Docker Desktop (또는 Docker Engine + Docker Compose)
-- Google API Key
-
-**빠른 시작**
 ```bash
 # 1. 환경변수 설정
 cp .env.example .env
 # .env 파일을 열어서 GOOGLE_API_KEY 입력
 
-# 2. 전체 스택 실행 (Frontend + Backend + Nginx)
+# 2. 전체 스택 실행
 docker-compose up -d --build
 
-# 3. 로그 확인
-docker-compose logs -f
-
-# 4. 접속
+# 3. 접속
 # 브라우저: http://localhost
 ```
-
-**장점**
-- ✅ **한 번에 전체 스택 실행** (Frontend, Backend, Nginx)
-- ✅ **CORS 문제 완전 해결** (Nginx 리버스 프록시)
-- ✅ **환경 일관성** (개발/스테이징/프로덕션 동일)
-- ✅ **쉬운 스케일링** (`docker-compose up -d --scale backend=3`)
-- ✅ **클라우드 마이그레이션 준비 완료**
 
 **📖 상세 가이드**: [docs/docker.md](docs/docker.md)
 
@@ -251,111 +246,62 @@ docker-compose logs -f
 
 ### 방법 2: 로컬 개발 환경
 
-**사전 요구사항**
-- Node.js 18+
-- PostgreSQL 15+ (pgvector 0.8.2 확장 설치 필요)
-- Google API Key (Gemini LLM + Embedding)
-
-**환경 변수 설정**
 ```bash
-# workspace-fastify/.env (템플릿: .env.example 참고)
-NODE_ENV=development
-PORT=3101
-
-# Database
+# 환경 변수 설정 (workspace-fastify/.env)
+GOOGLE_API_KEY=your_google_api_key
+GOOGLE_MODEL=gemini-2.5-flash
 VECTOR_DB_HOST=DB_HOST_REMOVED
 VECTOR_DB_PORT=5432
 VECTOR_DB_NAME=ai2
 VECTOR_DB_USER=novian
 VECTOR_DB_PASSWORD=REMOVED
-VECTOR_DB_SCHEMA=ai_core
 
-# AI APIs (Google Gemini)
-GOOGLE_API_KEY=your_google_api_key
-GOOGLE_MODEL=gemini-2.5-flash
-LLM_PROVIDER=google
+# 프론트엔드
+cd frontend && npm install && npm run dev   # Port 3000
+
+# 백엔드 (별도 터미널)
+cd workspace-fastify && npm install && npm run dev   # Port 3101
 ```
-
-**설치 및 실행**
-```bash
-# 프론트엔드 의존성 설치 및 실행
-cd frontend
-npm install
-npm run dev  # Port 3000
-
-# 백엔드 의존성 설치 및 실행 (별도 터미널)
-cd workspace-fastify
-npm install
-npm run dev  # Port 3101
-```
-
-**접속**
-- 프론트엔드: http://localhost:3000
-- 백엔드 API: http://localhost:3101
-
-**주의**: 로컬 개발 환경에서는 CORS 설정이 필요할 수 있습니다.
 
 ## 📊 데이터베이스 스키마
-
-### ERD (Entity Relationship Diagram)
 
 ```mermaid
 erDiagram
     SCC_SOURCE ||--o{ V_SCC_CHUNK_PREVIEW : "generates"
     V_SCC_CHUNK_PREVIEW ||--o{ SCC_CHUNK_EMBEDDINGS : "has"
     SCC_CHUNK_EMBEDDINGS }o--|| EMBEDDING_INGEST_STATE : "tracks"
-
-    SCC_SOURCE {
-        uuid require_id PK
-        bigint scc_id
-        text issue_text
-        text action_text
-        text resolution_text
-        integer reply_state
-        timestamp ingested_at
-    }
+    QUERY_LOG ||--o{ V_SCC_CHUNK_PREVIEW : "references"
 
     V_SCC_CHUNK_PREVIEW {
         uuid chunk_id PK
         bigint scc_id
         uuid require_id FK
         text chunk_type
-        integer chunk_seq
         text chunk_text
-        text module_tag
         float resolved_weight
         float state_weight
-        float evidence_weight
         float specificity_score
     }
 
     SCC_CHUNK_EMBEDDINGS {
         uuid chunk_id PK
         text embedding_model PK
-        bigint scc_id
-        uuid require_id
-        text chunk_type
-        text chunk_text
-        vector_3072 embedding_vec
+        vector_768 embedding_vec
+        float8_array embedding_values
+        text text_hash
         timestamp embedded_at
     }
 
-    EMBEDDING_INGEST_STATE {
-        text embedding_model PK
-        integer last_batch_size
-        timestamp last_run_at
+    QUERY_LOG {
+        uuid log_uuid PK
+        text query
+        float confidence
+        text retrieval_mode
+        text answer_source
+        text user_feedback
+        timestamp created_at
     }
 ```
-
-### 주요 뷰: `ai_core.v_scc_chunk_preview`
-- `require_id`: 요구사항 ID (UUID)
-- `chunk_id`: 청크 ID (Deterministic UUID)
-- `chunk_text`: 검색 대상 텍스트
-- `embedding_vec`: 벡터 임베딩 (pgvector, 768-dim)
-- `state_weight`: 상태 가중치
-- `resolved_weight`: 해결 여부 가중치
-- `evidence_weight`: 증거 가중치
-- `specificity_score`: 구체성 점수
 
 **📖 상세 문서**: [docs/DATABASE.md](docs/DATABASE.md)
 
@@ -364,106 +310,101 @@ erDiagram
 ```mermaid
 sequenceDiagram
     participant User as 사용자
-    participant FE as Frontend<br/>(Next.js)
-    participant BE as Backend<br/>(Fastify)
-    participant DB as PostgreSQL<br/>+ pgvector
-    participant Gemini as Google Gemini API
+    participant FE as Frontend
+    participant BE as Backend
+    participant Cache as 쿼리 캐시
+    participant DB as PostgreSQL
+    participant Gemini as Google Gemini
 
     User->>FE: 질의 입력
-    FE->>BE: POST /chat<br/>(SSE 연결)
-
-    Note over BE: 1. 쿼리 전처리
-    BE->>BE: 정규화 + 변형 생성
-
-    Note over BE,DB: 2. 하이브리드 검색
-    par Rule-based 검색
-        BE->>DB: ILIKE 키워드 매칭
-    and Vector 검색
-        BE->>Gemini: Embedding API<br/>(gemini-embedding-2-preview)
-        Gemini-->>BE: 쿼리 벡터 (768-dim)
-        BE->>DB: Vector Similarity<br/>(cosine distance)
-    end
-    DB-->>BE: 검색 결과 (500개)
-
-    Note over BE,Gemini: 3. Reranking
-    BE->>Gemini: Relevance 재평가<br/>(gemini-2.5-flash)
-    Gemini-->>BE: Top 5 선택
-
-    Note over BE,Gemini: 4. 답변 생성
-    BE->>Gemini: 스트리밍 생성 요청<br/>(gemini-2.5-flash)
-    loop 청크 단위
-        Gemini-->>BE: 답변 청크
-        BE-->>FE: SSE 이벤트
-        FE-->>User: 실시간 렌더링
+    FE->>BE: POST /chat/stream
+    BE->>Cache: 캐시 조회
+    alt 캐시 히트
+        Cache-->>BE: 저장된 결과 반환
+        BE-->>FE: SSE 즉시 재생
+    else 캐시 미스
+        par Rule-based 검색
+            BE->>DB: GIN FTS + LIMIT 500
+        and Vector 검색
+            BE->>Gemini: Embedding API
+            Gemini-->>BE: 쿼리 벡터 (768-dim)
+            BE->>DB: HNSW cosine similarity
+        end
+        DB-->>BE: 하이브리드 후보 병합
+        BE->>Gemini: 스트리밍 생성 (gemini-2.5-flash)
+        loop 청크 단위
+            Gemini-->>BE: 답변 청크
+            BE-->>FE: SSE chunk 이벤트
+            FE-->>User: 실시간 렌더링
+        end
+        BE->>Cache: 결과 저장 (TTL 30분)
+        BE->>DB: 쿼리 로그 기록
     end
 ```
-
-**📖 상세 문서**: [docs/API.md](docs/API.md)
 
 ## 📚 문서
 
 | 문서 | 설명 |
 |------|------|
-| [docs/docker.md](docs/docker.md) | 🐳 **Docker 배포 가이드** (docker-compose, Nginx 프록시, 클라우드 마이그레이션) |
-| [docs/API.md](docs/API.md) | API 엔드포인트 명세서 (SSE 스트리밍, RAG 검색) |
-| [docs/DATABASE.md](docs/DATABASE.md) | 데이터베이스 스키마 및 ERD, 쿼리 예시 |
-| [.env.example](.env.example) | 환경 변수 템플릿 (루트 디렉토리) |
-| [CLAUDE.md](CLAUDE.md) | AI 에이전트 인수인계 문서 (프로젝트 컨텍스트) |
+| [docs/docker.md](docs/docker.md) | 🐳 Docker 배포 가이드 |
+| [docs/API.md](docs/API.md) | API 엔드포인트 명세서 |
+| [docs/DATABASE.md](docs/DATABASE.md) | 데이터베이스 스키마 및 ERD |
+| [workspace-fastify/README.md](workspace-fastify/README.md) | 백엔드 상세 운영 가이드 |
+| [CLAUDE.md](CLAUDE.md) | AI 에이전트 인수인계 문서 |
 
 ## 📈 향후 개선 계획
 
-- [x] **Docker 컨테이너화** (docker-compose.yml, Nginx 리버스 프록시)
-- [x] **클라우드 마이그레이션 준비** (온프레미스 → AWS/GCP/Azure)
-- [x] **LLM 답변 품질 개선** (프롬프트 텍스트 길이 제한 확장)
-- [x] **캐시 메모리 관리** (만료 항목 주기적 자동 정리)
-- [x] **LLM 개인정보 노출 방지** (SCC 원문 내 이름/회사명 답변 제외)
-- [x] **검색 임계값 부동소수점 수정** (벡터 전용 후보 매칭 누락 해결)
-- [x] **초기 로딩 script.js 404 제거** (Vercel Analytics 제거)
-- [ ] 캐싱 전략 도입 (Redis)
-- [ ] 데이터베이스 인덱스 최적화 (chunk_type, require_id)
-- [ ] 답변 품질 피드백 시스템
-- [ ] 다국어 지원
-- [ ] 대화 컨텍스트 유지 (멀티턴)
-- [ ] 모니터링 및 로깅 (Prometheus, Grafana)
+- [x] Docker 컨테이너화 (docker-compose.yml, Nginx 리버스 프록시)
+- [x] SSE 스트리밍 응답
+- [x] 하이브리드 검색 (Rule + Vector + GIN FTS)
+- [x] 마크다운 렌더링
+- [x] 멀티턴 대화 컨텍스트
+- [x] 쿼리 로그 및 피드백 시스템
+- [x] Top3 유사 이력 카드 (접기/펼치기)
+- [x] 관련 질문 추천 chips
+- [x] 채팅 내보내기 (.txt)
+- [x] 인메모리 쿼리 캐시 (Map + TTL 30분)
+- [x] 자동 인제스트 스케줄러
+- [x] 다크모드 영속화
+- [x] 단계별 응답 상태 표시
+- [ ] 쿼리 로그 대시보드 (웹 UI)
+- [ ] 쿼리 리라이팅 (LLM 프리패스)
+- [ ] 메시지 재전송 버튼
+- [ ] 모바일 반응형 레이아웃
+- [ ] 임베딩 커버리지 100% 달성
 
 ## 📝 변경 이력
 
-### 2026-03-26 (최신)
-- ✅ **LLM 개인정보 노출 방지** — SCC 원문 내 실제 이름(예: 홍길동 대리), 회사명, 내선번호가 답변에 포함되지 않도록 PROMPT_RULESET 규칙 추가
-- ✅ **검색 임계값 부동소수점 수정** — `best.score >= 0.45` 비교를 `round2(score) >= 0.45`로 변경하여 벡터 전용 후보가 0.4499...로 임계값 미달 후 누락되는 문제 해결 (예: '야간근무 일정은 어떻게 생성해?' SCC 매칭)
-- ✅ **초기 로딩 script.js 404 제거** — `@vercel/analytics` 패키지가 Vercel CDN에서 불러오려던 `/_vercel/insights/script.js`가 로컬/Docker 환경에서 404를 발생시키던 문제 제거 (layout.tsx에서 `<Analytics />` 제거)
-- ✅ **LLM 답변 품질 수정** — 프롬프트 텍스트 길이 제한 확장으로 qa_pair [ANSWER] 누락 문제 해결
-- ✅ **캐시 주기적 정리** — 만료된 캐시 항목 1분 주기 자동 정리로 메모리 누수 방지
-- ✅ **Docker Compose 환경변수 전면 명세화** — Runtime/Google API/Vector DB/LLM/Embedding 섹션 분류
-- ✅ **healthcheck 개선** — wget 방식 → node fetch 방식, start_period 단축 (40s → 10s)
-- ✅ **프론트엔드 대화 삭제 버그 수정** — 삭제 후 새 대화 생성 상태 처리 로직 수정
-- ✅ **CLAUDE.md 영문화** — 전체 문서 영어 번역 및 한국어 답변 필수 조건 명시
-- ✅ **다국어 DB 검색 유틸리티** — search-multilang.mjs 개발 진단 스크립트 추가
+### 2026-03-31 (최신)
+- ✅ **단계별 응답 상태 표시** — 메시지 전송 즉시 "유사 이력 검색 중" 표시, metadata/chunk 이벤트에 따라 상태 전환
+- ✅ **Top3 유사 이력 접기/펼치기** — 기본 접힘 상태, 토글 버튼으로 카드 목록 표시
+- ✅ **관련 질문 추천 chips** — Top2/3 후보 previewText 기반 chip, 클릭 시 즉시 전송
+- ✅ **채팅 내보내기** — 헤더 다운로드 버튼으로 대화 전체를 .txt 파일로 저장
+- ✅ **다크모드 영속화** — localStorage 저장으로 새로고침 후에도 상태 유지
+- ✅ **인메모리 쿼리 캐시** — Map + TTL 30분, 동일 질문 즉시 응답, /health에 cache.size 노출
+- ✅ **자동 인제스트 스케줄러** — INGEST_AUTO_ENABLED=true 시 서버 기동 시 미임베딩 청크 자동 동기화
+
+### 2026-03-30
+- ✅ **멀티턴 대화 컨텍스트** — 최근 6개 메시지를 LLM 프롬프트에 전달
+- ✅ **Top3 유사 이력 카드** — SSE metadata에서 top3Candidates 수신, 카드 형태로 표시
+- ✅ **답변 복사 버튼** — 클립보드 복사 + 2초 체크마크 피드백
+- ✅ **마크다운 렌더링** — react-markdown + remark-gfm 적용
+- ✅ **피드백 버튼** — 👍👎 클릭 시 query_log.user_feedback 업데이트
+- ✅ **쿼리 로그** — /chat/stream 응답마다 ai_core.query_log 자동 기록
+- ✅ **GIN FTS 2-pass 샘플링** — LIMIT 500 샘플링 미포함 케이스 보완
 
 ### 2026-03-26
-- ✅ **Docker Compose 배포 환경 구축** (Frontend + Backend + Nginx)
-- ✅ **Nginx 리버스 프록시 설정** (80 포트 통합, CORS 완전 해결)
-- ✅ **Multi-stage Dockerfile 작성** (이미지 크기 최적화)
-- ✅ **클라우드 마이그레이션 준비** (온프레미스 → AWS/GCP/Azure)
-- ✅ **배포 문서 작성** ([docs/docker.md](docs/docker.md))
-- ✅ **CLAUDE.md 추가** (AI 에이전트 프로젝트 컨텍스트 파일)
-
-### 2026-03-25
-- ✅ 프로젝트 문서화 완료 (API.md, DATABASE.md)
-- ✅ README.md 시각화 개선 (Mermaid 다이어그램)
-- ✅ 레거시 코드 정리 (ARCHIVE/ 이동)
-- ✅ GitHub 원격 저장소 연결 (Monorepo)
-- ✅ 스트리밍 응답 최적화 (타이핑 애니메이션 제거하여 SSE 정상화)
-- ✅ LLM 출력 토큰 제한 증가 (2048 → 8192)
-- ✅ 임베딩 캐시 TTL 1시간으로 증가 (성능 최적화)
-- ✅ 다국어 관련 도메인 토큰 추가
+- ✅ LLM 개인정보 노출 방지
+- ✅ 검색 임계값 부동소수점 수정
+- ✅ LLM 답변 품질 개선 (프롬프트 텍스트 길이 제한 확장)
+- ✅ 캐시 메모리 관리 (만료 항목 주기적 자동 정리)
 
 ### 2026-03-23
 - ✅ Deterministic UUID 전환 (chunk_id 안정화)
 - ✅ 임베딩 데이터 확장: 3,243 → 13,255 rows
-- ✅ 프론트엔드: Next.js 기반 챗봇 UI 구현
-- ✅ 백엔드: Fastify 기반 스트리밍 API 구현
-- ✅ 성능 최적화: RAG 검색 속도 70-90% 개선
+- ✅ 프론트엔드 챗봇 UI 구현 (Next.js)
+- ✅ Fastify 기반 스트리밍 API 구현
+- ✅ 검색 속도 최적화 (70-90% 개선)
 
 ## 📄 라이선스
 
