@@ -10,7 +10,7 @@
 CoviAI는 사내 매뉴얼, 이력 데이터, FAQ 등을 기반으로 사용자 질의에 대해 실시간으로 답변을 제공하는 RAG(Retrieval-Augmented Generation) 기반 챗봇 시스템입니다.
 
 ### 🤖 CS ChatBot
-- 📄 [개요 문서 보기](./.docs/CS-ChatBot_개요.pdf)
+- 📄 [개요 문서 보기](./docs/CS-ChatBot_개요.pdf)
 
 ### 현재 데이터 규모
 - **임베딩 벡터**: 44,955개 청크 (소스 기준) / 17,355개 적재 완료
