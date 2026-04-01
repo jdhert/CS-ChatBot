@@ -413,3 +413,11 @@ Copyright (c) 2026 Covision. All rights reserved.
 ---
 
 **개발 문의**: AI Core Team
+
+## Latest Update
+
+- Added follow-up question detection in AI Core retrieval.
+- Added history-aware query rewriting using conversationHistory.
+- Added negation-aware rerank handling for phrases like ~not, except, and instead of.
+- Added repeatable embedding loop script: workspace-fastify/scripts/run-scc-embedding-loop.ps1.
+- Recommended embedding batch at the moment: batch-size=100, max-batches=8, priority=answer_first, minIntervalMs=2000.
