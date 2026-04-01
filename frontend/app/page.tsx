@@ -5,6 +5,7 @@ import { flushSync } from "react-dom"
 import { ChatArea } from "@/components/chatbot/chat-area"
 import { ConversationsPanel } from "@/components/chatbot/conversations-panel"
 import type { Message } from "@/components/chatbot/chat-message"
+import { toast } from "@/hooks/use-toast"
 import type { Conversation } from "@/lib/conversations"
 import {
   loadConversations,
@@ -200,7 +201,14 @@ export default function ChatbotPage() {
 
   // 채팅 내보내기
   function handleExportChat() {
-    if (currentMessages.length === 0) return
+    if (currentMessages.length === 0) {
+      toast({
+        title: "내보낼 대화가 없습니다",
+        description: "메시지가 생긴 뒤 다시 시도해 주세요.",
+        variant: "destructive",
+      })
+      return
+    }
 
     const lines: string[] = [
       "=== 코비전 CS AI Core 대화 내보내기 ===",
@@ -222,11 +230,17 @@ export default function ChatbotPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `chat_export_${new Date().toISOString().slice(0, 10)}.txt`
+    const fileName = `chat_export_${new Date().toISOString().slice(0, 10)}.txt`
+    a.download = fileName
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
+
+    toast({
+      title: "대화를 내보냈습니다",
+      description: fileName,
+    })
   }
 
   // 메시지 전송 (스트리밍 방식)
