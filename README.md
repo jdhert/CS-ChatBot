@@ -192,13 +192,16 @@ coviAI/                             # Monorepo 루트
 ├── frontend/                       # Next.js 프론트엔드
 │   ├── app/
 │   │   ├── page.tsx               # 메인 챗봇 페이지
-│   │   └── api/chat/              # API 라우트 (stream proxy)
+│   │   ├── search/                # SCC 이력 검색 페이지
+│   │   └── api/
+│   │       ├── chat/              # API 라우트 (SSE stream proxy)
+│   │       └── search/            # API 라우트 (/retrieval/search proxy)
 │   ├── components/
 │   │   └── chatbot/               # 챗봇 UI 컴포넌트
-│   │       ├── chat-message.tsx   # 메시지 + Top3 카드 + 피드백
+│   │       ├── chat-message.tsx   # 메시지 + Top3 카드 + 재전송/질문수정
 │   │       ├── chat-area.tsx      # 채팅 영역
-│   │       ├── chat-header.tsx    # 헤더 (내보내기 버튼)
-│   │       └── chat-input.tsx     # 입력창
+│   │       ├── chat-header.tsx    # 헤더 (검색·내보내기 버튼)
+│   │       └── chat-input.tsx     # 입력창 (prefill 지원)
 │   ├── lib/
 │   │   └── conversations.ts       # 대화 이력 관리
 │   └── package.json
@@ -357,6 +360,7 @@ sequenceDiagram
 
 ## 📈 향후 개선 계획
 
+### 완료
 - [x] Docker 컨테이너화 (docker-compose.yml, Nginx 리버스 프록시)
 - [x] SSE 스트리밍 응답
 - [x] 하이브리드 검색 (Rule + Vector + GIN FTS)
@@ -370,15 +374,41 @@ sequenceDiagram
 - [x] 자동 인제스트 스케줄러
 - [x] 다크모드 영속화
 - [x] 단계별 응답 상태 표시
-- [ ] 쿼리 로그 대시보드 (웹 UI)
+- [x] 모바일 반응형 레이아웃 (햄버거 메뉴, 사이드바 오버레이)
+- [x] 메시지 재전송 버튼 및 질문 수정하기
+- [x] SCC 이력 검색 페이지 (`/search`, 점수·청크타입·벡터 신호 시각화)
+
+### 고도화 예정
+
+#### 프론트엔드
+- [ ] 검색 페이지 다크모드 연동 (챗봇 다크모드 상태와 동기화)
+- [ ] 채팅 내보내기 완료 토스트 알림 (sonner 활용)
+- [ ] 검색 결과 URL 공유 (`?q=` 쿼리스트링 반영)
+- [ ] page.tsx 커스텀 훅 분리 (`useChat`, `useConversations`)
+- [ ] 대화 이력 서버 저장 (localStorage 휘발 방지)
+
+#### 백엔드 / 인프라
+- [ ] Docker nginx `depends_on` healthcheck 조건 추가 (502 재발 방지)
+- [ ] `/chat` 실패 케이스 로그 저장 및 대시보드 (웹 UI)
+- [ ] API Rate Limiting (`@fastify/rate-limit`)
 - [ ] 쿼리 리라이팅 (LLM 프리패스)
-- [ ] 메시지 재전송 버튼
-- [ ] 모바일 반응형 레이아웃
-- [ ] 임베딩 커버리지 100% 달성
+
+#### 데이터
+- [ ] 임베딩 커버리지 100% 달성 (현재 38.6%)
+- [ ] 저차원 임베딩 모델 검토 (pgvector ANN 인덱스 활성화 목적)
 
 ## 📝 변경 이력
 
-### 2026-03-31 (최신)
+### 2026-04-01 (최신)
+- ✅ **모바일 반응형 사이드바** — 햄버거 메뉴 버튼, 오버레이 배경, 사이드바 열기/닫기 상태 관리
+- ✅ **메시지 재전송** — 오류 발생 시 마지막 bot 메시지에 '다시 시도' 버튼 표시
+- ✅ **질문 수정하기** — 결과 없음(no_match) 시 입력창에 기존 질문 자동 채우기
+- ✅ **SCC 이력 검색 페이지** — `/search` 신규 추가, LLM 없이 유사 이력 후보·점수·벡터 신호 시각화
+- ✅ **헤더 검색 버튼** — 챗봇 헤더에서 `/search` 페이지로 바로 이동
+- ✅ **다크모드 하이드레이션 오류 수정** — `isDarkMode` 초기값 SSR 안전하게 처리, `suppressHydrationWarning` 추가
+- ✅ **파비콘 추가** — `public/favicon.ico` 및 `layout.tsx` 메타 등록
+
+### 2026-03-31
 - ✅ **단계별 응답 상태 표시** — 메시지 전송 즉시 "유사 이력 검색 중" 표시, metadata/chunk 이벤트에 따라 상태 전환
 - ✅ **Top3 유사 이력 접기/펼치기** — 기본 접힘 상태, 토글 버튼으로 카드 목록 표시
 - ✅ **관련 질문 추천 chips** — Top2/3 후보 previewText 기반 chip, 클릭 시 즉시 전송
@@ -417,10 +447,3 @@ Copyright (c) 2026 Covision. All rights reserved.
 
 **개발 문의**: AI Core Team
 
-## Latest Update
-
-- Added follow-up question detection in AI Core retrieval.
-- Added history-aware query rewriting using conversationHistory.
-- Added negation-aware rerank handling for phrases like ~not, except, and instead of.
-- Added repeatable embedding loop script: workspace-fastify/scripts/run-scc-embedding-loop.ps1.
-- Recommended embedding batch at the moment: batch-size=100, max-batches=8, priority=answer_first, minIntervalMs=2000.
