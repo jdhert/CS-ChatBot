@@ -10,6 +10,7 @@ import {
 import {
   generateChatAnswer,
   generateChatAnswerStream,
+  rewriteQueryForRetrieval,
   startLlmCacheCleanupInterval,
   stopLlmCacheCleanupInterval,
 } from "../modules/chat/llm.service.js";
@@ -431,8 +432,11 @@ export function buildServer(): FastifyInstance {
     }
 
     try {
+      const rewrite = await rewriteQueryForRetrieval(query, conversationHistory);
+      const effectiveQuery = rewrite.rewrittenQuery;
+
       const retrievalStartedAt = Date.now();
-      const result = await runChatSearch(query, scope, conversationHistory);
+      const result = await runChatSearch(effectiveQuery, scope, conversationHistory);
       const retrievalMs = Date.now() - retrievalStartedAt;
       const hasRetrievalMatch = result.bestRequireId !== null;
 
@@ -442,7 +446,9 @@ export function buildServer(): FastifyInstance {
           retrievalMs,
           timings: result.timings,
           hasMatch: hasRetrievalMatch,
-          vectorUsed: result.vectorUsed
+          vectorUsed: result.vectorUsed,
+          queryRewritten: rewrite.rewriteUsed,
+          rewrittenQuery: rewrite.rewriteUsed ? effectiveQuery : undefined,
         },
         "Retrieval timing breakdown"
       );
@@ -572,6 +578,8 @@ export function buildServer(): FastifyInstance {
         ...llmResult,
         llmSkipped,
         llmSkipReason,
+        queryRewritten: rewrite.rewriteUsed,
+        rewrittenQuery: rewrite.rewriteUsed ? effectiveQuery : null,
         display: buildDisplayPayload({
           answerText: finalAnswer ?? "",
           requireId: selectedRequireId,
@@ -589,6 +597,7 @@ export function buildServer(): FastifyInstance {
             rerankMs: 0,
             cacheHit: false
           }),
+          rewriteMs: rewrite.rewriteMs,
           retrievalMs,
           llmMs,
           totalMs
@@ -660,8 +669,11 @@ export function buildServer(): FastifyInstance {
     // ─────────────────────────────────────────────────────────────────────────
 
     try {
+      const rewrite = await rewriteQueryForRetrieval(query, conversationHistory);
+      const effectiveQuery = rewrite.rewrittenQuery;
+
       const retrievalStartedAt = Date.now();
-      const result = await runChatSearch(query, scope, conversationHistory);
+      const result = await runChatSearch(effectiveQuery, scope, conversationHistory);
       const retrievalMs = Date.now() - retrievalStartedAt;
       const hasRetrievalMatch = result.bestRequireId !== null;
 
@@ -741,13 +753,15 @@ export function buildServer(): FastifyInstance {
         similarIssueUrl,
         linkLabel: similarIssueUrl ? "유사 이력 바로가기" : null,
         top3Candidates,
+        queryRewritten: rewrite.rewriteUsed,
+        rewrittenQuery: rewrite.rewriteUsed ? effectiveQuery : null,
       };
       reply.raw.write(`data: ${JSON.stringify({ type: "metadata", data: metadata })}\n\n`);
 
       // Stream the answer
       let chunkCount = 0;
       let accumulatedText = "";
-      for await (const chunk of generateChatAnswerStream(query, result, conversationHistory)) {
+      for await (const chunk of generateChatAnswerStream(effectiveQuery, result, conversationHistory)) {
         chunkCount++;
         accumulatedText += chunk;
         const timestamp = Date.now();
@@ -853,8 +867,15 @@ export function buildServer(): FastifyInstance {
 
     try {
       const conversationHistory = sanitizeHistory(request.body?.conversationHistory);
-      const result = await runChatSearchDebug(query, scope, conversationHistory);
-      return reply.code(200).send(result);
+      const rewrite = await rewriteQueryForRetrieval(query, conversationHistory);
+      const effectiveQuery = rewrite.rewrittenQuery;
+      const result = await runChatSearchDebug(effectiveQuery, scope, conversationHistory);
+      return reply.code(200).send({
+        ...result,
+        query: effectiveQuery,
+        originalQuery: rewrite.rewriteUsed ? query : undefined,
+        queryRewritten: rewrite.rewriteUsed,
+      });
     } catch (error) {
       request.log.error(error, "failed to run /retrieval/search");
       return reply.code(500).send({

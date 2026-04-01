@@ -16,6 +16,7 @@ export interface RetrievalTimings {
   vectorMs: number;
   rerankMs: number;
   retrievalMs: number;
+  rewriteMs?: number;
   llmMs?: number;
   totalMs?: number;
   cacheHit?: boolean;
@@ -91,6 +92,8 @@ export interface ChatResponseBody {
   llmRerankReason?: string | null;
   llmSkipped?: boolean;
   llmSkipReason?: string | null;
+  queryRewritten?: boolean;
+  rewrittenQuery?: string | null;
   timings?: RetrievalTimings;
   display?: ChatResponseView;
 }

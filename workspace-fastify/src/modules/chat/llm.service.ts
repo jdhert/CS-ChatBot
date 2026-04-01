@@ -1111,6 +1111,124 @@ export async function generateChatAnswer(
   return generated;
 }
 
+// ─── 쿼리 리라이팅 ────────────────────────────────────────────────────────────
+
+export interface QueryRewriteResult {
+  rewrittenQuery: string;
+  rewriteUsed: boolean;
+  rewriteReason: string | null;
+  rewriteMs: number;
+}
+
+/**
+ * 짧거나 맥락 의존적인 질문을 독립적인 검색 질의로 재작성할지 판단
+ */
+function shouldRewriteQuery(query: string, history: ConversationTurn[]): boolean {
+  if (history.length === 0) return false;
+  const normalized = query.trim();
+  // 너무 짧거나 지시어/대명사로 시작하는 경우
+  const isShort = normalized.replace(/\s/g, "").length <= 20;
+  const isAmbiguous = /^(이거|저거|그거|이게|저게|그게|이건|저건|그건|이걸|저걸|그걸|여기|저기|거기|이렇게|저렇게|그렇게|이런|저런|그런|이것|저것|그것|위에|아까|방금|그것)/.test(normalized);
+  const isFollowUp = /^(그러면|그럼|그래서|근데|그런데|또|다시|아까|방금|추가로|그 외|다른|또 다른|그 다음|이 경우|이때|이런 경우|혹시|혹시나|그거|저거)/.test(normalized);
+  return isShort || isAmbiguous || isFollowUp;
+}
+
+function buildRewritePrompt(query: string, history: ConversationTurn[]): string {
+  const recentTurns = history
+    .slice(-4)
+    .map((t) => `${t.role === "user" ? "사용자" : "어시스턴트"}: ${t.content.slice(0, 150)}`)
+    .join("\n");
+
+  return [
+    "다음 대화 이력과 현재 질문을 보고, 현재 질문을 대화 맥락 없이도 이해할 수 있는 독립적인 검색 질의 한 문장으로 재작성하세요.",
+    "규칙: 한국어로만 답하고, 재작성된 질문 문장만 출력하세요. 설명, JSON, 따옴표 없이 질문 텍스트만 출력.",
+    "",
+    "대화 이력:",
+    recentTurns,
+    "",
+    `현재 질문: ${query}`,
+    "",
+    "재작성된 질문:"
+  ].join("\n");
+}
+
+/**
+ * 짧거나 맥락 의존적인 질문을 LLM으로 독립적 검색 질의로 재작성
+ * QUERY_REWRITE_ENABLED=true 일 때만 동작
+ */
+export async function rewriteQueryForRetrieval(
+  query: string,
+  history: ConversationTurn[]
+): Promise<QueryRewriteResult> {
+  const startedAt = Date.now();
+  const noop: QueryRewriteResult = {
+    rewrittenQuery: query,
+    rewriteUsed: false,
+    rewriteReason: null,
+    rewriteMs: 0
+  };
+
+  if (process.env.QUERY_REWRITE_ENABLED !== "true") {
+    return noop;
+  }
+
+  const apiKey = process.env.GOOGLE_API_KEY ?? "";
+  const model = process.env.GOOGLE_MODEL ?? "gemini-2.5-flash-lite";
+
+  if (!apiKey) {
+    return { ...noop, rewriteReason: "GOOGLE_API_KEY_MISSING" };
+  }
+
+  if (!shouldRewriteQuery(query, history)) {
+    return noop;
+  }
+
+  const prompt = buildRewritePrompt(query, history);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2500);
+
+  try {
+    const endpoint =
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}` +
+      `:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 80 }
+      }),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      return { ...noop, rewriteReason: `REWRITE_HTTP_${response.status}`, rewriteMs: Date.now() - startedAt };
+    }
+
+    const payload = (await response.json()) as unknown;
+    const text = extractGeminiText(payload);
+    const rewritten = text?.trim().replace(/^["']|["']$/g, "").trim();
+
+    if (!rewritten || rewritten.length < 4 || rewritten.length > 200) {
+      return { ...noop, rewriteReason: "REWRITE_INVALID_OUTPUT", rewriteMs: Date.now() - startedAt };
+    }
+
+    return {
+      rewrittenQuery: rewritten,
+      rewriteUsed: rewritten !== query,
+      rewriteReason: rewritten !== query ? "CONTEXT_DEPENDENT_QUERY" : null,
+      rewriteMs: Date.now() - startedAt
+    };
+  } catch {
+    return { ...noop, rewriteReason: "REWRITE_ERROR", rewriteMs: Date.now() - startedAt };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function* generateChatAnswerStream(
   query: string,
   retrieval: ChatResponseBody,
