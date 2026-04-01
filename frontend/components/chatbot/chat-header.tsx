@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Bot, Download, Menu, Moon, Search, Sun } from "lucide-react"
+import { Bot, Download, Menu, Moon, ScrollText, Search, Sun } from "lucide-react"
 
 interface ChatHeaderProps {
   isDarkMode: boolean
@@ -47,6 +47,14 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
           title="SCC 이력 검색"
         >
           <Search className="h-5 w-5" />
+        </Link>
+        <Link
+          href="/logs"
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          aria-label="쿼리 로그"
+          title="쿼리 로그 대시보드"
+        >
+          <ScrollText className="h-5 w-5" />
         </Link>
         {onExportChat && (
           <button

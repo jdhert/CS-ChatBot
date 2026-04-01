@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type KeyboardEvent } from "react"
+import { useEffect, useState, type KeyboardEvent } from "react"
 import Link from "next/link"
 import {
   ArrowLeft,
@@ -230,6 +230,19 @@ export default function SearchPage() {
   const [result, setResult] = useState<SearchResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [chunkFilter, setChunkFilter] = useState<string>("전체")
+
+  // 챗봇 페이지와 다크모드 상태 공유 (localStorage)
+  useEffect(() => {
+    const apply = (dark: boolean) => {
+      document.documentElement.classList.toggle("dark", dark)
+    }
+    apply(localStorage.getItem("darkMode") === "true")
+    const handler = (e: StorageEvent) => {
+      if (e.key === "darkMode") apply(e.newValue === "true")
+    }
+    window.addEventListener("storage", handler)
+    return () => window.removeEventListener("storage", handler)
+  }, [])
 
   async function handleSearch() {
     const q = query.trim()

@@ -49,6 +49,8 @@ interface QueryLogEntry {
   llmSkipped?: boolean;
   llmSkipReason?: string | null;
   isNoMatch: boolean;
+  isFailure?: boolean;
+  failureReason?: string | null;
   ruleMs?: number;
   embeddingMs?: number;
   vectorMs?: number;
@@ -61,13 +63,19 @@ interface QueryLogEntry {
 // fire-and-forget: 응답 속도에 영향 없도록 await 하지 않음
 function logQuery(entry: QueryLogEntry): void {
   const pool = getVectorPool();
+  const isFailure = entry.isFailure ?? (entry.isNoMatch || (entry.confidence !== undefined && entry.confidence < 0.35));
+  const failureReason = entry.failureReason ?? (
+    entry.isNoMatch ? "NO_MATCH" :
+    (entry.confidence !== undefined && entry.confidence < 0.35) ? "LOW_CONFIDENCE" :
+    null
+  );
   pool.query(
     `insert into ai_core.query_log
       (log_uuid, query, retrieval_scope, confidence, best_require_id, best_scc_id,
        chunk_type, vector_used, retrieval_mode, answer_source,
-       llm_used, llm_skipped, llm_skip_reason, is_no_match,
+       llm_used, llm_skipped, llm_skip_reason, is_no_match, is_failure, failure_reason,
        rule_ms, embedding_ms, vector_ms, rerank_ms, retrieval_ms, llm_ms, total_ms)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
     [
       entry.logUuid,
       entry.query,
@@ -83,6 +91,8 @@ function logQuery(entry: QueryLogEntry): void {
       entry.llmSkipped ?? null,
       entry.llmSkipReason ?? null,
       entry.isNoMatch,
+      isFailure,
+      failureReason,
       entry.ruleMs ?? null,
       entry.embeddingMs ?? null,
       entry.vectorMs ?? null,
@@ -884,6 +894,52 @@ export function buildServer(): FastifyInstance {
       });
     }
   });
+
+  // ─── 쿼리 로그 대시보드 API ──────────────────────────────────────────────────
+  app.get("/admin/logs", async (request, reply) => {
+    const qs = request.query as Record<string, string>;
+    const limit = Math.min(Math.max(parseInt(qs.limit ?? "50", 10) || 50, 1), 200);
+    const offset = Math.max(parseInt(qs.offset ?? "0", 10) || 0, 0);
+    const filter = qs.filter ?? "all"; // all | failure | no_match | low_confidence
+
+    const whereClause =
+      filter === "failure"        ? "where is_failure = true" :
+      filter === "no_match"       ? "where is_no_match = true" :
+      filter === "low_confidence" ? "where confidence < 0.45 and is_no_match = false" :
+      "";
+
+    const pool = getVectorPool();
+    try {
+      const [rowsResult, countResult] = await Promise.all([
+        pool.query(
+          `select log_uuid, query, retrieval_scope, confidence, best_require_id, best_scc_id,
+                  chunk_type, vector_used, retrieval_mode, answer_source,
+                  llm_used, llm_skipped, llm_skip_reason,
+                  is_no_match, is_failure, failure_reason,
+                  rule_ms, embedding_ms, vector_ms, rerank_ms, retrieval_ms, llm_ms, total_ms,
+                  user_feedback, created_at
+           from ai_core.query_log
+           ${whereClause}
+           order by created_at desc
+           limit $1 offset $2`,
+          [limit, offset]
+        ),
+        pool.query(`select count(*) as total from ai_core.query_log ${whereClause}`)
+      ]);
+
+      return reply.code(200).send({
+        total: parseInt(countResult.rows[0].total, 10),
+        limit,
+        offset,
+        filter,
+        rows: rowsResult.rows
+      });
+    } catch (error) {
+      request.log.error(error, "failed to query admin logs");
+      return reply.code(500).send({ error: "ADMIN_LOGS_FAILED" });
+    }
+  });
+  // ─────────────────────────────────────────────────────────────────────────────
 
   app.addHook("onClose", async () => {
     stopCacheCleanupInterval();
