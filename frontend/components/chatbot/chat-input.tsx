@@ -1,16 +1,21 @@
 "use client"
 
-import { useState, type KeyboardEvent } from "react"
+import { useEffect, useState, type KeyboardEvent } from "react"
 import { Paperclip, Send } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface ChatInputProps {
   onSend: (message: string) => void
   disabled?: boolean
+  prefill?: { value: string; seq: number }
 }
 
-export function ChatInput({ onSend, disabled }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, prefill }: ChatInputProps) {
   const [message, setMessage] = useState("")
+
+  useEffect(() => {
+    if (prefill?.value) setMessage(prefill.value)
+  }, [prefill?.seq])
 
   function handleSend() {
     if (message.trim() && !disabled) {

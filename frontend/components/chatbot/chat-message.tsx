@@ -1,6 +1,6 @@
 "use client"
 
-import { Bot, Check, ChevronDown, ChevronUp, Copy, ExternalLink, Info, ShieldAlert, ThumbsDown, ThumbsUp, User } from "lucide-react"
+import { Bot, Check, ChevronDown, ChevronUp, Copy, ExternalLink, Info, Pencil, RotateCcw, ShieldAlert, ThumbsDown, ThumbsUp, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTypingEffect } from "@/hooks/use-typing-effect"
 import ReactMarkdown from "react-markdown"
@@ -36,6 +36,9 @@ export interface Message {
 interface ChatMessageProps {
   message: Message
   onSuggestedQuestion?: (q: string) => void
+  onRetry?: () => void
+  onEditQuestion?: (query: string) => void
+  originalQuery?: string
 }
 
 function formatTimestamp(timestamp: Date | string): string {
@@ -252,7 +255,7 @@ function CandidateCards({ candidates }: { candidates: CandidateCard[] }) {
   )
 }
 
-export function ChatMessage({ message, onSuggestedQuestion }: ChatMessageProps) {
+export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuestion, originalQuery }: ChatMessageProps) {
   const isUser = message.sender === "user"
   const isNoMatch = !isUser && message.answerSource === "no_match"
   const isSecurityBlocked = !isUser && message.status === "SECURITY_BLOCKED"
@@ -267,6 +270,9 @@ export function ChatMessage({ message, onSuggestedQuestion }: ChatMessageProps) 
   })
 
   const contentToDisplay = message.content
+  const isError = !isUser && message.status === "error"
+  const canRetry = isError && onRetry != null
+  const canEditQuestion = isNoMatch && onEditQuestion != null && originalQuery != null
   const showActions = !isUser && !isNoMatch && !isSecurityBlocked && !isGenerating && !isSearching
   const showCandidates =
     showActions &&
@@ -371,11 +377,33 @@ export function ChatMessage({ message, onSuggestedQuestion }: ChatMessageProps) 
           )}
         </div>
 
-        {/* 타임스탬프 + 복사 + 피드백 */}
+        {/* 타임스탬프 + 복사 + 피드백 + 재전송 */}
         <div className={cn("flex items-center gap-1.5 px-1", isUser ? "flex-row-reverse" : "flex-row")}>
           <span className="text-[10px] text-muted-foreground">{formatTimestamp(message.timestamp)}</span>
           {showActions && <CopyButton text={contentToDisplay} />}
           {showActions && message.logId && <FeedbackButtons logId={message.logId} />}
+          {canRetry && (
+            <button
+              onClick={onRetry}
+              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              title="다시 시도"
+              aria-label="메시지 재전송"
+            >
+              <RotateCcw className="h-3 w-3" />
+              다시 시도
+            </button>
+          )}
+          {canEditQuestion && (
+            <button
+              onClick={() => onEditQuestion(originalQuery)}
+              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              title="입력창에 질문 불러오기"
+              aria-label="질문 수정하기"
+            >
+              <Pencil className="h-3 w-3" />
+              질문 수정하기
+            </button>
+          )}
         </div>
       </div>
     </div>
