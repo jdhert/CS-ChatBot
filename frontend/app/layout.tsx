@@ -12,6 +12,10 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
+        url: "/favicon.ico",
+        sizes: "any",
+      },
+      {
         url: "/icon-light-32x32.png",
         media: "(prefers-color-scheme: light)",
       },
@@ -34,7 +38,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="ko">
+    <html lang="ko" suppressHydrationWarning>
       <body className="font-sans antialiased">
         {children}
       </body>
