@@ -1,6 +1,6 @@
 "use client"
 
-import { MessageSquarePlus, Trash2 } from "lucide-react"
+import { MessageSquarePlus, Trash2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Conversation } from "@/lib/conversations"
 import { groupConversationsByDate } from "@/lib/conversations"
@@ -11,6 +11,7 @@ interface ConversationsPanelProps {
   onSelectConversation: (conversationId: string) => void
   onNewConversation: () => void
   onDeleteConversation: (conversationId: string) => void
+  onClose?: () => void
 }
 
 export function ConversationsPanel({
@@ -19,6 +20,7 @@ export function ConversationsPanel({
   onSelectConversation,
   onNewConversation,
   onDeleteConversation,
+  onClose,
 }: ConversationsPanelProps) {
   const groupedConversations = groupConversationsByDate(conversations)
   const groups = ["오늘", "어제", "지난 7일", "이전"]
@@ -27,7 +29,20 @@ export function ConversationsPanel({
     <div className="flex h-full flex-col bg-card">
       {/* 헤더 */}
       <div className="flex items-center justify-between border-b border-border p-4">
-        <h2 className="text-sm font-semibold text-foreground">대화 목록</h2>
+        <div className="flex items-center gap-2">
+          {/* 모바일 닫기 버튼 */}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:hidden"
+              aria-label="사이드바 닫기"
+              type="button"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          <h2 className="text-sm font-semibold text-foreground">대화 목록</h2>
+        </div>
         <button
           onClick={onNewConversation}
           className="flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"

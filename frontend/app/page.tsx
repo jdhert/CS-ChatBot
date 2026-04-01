@@ -56,11 +56,10 @@ function toMessageFromDisplay(display: ChatDisplay | undefined, fallbackText: st
 }
 
 export default function ChatbotPage() {
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    if (typeof window === "undefined") return false
-    return localStorage.getItem("darkMode") === "true"
-  })
+  const [isDarkMode, setIsDarkMode] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [inputPrefill, setInputPrefill] = useState<{ value: string; seq: number } | undefined>(undefined)
 
   // 대화 관리
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -88,7 +87,12 @@ export default function ChatbotPage() {
     }
   }, [])
 
-  // 다크모드
+  // 다크모드 — 마운트 시 localStorage에서 복원
+  useEffect(() => {
+    const saved = localStorage.getItem("darkMode") === "true"
+    if (saved) setIsDarkMode(true)
+  }, [])
+
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add("dark")
@@ -172,6 +176,26 @@ export default function ChatbotPage() {
         saveConversations(updatedConversations)
       }
     }
+  }
+
+  // 질문 수정하기 — 입력창에 기존 질문 채우기
+  function handleEditQuestion(query: string) {
+    setInputPrefill((prev) => ({ value: query, seq: (prev?.seq ?? 0) + 1 }))
+  }
+
+  // 메시지 재전송
+  function handleRetry() {
+    const lastUserMessage = [...currentMessages].reverse().find((m) => m.sender === "user")
+    if (!lastUserMessage) return
+
+    const lastUserIdx = currentMessages.map((_, i) => i).filter((i) => currentMessages[i].sender === "user").pop()
+    if (lastUserIdx === undefined) return
+
+    // 마지막 user 메시지 이후의 bot 메시지 제거 후 재전송
+    flushSync(() => {
+      setCurrentMessages((prev) => prev.slice(0, lastUserIdx))
+    })
+    submitMessage(lastUserMessage.content)
   }
 
   // 채팅 내보내기
@@ -402,14 +426,36 @@ export default function ChatbotPage() {
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
+      {/* 모바일 오버레이 배경 */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 z-20 bg-black/50 md:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* 왼쪽: 대화 목록 */}
-      <div className="w-64 border-r border-border">
+      <div
+        className={[
+          "fixed inset-y-0 left-0 z-30 w-64 border-r border-border bg-card transition-transform duration-200",
+          "md:relative md:translate-x-0 md:z-auto",
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full",
+        ].join(" ")}
+      >
         <ConversationsPanel
           conversations={conversations}
           activeConversationId={activeConversationId}
-          onSelectConversation={handleSelectConversation}
-          onNewConversation={handleNewConversation}
+          onSelectConversation={(id) => {
+            handleSelectConversation(id)
+            setIsSidebarOpen(false)
+          }}
+          onNewConversation={() => {
+            handleNewConversation()
+            setIsSidebarOpen(false)
+          }}
           onDeleteConversation={handleDeleteConversation}
+          onClose={() => setIsSidebarOpen(false)}
         />
       </div>
 
@@ -422,6 +468,10 @@ export default function ChatbotPage() {
           onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
           onSendMessage={submitMessage}
           onExportChat={handleExportChat}
+          onRetry={handleRetry}
+          onEditQuestion={handleEditQuestion}
+          inputPrefill={inputPrefill}
+          onOpenSidebar={() => setIsSidebarOpen(true)}
         />
       </main>
     </div>
