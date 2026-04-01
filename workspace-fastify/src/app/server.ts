@@ -161,6 +161,35 @@ function containsBlockedKeyword(query: string): boolean {
   );
 }
 
+/**
+ * DB 뷰의 regexp_replace(text, 's+', ' ', 'g') 버그로 인해
+ * 's' 문자가 공백으로 치환된 텍스트를 표시용으로 복원합니다.
+ * 검색/임베딩 파이프라인에는 적용하지 않습니다.
+ */
+function repairStrippedS(text: string): string {
+  return text
+    // SCC 도메인 식별자
+    .replace(/\bBa e([Cc]onfig)\b/g, 'Base$1')
+    .replace(/\bba e([Cc]onfig)\b/g, 'base$1')
+    .replace(/\bPo t([Cc]enter)\b/g, 'Post$1')
+    .replace(/\bSy tem(SMS)?\b/g, 'System$1')
+    .replace(/\bsy tem\b/g, 'system')
+    // SQL / 프로그래밍 키워드
+    .replace(/\bIN ERT(\s+INTO)?\b/g, 'INSERT$1')
+    .replace(/\bin ert\b/g, 'insert')
+    .replace(/\bIN ERTED\b/g, 'INSERTED')
+    .replace(/\bin erted\b/g, 'inserted')
+    .replace(/\b elect\b/g, 'select')
+    .replace(/\bSELECT\b/g, 'SELECT')
+    // 공통 앱 단어
+    .replace(/\b([Uu]) er([Cc]ode|[Dd]omain[Cc]ode|[Ii][Dd])?\b/g, (_, u, suffix) =>
+      `${u === 'U' ? 'U' : 'u'}ser${suffix ?? ''}`)
+    .replace(/\b([Ss]) torage\b/gi, 'Storage')
+    .replace(/\b([Ss]) ervice(s?)\b/gi, 'Service$2')
+    .replace(/\b([Ss]) e ion(s?)\b/gi, 'Session$2')
+    .replace(/\b([Ss]) etting(s?)\b/gi, 'Setting$2');
+}
+
 const ANSWER_NOISE_PATTERNS: RegExp[] = [
   /\uC548\uB155\uD558\uC138\uC694[^\n]*[\n]?/gim,
   /\uB4F1\uB85D\uD558\uC2E0\s*SCC\uAC74\uC5D0\s*\uB300\uD574[^\n]*[\n]?/gim,
@@ -212,9 +241,9 @@ function extractAnswerSection(text: string): string {
   for (const pattern of ANSWER_NOISE_PATTERNS) {
     stripped = stripped.replace(pattern, " ");
   }
-  stripped = stripped.replace(/\s+/g, " ").trim();
+  stripped = repairStrippedS(stripped).replace(/\s+/g, " ").trim();
 
-  return stripped.length > 0 ? stripped : answerBlock.replace(/\s+/g, " ").trim();
+  return stripped.length > 0 ? stripped : repairStrippedS(answerBlock).replace(/\s+/g, " ").trim();
 }
 
 function cleanSupportText(text: string | null | undefined): string | null {
@@ -226,7 +255,7 @@ function cleanSupportText(text: string | null | undefined): string | null {
   for (const pattern of ANSWER_NOISE_PATTERNS) {
     stripped = stripped.replace(pattern, " ");
   }
-  stripped = stripped.replace(/\s+/g, " ").trim();
+  stripped = repairStrippedS(stripped).replace(/\s+/g, " ").trim();
   return stripped.length > 0 ? stripped : null;
 }
 
