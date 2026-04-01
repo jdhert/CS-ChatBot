@@ -432,7 +432,7 @@ export function buildServer(): FastifyInstance {
 
     try {
       const retrievalStartedAt = Date.now();
-      const result = await runChatSearch(query, scope);
+      const result = await runChatSearch(query, scope, conversationHistory);
       const retrievalMs = Date.now() - retrievalStartedAt;
       const hasRetrievalMatch = result.bestRequireId !== null;
 
@@ -661,7 +661,7 @@ export function buildServer(): FastifyInstance {
 
     try {
       const retrievalStartedAt = Date.now();
-      const result = await runChatSearch(query, scope);
+      const result = await runChatSearch(query, scope, conversationHistory);
       const retrievalMs = Date.now() - retrievalStartedAt;
       const hasRetrievalMatch = result.bestRequireId !== null;
 
@@ -852,7 +852,8 @@ export function buildServer(): FastifyInstance {
     }
 
     try {
-      const result = await runChatSearchDebug(query, scope);
+      const conversationHistory = sanitizeHistory(request.body?.conversationHistory);
+      const result = await runChatSearchDebug(query, scope, conversationHistory);
       return reply.code(200).send(result);
     } catch (error) {
       request.log.error(error, "failed to run /retrieval/search");

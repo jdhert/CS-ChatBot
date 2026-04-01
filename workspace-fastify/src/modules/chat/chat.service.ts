@@ -3,6 +3,7 @@ import type {
   ChatCandidate,
   ChatResponseBody,
   ChunkRow,
+  ConversationTurn,
   RetrievalDebugCandidate,
   RetrievalDebugResponseBody,
   RetrievalTimings,
@@ -238,11 +239,55 @@ const GENERIC_REPLY_PATTERNS = [
   /종결/gi,
   /내선번호/gi
 ];
+const FOLLOW_UP_PATTERNS = [
+  /\b아니(야|요|고)?\b/u,
+  /그(건|게)\s+아니/u,
+  /말고/u,
+  /추가로/u,
+  /근데/u,
+  /그런데/u,
+  /여기서/u,
+  /이거는/u,
+  /그거는/u,
+  /이건/u,
+  /그건/u
+];
+const CONTEXT_DEPENDENT_PATTERNS = [
+  /\b이거\b/u,
+  /\b그거\b/u,
+  /\b이건\b/u,
+  /\b그건\b/u,
+  /그 부분/u,
+  /그 상황/u,
+  /그 오류/u,
+  /추가 정보/u,
+  /alert/u
+];
+const NEGATION_PATTERNS: Array<[RegExp, string]> = [
+  [/([\p{L}\p{N}_-]{2,20})\s*(?:때문|문제|이슈)?은\s*아니/giu, "$1"],
+  [/([\p{L}\p{N}_-]{2,20})\s*말고/giu, "$1"],
+  [/([\p{L}\p{N}_-]{2,20})\s*제외/giu, "$1"]
+];
 
 interface QueryIntent {
   needsResolution: boolean;
   hasSymptom: boolean;
   asksStatus: boolean;
+}
+
+interface QueryContext {
+  domains: string[];
+  workflowStages: string[];
+  symptoms: string[];
+  hiddenNeeds: string[];
+}
+
+interface FollowUpAnalysis {
+  isFollowUp: boolean;
+  reason: string | null;
+  carryForwardTopics: string[];
+  negativeTerms: string[];
+  anchorUserText: string | null;
 }
 
 interface VectorCandidateRow {
@@ -737,7 +782,321 @@ function canonicalizeQueryTerms(query: string): string {
   return rewritten;
 }
 
-function buildQueryVariants(query: string, intent: QueryIntent): { lexical: string[]; embedding: string[] } {
+function pushIfMissing(target: Set<string>, value: string): void {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length > 0) {
+    target.add(normalized);
+  }
+}
+
+function hasAnyToken(tokens: string[], candidates: string[]): boolean {
+  return candidates.some((candidate) => tokens.includes(candidate));
+}
+
+function inferDomains(tokens: string[], canonicalTokens: string[]): string[] {
+  const mergedTokens = [...new Set([...tokens, ...canonicalTokens])];
+  const domains = new Set<string>();
+
+  if (hasAnyToken(mergedTokens, ["휴가신청서", "휴가신청", "근태", "연차"])) {
+    domains.add("attendance");
+  }
+  if (hasAnyToken(mergedTokens, ["조직도", "조직동기화", "동기화", "부서", "신규부서"])) {
+    domains.add("organization");
+  }
+  if (hasAnyToken(mergedTokens, ["메일", "이메일", "message-id", "첨부파일", "다운로드"])) {
+    domains.add("mail");
+  }
+  if (hasAnyToken(mergedTokens, ["다국어", "코드", "언어"])) {
+    domains.add("multilang");
+  }
+  if (hasAnyToken(mergedTokens, ["브라우저캐시여부", "캐시", "팝업"])) {
+    domains.add("portal_settings");
+  }
+  if (hasAnyToken(mergedTokens, ["리스트", "목록", "컬럼", "일시", "날짜", "표시"])) {
+    domains.add("ui_display");
+  }
+
+  return [...domains];
+}
+
+function inferWorkflowStages(tokens: string[], canonicalTokens: string[]): string[] {
+  const mergedTokens = [...new Set([...tokens, ...canonicalTokens])];
+  const stages = new Set<string>();
+
+  if (hasAnyToken(mergedTokens, ["상신", "기안", "결재", "결재상신", "품의"])) {
+    stages.add("approval_submission");
+  }
+  if (hasAnyToken(mergedTokens, ["생성", "등록", "추가"])) {
+    stages.add("creation_registration");
+  }
+  if (hasAnyToken(mergedTokens, ["변경", "수정", "설정"])) {
+    stages.add("configuration_change");
+  }
+  if (hasAnyToken(mergedTokens, ["동기화", "조직동기화"])) {
+    stages.add("synchronization");
+  }
+  if (hasAnyToken(mergedTokens, ["발송", "수신", "업로드", "다운로드"])) {
+    stages.add("delivery_transfer");
+  }
+
+  return [...stages];
+}
+
+function inferSymptoms(tokens: string[], canonicalTokens: string[], intent: QueryIntent): string[] {
+  const mergedTokens = [...new Set([...tokens, ...canonicalTokens])];
+  const symptoms = new Set<string>();
+
+  if (intent.hasSymptom || hasAnyToken(mergedTokens, ["오류", "에러"])) {
+    symptoms.add("error");
+  }
+  if (hasAnyToken(mergedTokens, ["불가", "불가능", "실패", "안됨", "안돼"])) {
+    symptoms.add("blocked");
+  }
+  if (hasAnyToken(mergedTokens, ["누락", "미생성", "공란", "백지"])) {
+    symptoms.add("missing_data");
+  }
+  if (hasAnyToken(mergedTokens, ["느려", "속도", "지연", "timeout"])) {
+    symptoms.add("performance");
+  }
+
+  return [...symptoms];
+}
+
+function inferHiddenNeeds(
+  tokens: string[],
+  canonicalTokens: string[],
+  intent: QueryIntent,
+  workflowStages: string[]
+): string[] {
+  const mergedTokens = [...new Set([...tokens, ...canonicalTokens])];
+  const hiddenNeeds = new Set<string>();
+
+  if (intent.hasSymptom) {
+    hiddenNeeds.add("처리 사례");
+    hiddenNeeds.add("원인 분석");
+  }
+
+  if (intent.needsResolution) {
+    if (hasAnyToken(mergedTokens, ["코드", "설정", "추가", "등록", "구성"])) {
+      hiddenNeeds.add("설정 방법");
+      hiddenNeeds.add("적용 절차");
+    } else {
+      hiddenNeeds.add("해결 방법");
+      hiddenNeeds.add("조치 방법");
+    }
+  }
+
+  if (intent.asksStatus) {
+    hiddenNeeds.add("상태 확인");
+    hiddenNeeds.add("완료 여부");
+  }
+
+  if (workflowStages.includes("approval_submission")) {
+    hiddenNeeds.add("상신 단계 점검");
+  }
+
+  return [...hiddenNeeds];
+}
+
+function buildQueryContext(
+  normalizedQuery: string,
+  canonicalQuery: string,
+  intent: QueryIntent
+): QueryContext {
+  const focusTokens = getFocusTokens(normalizedQuery).slice(0, 6);
+  const canonicalFocusTokens = getFocusTokens(canonicalQuery).slice(0, 6);
+  const domains = inferDomains(focusTokens, canonicalFocusTokens);
+  const workflowStages = inferWorkflowStages(focusTokens, canonicalFocusTokens);
+  const symptoms = inferSymptoms(focusTokens, canonicalFocusTokens, intent);
+  const hiddenNeeds = inferHiddenNeeds(focusTokens, canonicalFocusTokens, intent, workflowStages);
+
+  return {
+    domains,
+    workflowStages,
+    symptoms,
+    hiddenNeeds
+  };
+}
+
+function extractRecentUserTurns(history: ConversationTurn[]): string[] {
+  return history
+    .filter((turn) => turn.role === "user")
+    .map((turn) => turn.content.replace(/\s+/g, " ").trim())
+    .filter((text) => text.length > 0)
+    .slice(-3);
+}
+
+function extractNegativeTerms(query: string): string[] {
+  const negatives = new Set<string>();
+  for (const [pattern, template] of NEGATION_PATTERNS) {
+    const matches = query.matchAll(pattern);
+    for (const match of matches) {
+      const raw = template.replace("$1", match[1] ?? "");
+      const tokens = getFocusTokens(raw);
+      for (const token of tokens) {
+        negatives.add(token);
+      }
+    }
+  }
+  return [...negatives].slice(0, 4);
+}
+
+function analyzeFollowUpQuery(query: string, history: ConversationTurn[]): FollowUpAnalysis {
+  const recentUserTurns = extractRecentUserTurns(history);
+  const latestUserTurn = recentUserTurns.length > 0 ? recentUserTurns[recentUserTurns.length - 1] : null;
+  if (!latestUserTurn) {
+    return {
+      isFollowUp: false,
+      reason: null,
+      carryForwardTopics: [],
+      negativeTerms: [],
+      anchorUserText: null
+    };
+  }
+
+  const normalized = query.replace(/\s+/g, " ").trim();
+  const focusTokens = getFocusTokens(normalized);
+  const contextTokens = getFocusTokens(latestUserTurn).slice(0, 6);
+  const hasFollowUpPattern = FOLLOW_UP_PATTERNS.some((pattern) => pattern.test(normalized));
+  const hasContextDependentPattern = CONTEXT_DEPENDENT_PATTERNS.some((pattern) => pattern.test(normalized));
+  const negativeTerms = extractNegativeTerms(normalized);
+  const shortQuery = focusTokens.length <= 4 || normalized.length <= 40;
+  const isFollowUp = hasFollowUpPattern || hasContextDependentPattern || (negativeTerms.length > 0 && shortQuery);
+
+  return {
+    isFollowUp,
+    reason: isFollowUp
+      ? hasFollowUpPattern
+        ? "FOLLOW_UP_PATTERN"
+        : negativeTerms.length > 0
+          ? "FOLLOW_UP_NEGATION"
+          : "CONTEXT_DEPENDENT_QUERY"
+      : null,
+    carryForwardTopics: isFollowUp ? contextTokens : [],
+    negativeTerms,
+    anchorUserText: isFollowUp ? latestUserTurn : null
+  };
+}
+
+function buildHistoryAwareQueryVariants(
+  query: string,
+  followUp: FollowUpAnalysis
+): { lexical: string[]; embedding: string[] } {
+  if (!followUp.isFollowUp || !followUp.anchorUserText) {
+    return { lexical: [], embedding: [] };
+  }
+
+  const lexical = new Set<string>();
+  const embedding = new Set<string>();
+  const normalizedCurrent = query.replace(/\s+/g, " ").trim();
+  const anchorTokens = followUp.carryForwardTopics.slice(0, 5);
+  const currentTokens = getFocusTokens(normalizedCurrent).slice(0, 5);
+  const merged = [...new Set([...anchorTokens, ...currentTokens])];
+  const mergedPhrase = merged.join(" ").trim();
+
+  if (mergedPhrase.length > 0) {
+    pushIfMissing(lexical, mergedPhrase);
+    pushIfMissing(embedding, mergedPhrase);
+  }
+
+  if (followUp.negativeTerms.length > 0 && mergedPhrase.length > 0) {
+    pushIfMissing(lexical, `${mergedPhrase} ${followUp.negativeTerms.join(" ")} 제외`);
+    pushIfMissing(lexical, `${mergedPhrase} ${followUp.negativeTerms.join(" ")} 아님`);
+  }
+
+  if (followUp.anchorUserText.length > 0) {
+    const anchorNormalized = canonicalizeQueryTerms(followUp.anchorUserText);
+    pushIfMissing(lexical, `${anchorNormalized} ${normalizedCurrent}`);
+    pushIfMissing(embedding, `${anchorNormalized} ${normalizedCurrent}`);
+  }
+
+  return {
+    lexical: [...lexical].slice(0, 4),
+    embedding: [...embedding].slice(0, 2)
+  };
+}
+
+function buildFollowUpCacheSignature(followUp: FollowUpAnalysis): string {
+  if (!followUp.isFollowUp) {
+    return "base";
+  }
+
+  return [
+    followUp.reason ?? "followup",
+    followUp.carryForwardTopics.join("|") || "no_topics",
+    followUp.negativeTerms.join("|") || "no_negatives"
+  ].join("::");
+}
+
+function buildIntentRewriteVariants(
+  intent: QueryIntent,
+  context: QueryContext,
+  focusTokens: string[],
+  canonicalFocusTokens: string[]
+): { lexical: string[]; embedding: string[] } {
+  const lexical = new Set<string>();
+  const embedding = new Set<string>();
+  const baseTokens = canonicalFocusTokens.length > 0 ? canonicalFocusTokens : focusTokens;
+  const basePhrase = baseTokens.join(" ").trim();
+
+  if (basePhrase.length === 0) {
+    return { lexical: [], embedding: [] };
+  }
+
+  if (intent.hasSymptom) {
+    pushIfMissing(lexical, `${basePhrase} 오류`);
+    pushIfMissing(lexical, `${basePhrase} 불가`);
+    pushIfMissing(lexical, `${basePhrase} 처리 사례`);
+    pushIfMissing(embedding, `${basePhrase} 오류`);
+  }
+
+  if (intent.needsResolution) {
+    const resolutionSuffix =
+      context.hiddenNeeds.includes("설정 방법") || hasAnyToken(baseTokens, ["코드", "설정", "추가", "등록", "구성"])
+        ? "설정 방법"
+        : "해결 방법";
+    pushIfMissing(lexical, `${basePhrase} ${resolutionSuffix}`);
+    pushIfMissing(lexical, `${basePhrase} 적용 절차`);
+    pushIfMissing(embedding, `${basePhrase} ${resolutionSuffix}`);
+  }
+
+  if (intent.asksStatus) {
+    pushIfMissing(lexical, `${basePhrase} 상태 확인`);
+    pushIfMissing(lexical, `${basePhrase} 완료 여부`);
+  }
+
+  if (context.workflowStages.includes("approval_submission") && intent.hasSymptom) {
+    pushIfMissing(lexical, `${basePhrase} 결재 상신 오류`);
+    pushIfMissing(lexical, `${basePhrase} 상신 실패`);
+  }
+
+  if (context.domains.includes("attendance") && intent.hasSymptom) {
+    pushIfMissing(lexical, `${basePhrase} 근태 상신 오류`);
+  }
+
+  if (context.domains.includes("organization") && context.workflowStages.includes("synchronization")) {
+    pushIfMissing(lexical, `${basePhrase} 동기화 누락`);
+    pushIfMissing(lexical, `${basePhrase} 신규부서 미생성`);
+  }
+
+  if (context.domains.includes("multilang") && intent.needsResolution) {
+    pushIfMissing(lexical, "다국어 코드 등록");
+    pushIfMissing(lexical, "언어 코드 설정 추가");
+    pushIfMissing(embedding, "다국어 코드 추가 방법");
+  }
+
+  return {
+    lexical: [...lexical].slice(0, 6),
+    embedding: [...embedding].slice(0, 3)
+  };
+}
+
+function buildQueryVariants(
+  query: string,
+  intent: QueryIntent,
+  context: QueryContext,
+  followUp?: FollowUpAnalysis
+): { lexical: string[]; embedding: string[] } {
   const normalized = query.replace(/\s+/g, " ").trim();
   const focusTokens = getFocusTokens(normalized).slice(0, 6);
   const canonical = canonicalizeQueryTerms(normalized);
@@ -769,6 +1128,14 @@ function buildQueryVariants(query: string, intent: QueryIntent): { lexical: stri
       ? "설정 방법"
       : "해결 방법";
     lexical.add(`${focusTokens.join(" ")} ${suffix}`);
+  }
+
+  const intentVariants = buildIntentRewriteVariants(intent, context, focusTokens, canonicalFocusTokens);
+  for (const value of intentVariants.lexical) {
+    pushIfMissing(lexical, value);
+  }
+  for (const value of intentVariants.embedding) {
+    pushIfMissing(embedding, value);
   }
 
   const canonicalJoined = canonicalFocusTokens.join(" ");
@@ -808,6 +1175,20 @@ function buildQueryVariants(query: string, intent: QueryIntent): { lexical: stri
 
   if (canonicalJoined.includes("감사함") && canonicalJoined.includes("다운로드")) {
     lexical.add("감사함 다운로드 xml");
+  }
+
+  const historyAwareVariants = buildHistoryAwareQueryVariants(normalized, followUp ?? {
+    isFollowUp: false,
+    reason: null,
+    carryForwardTopics: [],
+    negativeTerms: [],
+    anchorUserText: null
+  });
+  for (const value of historyAwareVariants.lexical) {
+    pushIfMissing(lexical, value);
+  }
+  for (const value of historyAwareVariants.embedding) {
+    pushIfMissing(embedding, value);
   }
 
   return {
@@ -1998,7 +2379,12 @@ function mergeVectorCandidates(
   }
 }
 
-function computeHeuristicRerankBonus(query: string, intent: QueryIntent, item: RequireAggregate): number {
+function computeHeuristicRerankBonus(
+  query: string,
+  intent: QueryIntent,
+  context: QueryContext,
+  item: RequireAggregate
+): number {
   const bestIssueFocus = item.bestIssueText ? computeFocusCoverage(query, item.bestIssueText) : 0;
   const bestQaFocus = item.bestQaPairText ? computeFocusCoverage(query, item.bestQaPairText) : 0;
   const bestResolutionFocus = item.bestResolutionText ? computeFocusCoverage(query, item.bestResolutionText) : 0;
@@ -2030,6 +2416,21 @@ function computeHeuristicRerankBonus(query: string, intent: QueryIntent, item: R
 
   if (bestIssueFocus >= 0.4 && bestQaFocus >= 0.35) {
     bonus += 0.05;
+  }
+
+  if (context.hiddenNeeds.includes("처리 사례") && item.bestQaPairText) {
+    bonus += 0.03;
+  }
+
+  if (context.hiddenNeeds.includes("원인 분석") && item.bestIssueText) {
+    bonus += 0.02;
+  }
+
+  if (
+    (context.hiddenNeeds.includes("설정 방법") || context.hiddenNeeds.includes("적용 절차")) &&
+    (item.bestResolutionText || item.bestActionText)
+  ) {
+    bonus += 0.02;
   }
 
   if (item.bestResolutionText) {
@@ -2100,7 +2501,8 @@ function evaluateCandidateRelevance(
   query: string,
   intent: QueryIntent,
   item: RequireAggregate,
-  vectorScore: number
+  vectorScore: number,
+  followUp?: FollowUpAnalysis
 ): CandidateRelevanceResult {
   const { strongestFocusCoverage, strongestLexicalCoverage } = computeStrongestCoverage(query, item);
   const strongestDomainCoverage = Math.max(
@@ -2148,6 +2550,26 @@ function evaluateCandidateRelevance(
     passed = false;
     penalty += 0.08;
     reason ??= "NO_SYMPTOM_CONTEXT";
+  }
+
+  if (followUp && followUp.negativeTerms.length > 0) {
+    const texts = [
+      item.bestIssueText,
+      item.bestQaPairText,
+      item.bestResolutionText,
+      item.bestActionText,
+      item.bestAnswerText,
+      item.topText
+    ].filter((text): text is string => typeof text === "string" && text.trim().length > 0);
+
+    const negatedTokenHit = followUp.negativeTerms.some((token) =>
+      texts.some((text) => computeFocusCoverage(token, text) >= 0.95 || computeLexicalCoverage(token, text) >= 0.95)
+    );
+
+    if (negatedTokenHit) {
+      penalty += 0.08;
+      reason ??= "NEGATED_TERM_MATCH";
+    }
   }
 
   return {
@@ -2206,11 +2628,13 @@ function toRetrievalDebugCandidate(item: RankedRequire): RetrievalDebugCandidate
 
 async function computeChatSearch(
   query: string,
-  scope: RetrievalScope
+  scope: RetrievalScope,
+  history: ConversationTurn[] = []
 ): Promise<SearchComputationResult> {
   const retrievalStartedAt = Date.now();
   const normalizedQuery = query.replace(/\s+/g, " ").trim();
-  const retrievalCacheKey = `${scope}::${normalizedQuery}`;
+  const followUp = analyzeFollowUpQuery(normalizedQuery, history);
+  const retrievalCacheKey = `${scope}::${normalizedQuery}::${buildFollowUpCacheSignature(followUp)}`;
   const retrievalCacheTtlMs = parseEnvInt(
     process.env.RETRIEVAL_CACHE_TTL_MS,
     DEFAULT_RETRIEVAL_CACHE_TTL_MS
@@ -2221,7 +2645,9 @@ async function computeChatSearch(
   }
 
   const intent = detectQueryIntent(query);
-  const queryVariants = buildQueryVariants(query, intent);
+  const canonicalQuery = canonicalizeQueryTerms(query);
+  const queryContext = buildQueryContext(query, canonicalQuery, intent);
+  const queryVariants = buildQueryVariants(query, intent, queryContext, followUp);
   const emptyVectorResult: VectorCandidateFetchResult = {
     rows: [],
     vectorUsed: false,
@@ -2298,6 +2724,13 @@ async function computeChatSearch(
         query,
         retrievalScope: scope,
         intent,
+        queryContext: {
+          ...queryContext,
+          isFollowUp: followUp.isFollowUp,
+          followUpReason: followUp.reason,
+          carryForwardTopics: followUp.carryForwardTopics,
+          negativeTerms: followUp.negativeTerms
+        },
         queryVariants,
         rowCount: 0,
         requireCount: 0,
@@ -2425,7 +2858,7 @@ async function computeChatSearch(
           ? clamp01(0.5 * vectorScore)
           : clamp01(0.65 * ruleScore + 0.35 * vectorScore)
         : ruleScore;
-      const rerankBonus = computeHeuristicRerankBonus(query, intent, item);
+      const rerankBonus = computeHeuristicRerankBonus(query, intent, queryContext, item);
       return {
         aggregate: item,
         requireId: item.requireId,
@@ -2466,7 +2899,7 @@ async function computeChatSearch(
 
   const ranked: RankedRequire[] = baseRanked
     .map((item, index) => {
-      const relevance = evaluateCandidateRelevance(query, intent, item.aggregate, item.vectorScore);
+      const relevance = evaluateCandidateRelevance(query, intent, item.aggregate, item.vectorScore, followUp);
       const fusionRankScore = normalizedFusionScores[index] ?? 0;
       const finalScore = clamp01(
         item.blendedScore + 0.06 * fusionRankScore + item.rerankBonus - relevance.penalty
@@ -2588,6 +3021,13 @@ async function computeChatSearch(
       query,
       retrievalScope: scope,
       intent,
+      queryContext: {
+        ...queryContext,
+        isFollowUp: followUp.isFollowUp,
+        followUpReason: followUp.reason,
+        carryForwardTopics: followUp.carryForwardTopics,
+        negativeTerms: followUp.negativeTerms
+      },
       queryVariants,
       rowCount: rows.length,
       requireCount: byRequire.size,
@@ -2616,16 +3056,18 @@ async function computeChatSearch(
 
 export async function runChatSearch(
   query: string,
-  scope: RetrievalScope
+  scope: RetrievalScope,
+  history: ConversationTurn[] = []
 ): Promise<ChatResponseBody> {
-  const { response } = await computeChatSearch(query, scope);
+  const { response } = await computeChatSearch(query, scope, history);
   return response;
 }
 
 export async function runChatSearchDebug(
   query: string,
-  scope: RetrievalScope
+  scope: RetrievalScope,
+  history: ConversationTurn[] = []
 ): Promise<RetrievalDebugResponseBody> {
-  const { debug } = await computeChatSearch(query, scope);
+  const { debug } = await computeChatSearch(query, scope, history);
   return debug;
 }

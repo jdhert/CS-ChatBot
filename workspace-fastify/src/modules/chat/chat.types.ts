@@ -132,6 +132,16 @@ export interface RetrievalDebugResponseBody {
     hasSymptom: boolean;
     asksStatus: boolean;
   };
+  queryContext?: {
+    domains: string[];
+    workflowStages: string[];
+    symptoms: string[];
+    hiddenNeeds: string[];
+    isFollowUp?: boolean;
+    followUpReason?: string | null;
+    carryForwardTopics?: string[];
+    negativeTerms?: string[];
+  };
   queryVariants: {
     lexical: string[];
     embedding: string[];
