@@ -60,6 +60,121 @@ interface QueryLogEntry {
   totalMs?: number;
 }
 
+// ─── 대화 세션 영속화 ────────────────────────────────────────────────────────
+
+interface ConversationSessionInput {
+  clientSessionId?: string | null;
+  userKey?: string | null;
+  title?: string | null;
+}
+
+interface ConversationMessageInput {
+  messageId: string;
+  sessionId: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  status?: string | null;
+  answerSource?: string | null;
+  retrievalMode?: string | null;
+  confidence?: number | null;
+  bestRequireId?: string | null;
+  bestSccId?: string | null;
+  similarIssueUrl?: string | null;
+  logUuid?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+function buildConversationTitle(query: string): string {
+  const trimmed = query.trim();
+  return trimmed.length > 40 ? `${trimmed.slice(0, 40)}...` : trimmed;
+}
+
+async function ensureConversationSession(input: ConversationSessionInput): Promise<string> {
+  const pool = getVectorPool();
+  const clientSessionId = input.clientSessionId?.trim() || null;
+  const userKey = input.userKey?.trim() || null;
+  const title = input.title?.trim() || null;
+
+  if (clientSessionId) {
+    const existing = await pool.query<{ session_id: string }>(
+      `select session_id
+         from ai_core.conversation_session
+        where client_session_id = $1
+        limit 1`,
+      [clientSessionId]
+    );
+
+    if (existing.rowCount && existing.rows[0]?.session_id) {
+      const sessionId = existing.rows[0].session_id;
+      await pool.query(
+        `update ai_core.conversation_session
+            set user_key = coalesce(user_key, $2),
+                title = coalesce(title, $3),
+                updated_at = now()
+          where session_id = $1`,
+        [sessionId, userKey, title]
+      );
+      return sessionId;
+    }
+  }
+
+  const sessionId = crypto.randomUUID();
+  await pool.query(
+    `insert into ai_core.conversation_session
+      (session_id, client_session_id, user_key, title, last_message_at)
+     values ($1, $2, $3, $4, now())`,
+    [sessionId, clientSessionId, userKey, title]
+  );
+  return sessionId;
+}
+
+async function appendConversationMessage(input: ConversationMessageInput): Promise<string> {
+  const pool = getVectorPool();
+  const metadataJson = JSON.stringify(input.metadata ?? {});
+  await pool.query(
+    `with next_turn as (
+       select coalesce(max(turn_index), 0) + 1 as turn_index
+         from ai_core.conversation_message
+        where session_id = $2
+     )
+     insert into ai_core.conversation_message
+       (message_id, session_id, turn_index, role, content, status, answer_source, retrieval_mode,
+        confidence, best_require_id, best_scc_id, similar_issue_url, log_uuid, metadata)
+     select
+       $1, $2, next_turn.turn_index, $3, $4, $5, $6, $7,
+       $8, $9, $10, $11, $12, $13::jsonb
+     from next_turn`,
+    [
+      input.messageId,
+      input.sessionId,
+      input.role,
+      input.content,
+      input.status ?? null,
+      input.answerSource ?? null,
+      input.retrievalMode ?? null,
+      input.confidence ?? null,
+      input.bestRequireId ?? null,
+      input.bestSccId ? BigInt(input.bestSccId) : null,
+      input.similarIssueUrl ?? null,
+      input.logUuid ?? null,
+      metadataJson
+    ]
+  );
+
+  await pool.query(
+    `update ai_core.conversation_session
+        set message_count = message_count + 1,
+            last_message_at = now(),
+            updated_at = now()
+      where session_id = $1`,
+    [input.sessionId]
+  );
+
+  return input.messageId;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 // fire-and-forget: 응답 속도에 영향 없도록 await 하지 않음
 function logQuery(entry: QueryLogEntry): void {
   const pool = getVectorPool();
@@ -447,6 +562,8 @@ export function buildServer(): FastifyInstance {
     const scopeDefault = (process.env.RETRIEVAL_SCOPE_DEFAULT ?? "all").toLowerCase();
     const scope = (scopeRaw ?? scopeDefault) as RetrievalScope;
     const conversationHistory = sanitizeHistory(request.body?.conversationHistory);
+    const clientConversationId = request.body?.conversationId?.trim() || null;
+    const userKey = request.body?.userKey?.trim() || null;
 
     if (!query) {
       return reply.code(400).send({
@@ -604,6 +721,45 @@ export function buildServer(): FastifyInstance {
         retrievalMs,
         llmMs,
         totalMs,
+      });
+
+      // 대화 세션 영속화 (fire-and-forget)
+      const top3Candidates = (result.candidates ?? []).slice(0, 3);
+      ensureConversationSession({
+        clientSessionId: clientConversationId,
+        userKey,
+        title: buildConversationTitle(query)
+      }).then(async (conversationId) => {
+        const userMessageId = crypto.randomUUID();
+        await appendConversationMessage({
+          messageId: userMessageId,
+          sessionId: conversationId,
+          role: "user",
+          content: query,
+          status: "submitted",
+          metadata: { retrievalScope: scope, clientConversationId }
+        });
+        await appendConversationMessage({
+          messageId: crypto.randomUUID(),
+          sessionId: conversationId,
+          role: "assistant",
+          content: finalAnswer ?? "",
+          status: answerSource,
+          answerSource,
+          retrievalMode: result.retrievalMode,
+          confidence: result.confidence,
+          bestRequireId: selectedRequireId,
+          bestSccId: selectedSccId,
+          similarIssueUrl: selectedUrl,
+          logUuid,
+          metadata: {
+            top3Candidates,
+            queryRewritten: rewrite.rewriteUsed,
+            rewrittenQuery: rewrite.rewriteUsed ? effectiveQuery : null
+          }
+        });
+      }).catch((err) => {
+        request.log.warn(err, "conversation persistence failed (non-critical)");
       });
 
       return reply.code(200).send({
@@ -968,6 +1124,75 @@ export function buildServer(): FastifyInstance {
       return reply.code(500).send({ error: "ADMIN_LOGS_FAILED" });
     }
   });
+  // ─── 대화 이력 조회 API ───────────────────────────────────────────────────────
+
+  app.get("/conversations", async (request, reply) => {
+    const qs = request.query as Record<string, string>;
+    const clientSessionId = qs.clientSessionId?.trim() || null;
+    const userKey = qs.userKey?.trim() || null;
+    const limit = Math.min(Math.max(parseInt(qs.limit ?? "20", 10) || 20, 1), 100);
+    if (!clientSessionId && !userKey) {
+      return reply.code(400).send({
+        error: "INVALID_QUERY",
+        message: "`clientSessionId` or `userKey` is required."
+      });
+    }
+    const pool = getVectorPool();
+    try {
+      const conditions: string[] = [];
+      const params: unknown[] = [];
+      if (clientSessionId) {
+        params.push(clientSessionId);
+        conditions.push(`client_session_id = $${params.length}`);
+      }
+      if (userKey) {
+        params.push(userKey);
+        conditions.push(`user_key = $${params.length}`);
+      }
+      params.push(limit);
+      const whereClause = conditions.length > 0 ? `where ${conditions.join(" or ")}` : "";
+      const result = await pool.query(
+        `select session_id, client_session_id, user_key, title, status, message_count,
+                last_message_at, created_at, updated_at
+           from ai_core.conversation_session
+           ${whereClause}
+          order by updated_at desc
+          limit $${params.length}`,
+        params
+      );
+      return reply.code(200).send({ rows: result.rows });
+    } catch (error) {
+      request.log.error(error, "failed to fetch conversations");
+      return reply.code(500).send({ error: "CONVERSATION_LIST_FAILED" });
+    }
+  });
+
+  app.get<{ Params: { sessionId: string } }>("/conversations/:sessionId/messages", async (request, reply) => {
+    const sessionId = request.params?.sessionId?.trim();
+    if (!sessionId) {
+      return reply.code(400).send({
+        error: "INVALID_SESSION_ID",
+        message: "`sessionId` is required."
+      });
+    }
+    const pool = getVectorPool();
+    try {
+      const result = await pool.query(
+        `select message_id, session_id, turn_index, role, content, status,
+                answer_source, retrieval_mode, confidence, best_require_id, best_scc_id,
+                similar_issue_url, log_uuid, metadata, created_at
+           from ai_core.conversation_message
+          where session_id = $1
+          order by turn_index asc, created_at asc`,
+        [sessionId]
+      );
+      return reply.code(200).send({ rows: result.rows });
+    } catch (error) {
+      request.log.error(error, "failed to fetch conversation messages");
+      return reply.code(500).send({ error: "CONVERSATION_MESSAGES_FAILED" });
+    }
+  });
+
   // ─────────────────────────────────────────────────────────────────────────────
 
   app.addHook("onClose", async () => {
