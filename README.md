@@ -260,7 +260,7 @@ VECTOR_DB_HOST=DB_HOST_REMOVED
 VECTOR_DB_PORT=5432
 VECTOR_DB_NAME=ai2
 VECTOR_DB_USER=novian
-VECTOR_DB_PASSWORD=REMOVED
+VECTOR_DB_PASSWORD=<db_password_secret>
 
 # 프론트엔드
 cd frontend && npm install && npm run dev   # Port 3000
