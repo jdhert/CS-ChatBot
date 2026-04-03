@@ -814,6 +814,8 @@ export function buildServer(): FastifyInstance {
     const scopeDefault = (process.env.RETRIEVAL_SCOPE_DEFAULT ?? "all").toLowerCase();
     const scope = (scopeRaw ?? scopeDefault) as RetrievalScope;
     const conversationHistory = sanitizeHistory(request.body?.conversationHistory);
+    const clientConversationId = request.body?.conversationId?.trim() || null;
+    const userKey = request.body?.userKey?.trim() || null;
 
     if (!query) {
       return reply.code(400).send({
@@ -996,6 +998,39 @@ export function buildServer(): FastifyInstance {
         rerankMs: result.timings?.rerankMs,
         retrievalMs,
         totalMs: Date.now() - retrievalStartedAt,
+      });
+
+      // 대화 세션 영속화 (fire-and-forget)
+      ensureConversationSession({
+        clientSessionId: clientConversationId,
+        userKey,
+        title: buildConversationTitle(query)
+      }).then(async (conversationId) => {
+        await appendConversationMessage({
+          messageId: crypto.randomUUID(),
+          sessionId: conversationId,
+          role: "user",
+          content: query,
+          status: "submitted",
+          metadata: { retrievalScope: scope, clientConversationId }
+        });
+        await appendConversationMessage({
+          messageId: crypto.randomUUID(),
+          sessionId: conversationId,
+          role: "assistant",
+          content: accumulatedText,
+          status: "llm_stream",
+          answerSource: "llm_stream",
+          retrievalMode: result.retrievalMode,
+          confidence: result.confidence,
+          bestRequireId: result.bestRequireId,
+          bestSccId: result.bestSccId,
+          similarIssueUrl,
+          logUuid,
+          metadata: { top3Candidates, queryRewritten: rewrite.rewriteUsed }
+        });
+      }).catch((err) => {
+        request.log.warn(err, "conversation persistence failed (non-critical)");
       });
 
       reply.raw.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);

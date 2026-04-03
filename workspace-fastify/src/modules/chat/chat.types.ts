@@ -30,6 +30,8 @@ export interface ConversationTurn {
 export interface ChatRequestBody {
   query: string;
   retrievalScope?: RetrievalScope;
+  conversationId?: string;
+  userKey?: string;
   conversationHistory?: ConversationTurn[];
 }
 
@@ -61,6 +63,9 @@ export interface ChatResponseView {
 }
 
 export interface ChatResponseBody {
+  conversationId?: string | null;
+  userMessageId?: string | null;
+  assistantMessageId?: string | null;
   bestRequireId: string | null;
   bestSccId: string | null;
   confidence: number;

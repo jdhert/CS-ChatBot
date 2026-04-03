@@ -294,6 +294,7 @@ export default function ChatbotPage() {
         body: JSON.stringify({
           query: content,
           retrievalScope: "all",
+          conversationId: convId,
           conversationHistory: currentMessages
             .filter((m) => m.sender === "user" || (m.sender === "bot" && m.content && m.status === "matched"))
             .slice(-6)
