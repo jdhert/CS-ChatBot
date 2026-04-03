@@ -378,28 +378,46 @@ sequenceDiagram
 - [x] 메시지 재전송 버튼 및 질문 수정하기
 - [x] SCC 이력 검색 페이지 (`/search`, 점수·청크타입·벡터 신호 시각화)
 
+### 완료 (2026-04-02 추가)
+- [x] nginx `depends_on` healthcheck 조건 추가 (502 재발 방지)
+- [x] 실패 케이스 로그 저장 및 대시보드 (`/logs` 웹 UI)
+- [x] 쿼리 리라이팅 (LLM 프리패스, `QUERY_REWRITE_ENABLED=true`)
+- [x] 검색·로그 페이지 다크모드 연동 (StorageEvent 동기화)
+- [x] 대화 이력 DB 영속화 (`conversation_session` / `conversation_message`)
+- [x] DB 뷰 `s+` 버그 표시 레이어 패치 (`repairStrippedS`)
+
 ### 고도화 예정
 
-#### 프론트엔드
-- [ ] 검색 페이지 다크모드 연동 (챗봇 다크모드 상태와 동기화)
-- [ ] 채팅 내보내기 완료 토스트 알림 (sonner 활용)
-- [ ] 검색 결과 URL 공유 (`?q=` 쿼리스트링 반영)
-- [ ] page.tsx 커스텀 훅 분리 (`useChat`, `useConversations`)
-- [ ] 대화 이력 서버 저장 (localStorage 휘발 방지)
+#### 🔴 높은 우선순위
+- [ ] **DB 뷰 정규식 근본 수정** — `s+` → `\s+` 수정 후 전체 재임베딩 (Google 쿼터 확보 시)
+- [ ] **pgvector ANN 인덱스** — 저차원 모델(768→256)로 전환 후 HNSW 인덱스 활성화
+- [ ] **API Rate Limiting** — `@fastify/rate-limit` 적용
 
-#### 백엔드 / 인프라
-- [ ] Docker nginx `depends_on` healthcheck 조건 추가 (502 재발 방지)
-- [ ] `/chat` 실패 케이스 로그 저장 및 대시보드 (웹 UI)
-- [ ] API Rate Limiting (`@fastify/rate-limit`)
-- [ ] 쿼리 리라이팅 (LLM 프리패스)
+#### 🟡 중간 우선순위
+- [ ] **대화 이력 UI 복원** — `/conversations` API 연동, 사이드바에서 이전 대화 불러오기
+- [ ] **사용자 피드백 수집 강화** — 👍👎 누적 통계 대시보드 (`query_log.user_feedback` 활용)
+- [ ] **검색 결과 URL 공유** — `/search?q=` 쿼리스트링 반영
+- [ ] **채팅 내보내기 포맷 개선** — PDF / markdown 형식 지원
 
-#### 데이터
-- [ ] 임베딩 커버리지 100% 달성 (현재 38.6%)
-- [ ] 저차원 임베딩 모델 검토 (pgvector ANN 인덱스 활성화 목적)
+#### 🟢 낮은 우선순위 (코드 품질)
+- [ ] **page.tsx 커스텀 훅 분리** — `useChat`, `useConversations` 분리
+- [ ] **임베딩 커버리지 모니터링** — 신규 SCC 적재 시 자동 알림
 
 ## 📝 변경 이력
 
-### 2026-04-01 (최신)
+### 2026-04-02 (최신)
+- ✅ **대화 이력 DB 영속화** — `/chat/stream` 완료 후 `conversation_session` / `conversation_message` 자동 저장
+- ✅ **대화 조회 API** — `GET /conversations`, `GET /conversations/:sessionId/messages` 추가
+- ✅ **server.ts 한글 인코딩 수정** — UTF-8 BOM 제거, mojibake 전수 복원
+- ✅ **DB 뷰 `s+` 버그 표시 레이어 패치** — `repairStrippedS()` 함수로 BaseConfig 등 답변 텍스트 복원
+- ✅ **쿼리 리라이팅 활성화** — docker-compose.yml에 `QUERY_REWRITE_ENABLED=true` 기본값 추가
+
+### 2026-04-03
+- ✅ **대화 이력 저장 1차 연결** — 프론트 `conversationId`를 `/chat/stream`에 전달하고 서버에서 세션/메시지 저장
+- ✅ **대화 저장 스키마 초기화 스크립트** — `workspace-fastify/scripts/init-conversation-schema.mjs`
+- ✅ **대화 조회 API 1차 준비** — 세션 목록/메시지 조회 엔드포인트 추가
+
+### 2026-04-01
 - ✅ **모바일 반응형 사이드바** — 햄버거 메뉴 버튼, 오버레이 배경, 사이드바 열기/닫기 상태 관리
 - ✅ **메시지 재전송** — 오류 발생 시 마지막 bot 메시지에 '다시 시도' 버튼 표시
 - ✅ **질문 수정하기** — 결과 없음(no_match) 시 입력창에 기존 질문 자동 채우기

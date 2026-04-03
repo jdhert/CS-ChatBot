@@ -490,3 +490,16 @@ retrieval 결과:
 - 레거시 코드는 참조 전용
 - 직접 import 금지
 - 세부 경계 정책은 `BOUNDARIES.md` 참조
+
+## 2026-04-03 업데이트
+
+- 대화 영속화 1차 반영
+  - `ai_core.conversation_session`
+  - `ai_core.conversation_message`
+- 초기화 명령 추가
+  - `npm run db:init:conversations`
+- `/chat`, `/chat/stream`가 `conversationId`, `userKey`를 받을 수 있도록 확장
+- 응답에 `conversationId`, `userMessageId`, `assistantMessageId`를 포함하도록 확장
+- 세션/메시지 조회용 1차 API 추가
+  - `GET /conversations`
+  - `GET /conversations/:sessionId/messages`
