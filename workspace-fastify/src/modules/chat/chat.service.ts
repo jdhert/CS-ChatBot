@@ -1605,35 +1605,32 @@ async function fetchChunkRows(scope: RetrievalScope, queries: string[]): Promise
       and chunk_type in ('issue', 'action', 'resolution', 'qa_pair')
   `;
 
-  // Pass 1: LIMIT 500 + FTS 동시 실행
-  const [limitResult, ftsRows] = await Promise.all([
-    pool.query<ChunkRow>(`${baseSelect}\nlimit 500`),
-    fetchFtsChunkRows(pool, queries),
-  ]);
+  // Step 1: FTS로 관련 require_id를 GIN 인덱스로 빠르게 조회
+  const ftsRows = await fetchFtsChunkRows(pool, queries);
+  const ftsRequireIds = [...new Set(ftsRows.map(r => r.requireId))];
 
-  // LIMIT 500에 이미 포함된 require_id 집합
-  const sampledRequireIds = new Set(limitResult.rows.map(r => r.requireId));
+  // Step 2: FTS require_id로 뷰를 필터링 (전체 스캔 방지)
+  let viewRows: ChunkRow[] = [];
+  if (ftsRequireIds.length > 0) {
+    const filtered = await pool.query<ChunkRow>(
+      `${baseSelect} and require_id = any($1::uuid[])`,
+      [ftsRequireIds]
+    );
+    viewRows = filtered.rows;
+  }
 
-  // FTS 결과 중 LIMIT 500에 없는 항목만 synthetic ChunkRow로 추가
-  // (feature 점수는 기본값 사용 — vector-only 합성 행과 동일한 방식)
-  const syntheticRows: ChunkRow[] = ftsRows
-    .filter(r => !sampledRequireIds.has(r.requireId) && r.chunkText.trim().length > 0)
-    .map(r => ({
-      sccId: r.sccId,
-      requireId: r.requireId,
-      chunkType: r.chunkType as ChunkRow["chunkType"],
-      chunkText: r.chunkText,
-      stateWeight: 0.30,
-      resolvedWeight: 0.30,
-      evidenceWeight: 0.20,
-      textLenScore: 0.20,
-      techSignalScore: 0.10,
-      specificityScore: 0.20,
-      closurePenaltyScore: 0.0,
-      resolutionStage: 0,
-    }));
+  // Step 3: FTS 결과가 적을 때만 소규모 blind 샘플 추가 (커버리지 보완)
+  if (ftsRequireIds.length < 20) {
+    const blindResult = await pool.query<ChunkRow>(`${baseSelect}\nlimit 150`);
+    const existingIds = new Set(viewRows.map(r => r.requireId));
+    for (const r of blindResult.rows) {
+      if (!existingIds.has(r.requireId)) {
+        viewRows.push(r);
+      }
+    }
+  }
 
-  return [...limitResult.rows, ...syntheticRows];
+  return viewRows;
 }
 
 function normalizeCosineSimilarity(raw: number): number {
