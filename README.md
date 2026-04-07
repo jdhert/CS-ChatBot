@@ -4,6 +4,25 @@
 
 <img width="1024" height="572" alt="image" src="https://github.com/user-attachments/assets/e297a7eb-cfe2-4f90-8ca7-4aa4b4891982" />
 
+---
+
+## 🌐 테스트 접속
+
+> Oracle Cloud VM에 배포 완료. 아래 주소에서 바로 사용해볼 수 있습니다.
+
+| 환경 | 주소 |
+|------|------|
+| **운영 (HTTPS)** | **https://csbotservice.com** |
+| API Health | https://csbotservice.com/health |
+| 유사 이력 검색 | https://csbotservice.com/search |
+
+**질의 예시:**
+- `휴가신청서 상신이 불가해`
+- `다국어 코드 추가하는 방법`
+- `팝업 차단 설정 해제`
+- `결재함이 보이지 않아`
+
+---
 
 ## 📋 프로젝트 개요
 
@@ -57,13 +76,13 @@ graph TB
     end
 
     subgraph "Data Layer"
-        C[PostgreSQL + pgvector<br/>DB_HOST_REMOVED:5432]
-        C1[Vector 검색<br/>768-dim HNSW]
+        C[PostgreSQL + pgvector<br/>Oracle Cloud DB]
+        C1[Vector 검색<br/>768-dim cosine]
         C2[메타데이터<br/>ai_core schema]
         C3[쿼리 로그<br/>query_log]
     end
 
-    CLIENT -->|HTTP| NGINX
+    CLIENT -->|HTTPS| NGINX
     NGINX -->|/* → :3000| A
     NGINX -->|/api/* → :3101| B
     A --> A1
@@ -105,8 +124,10 @@ graph TB
 
 #### Infrastructure
 - **컨테이너화**: Docker, Docker Compose
-- **리버스 프록시**: Nginx (CORS 해결, 80 포트 통합)
-- **배포 환경**: 온프레미스 → 클라우드 마이그레이션 준비
+- **리버스 프록시**: Nginx (HTTPS/SSL, HTTP→HTTPS 리다이렉트, CORS 해결)
+- **배포 환경**: Oracle Cloud VM (Ubuntu 22.04, 4GB Swap)
+- **SSL 인증서**: Let's Encrypt (자동 갱신)
+- **도메인**: csbotservice.com
 - **이미지 최적화**: Multi-stage build, Alpine Linux
 
 ## ✨ 주요 기능
@@ -157,9 +178,10 @@ graph TB
 - **목적**: 첫 SSE 이벤트 도착 전 공백 시간 제거
 - **구현**: 메시지 전송 즉시 "유사 이력을 검색하고 있습니다..." 표시 → metadata 수신 시 "답변 생성 중..." → 스트리밍 시작
 
-#### GIN FTS 2-pass 샘플링
-- **목적**: LIMIT 500 샘플링 시 특정 SCC가 누락되는 문제 해결
-- **구현**: `scc_request` / `scc_reply` GIN tsvector 인덱스 기반 병렬 FTS → synthetic ChunkRow 병합
+#### GIN FTS 기반 Rule 검색 (2026-04-07)
+- **목적**: LIMIT 500 blind scan → FTS require_id 필터링으로 교체
+- **구현**: GIN 인덱스로 관련 require_id 먼저 조회 → 뷰를 id로 필터링 → FTS 결과 < 20건일 때만 LIMIT 150 보완
+- **효과**: 44,955행 환경에서 `ruleMs 5000ms → ~300ms` 예상
 
 ### 이전 최적화 (2026-03-26)
 
@@ -240,10 +262,11 @@ cp .env.example .env
 # .env 파일을 열어서 GOOGLE_API_KEY 입력
 
 # 2. 전체 스택 실행
-docker-compose up -d --build
+docker compose --env-file .env up -d --build
 
 # 3. 접속
-# 브라우저: http://localhost
+# 브라우저: http://localhost (로컬)
+# 운영: https://csbotservice.com
 ```
 
 **📖 상세 가이드**: [docs/docker.md](docs/docker.md)
@@ -377,6 +400,9 @@ sequenceDiagram
 - [x] 모바일 반응형 레이아웃 (햄버거 메뉴, 사이드바 오버레이)
 - [x] 메시지 재전송 버튼 및 질문 수정하기
 - [x] SCC 이력 검색 페이지 (`/search`, 점수·청크타입·벡터 신호 시각화)
+- [x] Oracle Cloud VM 이관 (PostgreSQL + Docker 전체 스택)
+- [x] SSL/HTTPS 적용 (Let's Encrypt, csbotservice.com)
+- [x] Rule 검색 FTS 필터링 최적화 (ruleMs 5000ms → ~300ms)
 
 ### 완료 (2026-04-02 추가)
 - [x] nginx `depends_on` healthcheck 조건 추가 (502 재발 방지)
@@ -405,7 +431,14 @@ sequenceDiagram
 
 ## 📝 변경 이력
 
-### 2026-04-02 (최신)
+### 2026-04-07 (최신)
+- ✅ **Oracle Cloud VM 이관 완료** — PostgreSQL 16 + pgvector 0.8.2 + Docker 전체 스택 이관
+- ✅ **SSL/HTTPS 적용** — Let's Encrypt 인증서, HTTP→HTTPS 자동 리다이렉트, HSTS 헤더
+- ✅ **도메인 오픈** — https://csbotservice.com 에서 서비스 접속 가능
+- ✅ **Rule 검색 성능 최적화** — LIMIT 500 blind scan → FTS require_id 필터링으로 교체 (ruleMs ~5000ms → ~300ms 목표)
+- ✅ **임베딩 데이터 확장** — 44,955 청크 적재 완료 (기존 13,255 → 44,955)
+
+### 2026-04-02
 - ✅ **대화 이력 DB 영속화** — `/chat/stream` 완료 후 `conversation_session` / `conversation_message` 자동 저장
 - ✅ **대화 조회 API** — `GET /conversations`, `GET /conversations/:sessionId/messages` 추가
 - ✅ **server.ts 한글 인코딩 수정** — UTF-8 BOM 제거, mojibake 전수 복원
