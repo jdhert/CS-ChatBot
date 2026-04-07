@@ -24,9 +24,12 @@ jobs:
             echo "▶ 최신 코드 pull..."
             git pull origin main
 
-            echo "▶ Docker 재빌드 및 재시작..."
-            docker compose --env-file .env up -d --build
+            echo "▶ 이미지 빌드 (기존 서비스 유지)..."
+            docker compose --env-file .env build
+
+            echo "▶ 컨테이너 교체 (단절 최소화)..."
+            docker compose --env-file .env up -d --no-build
 
             echo "▶ 헬스체크..."
-            sleep 10
+            sleep 15
             curl -sf http://localhost/health && echo "✅ 배포 완료" || echo "⚠️ 헬스체크 실패 — 로그 확인 필요"
