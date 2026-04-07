@@ -18,7 +18,7 @@ services:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - GOOGLE_MODEL=${GOOGLE_MODEL:-gemini-2.5-flash-lite}
       # Vector Database
-      - VECTOR_DB_HOST=${VECTOR_DB_HOST:-DB_HOST_REMOVED}
+      - VECTOR_DB_HOST=${VECTOR_DB_HOST:-VM_HOST_REMOVED}
       - VECTOR_DB_PORT=${VECTOR_DB_PORT:-5432}
       - VECTOR_DB_NAME=${VECTOR_DB_NAME:-ai2}
       - VECTOR_DB_USER=${VECTOR_DB_USER:-novian}
@@ -95,7 +95,8 @@ services:
       - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - /etc/letsencrypt/live/csbotservice.com/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
+      - /etc/letsencrypt/live/csbotservice.com/privkey.pem:/etc/nginx/ssl/privkey.pem:ro
       - ./nginx/logs:/var/log/nginx
     depends_on:
       frontend:
