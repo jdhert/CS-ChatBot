@@ -1,5 +1,17 @@
 "use client"
 
+// crypto.randomUUID 구형 브라우저 폴리필
+function generateUUID(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === "x" ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
 import { useEffect, useState } from "react"
 import { flushSync } from "react-dom"
 import { ChatArea } from "@/components/chatbot/chat-area"
@@ -41,7 +53,7 @@ const quickFallbackAnswer =
 
 function toMessageFromDisplay(display: ChatDisplay | undefined, fallbackText: string, logId?: string | null): Message {
   return {
-    id: crypto.randomUUID(),
+    id: generateUUID(),
     sender: "bot",
     timestamp: new Date(),
     title: display?.title ?? "AI Core",
@@ -259,7 +271,7 @@ export default function ChatbotPage() {
     }
 
     const userMessage: Message = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       content,
       sender: "user",
       timestamp: new Date(),
@@ -267,7 +279,7 @@ export default function ChatbotPage() {
     setCurrentMessages((prev) => [...prev, userMessage])
 
     // Create a temporary assistant message for streaming
-    const assistantMessageId = crypto.randomUUID()
+    const assistantMessageId = generateUUID()
     const assistantMessage: Message = {
       id: assistantMessageId,
       sender: "bot",
@@ -313,7 +325,7 @@ export default function ChatbotPage() {
         const jsonData = await response.json()
         const isSecurityBlocked = jsonData.error === "SECURITY_BLOCKED"
         const noMatchMessage: Message = {
-          id: crypto.randomUUID(),
+          id: generateUUID(),
           sender: "bot",
           timestamp: new Date(),
           title: isSecurityBlocked ? "보안 정책" : "유사 사례 없음",
@@ -422,7 +434,7 @@ export default function ChatbotPage() {
       }
     } catch (error) {
       const errorMessage: Message = {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         sender: "bot",
         timestamp: new Date(),
         title: "연결 오류",
