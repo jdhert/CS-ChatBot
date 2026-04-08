@@ -53,55 +53,49 @@ CoviAI는 사내 매뉴얼, 이력 데이터, FAQ 등을 기반으로 사용자 
 ```mermaid
 graph TB
     subgraph "Client"
-        CLIENT[브라우저<br/>Port: 80]
+        CLIENT[브라우저<br/>HTTPS]
     end
 
-    subgraph "Infrastructure Layer"
-        NGINX[Nginx<br/>Reverse Proxy<br/>Port: 80]
+    subgraph "Oracle Cloud VM (VM_HOST_REMOVED)"
+        NGINX[Nginx<br/>Port 80/443<br/>SSL Termination]
+        subgraph "Docker Compose"
+            A[Next.js Frontend<br/>Container: 3000]
+            B[Fastify Backend<br/>Container: 3101]
+        end
+        C[PostgreSQL 16 + pgvector<br/>Port: 5432]
     end
 
-    subgraph "Frontend Layer"
-        A[Next.js App<br/>Container: 3000]
-        A1[챗봇 UI<br/>React 19]
-        A2[대화 이력 관리<br/>localStorage]
+    subgraph "GitHub"
+        GH[GitHub Repo<br/>main branch]
+        GA[GitHub Actions<br/>ubuntu-latest]
+        GHCR[GitHub Container Registry<br/>ghcr.io]
     end
 
-    subgraph "Backend Layer"
-        B[Fastify Server<br/>Container: 3101]
-        B1[SSE 스트리밍]
-        B2[RAG 검색 엔진]
-        B3[Google Gemini API]
-        B4[인메모리 쿼리 캐시]
-        B5[자동 인제스트 스케줄러]
+    subgraph "External API"
+        GEMINI[Google Gemini API<br/>LLM + Embedding]
     end
 
-    subgraph "Data Layer"
-        C[PostgreSQL + pgvector<br/>Oracle Cloud DB]
-        C1[Vector 검색<br/>768-dim cosine]
-        C2[메타데이터<br/>ai_core schema]
-        C3[쿼리 로그<br/>query_log]
-    end
-
-    CLIENT -->|HTTPS| NGINX
+    CLIENT -->|https://csbotservice.com| NGINX
     NGINX -->|/* → :3000| A
     NGINX -->|/api/* → :3101| B
-    A --> A1
-    A --> A2
-    B --> B1
-    B --> B2
-    B --> B3
-    B --> B4
-    B --> B5
     B -->|SQL| C
-    C --> C1
-    C --> C2
-    C --> C3
+    B -->|Embedding / LLM| GEMINI
+
+    GH -->|git push main| GA
+    GA -->|docker build + push| GHCR
+    GA -->|SSH: docker pull + up| NGINX
+
+    GHCR -.->|docker pull| A
+    GHCR -.->|docker pull| B
 
     style CLIENT fill:#f9f9f9,stroke:#333,stroke-width:2px
-    style NGINX fill:#009639,stroke:#333,stroke-width:2px
+    style NGINX fill:#009639,stroke:#333,stroke-width:2px,color:#fff
     style A fill:#61dafb,stroke:#333,stroke-width:2px
     style B fill:#00c58e,stroke:#333,stroke-width:2px
-    style C fill:#336791,stroke:#333,stroke-width:2px
+    style C fill:#336791,stroke:#333,stroke-width:2px,color:#fff
+    style GA fill:#2088FF,stroke:#333,stroke-width:2px,color:#fff
+    style GHCR fill:#6e40c9,stroke:#333,stroke-width:2px,color:#fff
+    style GEMINI fill:#4285F4,stroke:#333,stroke-width:2px,color:#fff
 ```
 
 ### 기술 스택
@@ -123,12 +117,20 @@ graph TB
 - **캐시**: 인메모리 Map (TTL 30분, 최대 500 엔트리)
 
 #### Infrastructure
-- **컨테이너화**: Docker, Docker Compose
-- **리버스 프록시**: Nginx (HTTPS/SSL, HTTP→HTTPS 리다이렉트, CORS 해결)
-- **배포 환경**: Oracle Cloud VM (Ubuntu 22.04, 4GB Swap)
-- **SSL 인증서**: Let's Encrypt (자동 갱신)
+- **클라우드**: Oracle Cloud VM (Ubuntu 22.04, 1GB RAM + 4GB Swap)
+- **컨테이너화**: Docker Compose (backend + frontend + nginx)
+- **리버스 프록시**: Nginx (HTTPS 443, HTTP→HTTPS 301 리다이렉트, CORS 해결)
+- **SSL 인증서**: Let's Encrypt / Certbot (90일 자동 갱신)
 - **도메인**: csbotservice.com
 - **이미지 최적화**: Multi-stage build, Alpine Linux
+- **컨테이너 레지스트리**: GitHub Container Registry (ghcr.io)
+
+#### CI/CD
+- **파이프라인**: GitHub Actions (`main` 브랜치 push 시 자동 트리거)
+- **빌드 환경**: GitHub Actions runner (ubuntu-latest, 7GB RAM) — VM에서 빌드하지 않음
+- **레이어 캐시**: Registry cache (`ghcr.io` cache manifest) 활용으로 반복 빌드 가속
+- **배포 방식**: SSH → `docker pull` + `docker compose up -d` (이미지 교체만)
+- **단절 시간**: ~10초 (빌드 시간 VM 부담 없음)
 
 ## ✨ 주요 기능
 
@@ -246,11 +248,63 @@ coviAI/                             # Monorepo 루트
 │   ├── scripts/                   # DB 초기화 · 임베딩 적재 스크립트
 │   └── docs/eval/                 # 평가셋 및 결과 산출물
 │
-├── nginx/                         # Nginx 리버스 프록시 설정
+├── nginx/                         # Nginx 리버스 프록시 설정 (SSL 포함)
+├── .github/workflows/
+│   └── deploy.yml                 # CI/CD: 빌드 → ghcr.io 푸시 → VM 배포
 ├── docker-compose.yml             # Docker Compose 오케스트레이션
 ├── CLAUDE.md                      # AI 에이전트 인수인계 문서
 └── README.md
 ```
+
+## 🚢 CI/CD 파이프라인
+
+### 전체 흐름
+
+```
+git push origin main
+        │
+        ▼
+[GitHub Actions] build job
+  ├─ frontend Dockerfile 빌드 (Next.js)
+  ├─ backend Dockerfile 빌드 (Fastify + TypeScript)
+  ├─ 레이어 캐시 적용 (ghcr.io cache manifest)
+  └─ ghcr.io/jdhert/coviai-frontend:latest 푸시
+     ghcr.io/jdhert/coviai-backend:latest 푸시
+        │
+        ▼
+[GitHub Actions] deploy job (build 성공 시)
+  SSH → Oracle Cloud VM (VM_HOST_REMOVED)
+  ├─ git pull origin main
+  ├─ docker compose pull  (새 이미지 수신)
+  ├─ docker compose up -d (컨테이너 교체 ~10초 단절)
+  └─ curl /health 헬스체크
+        │
+        ▼
+https://csbotservice.com 자동 반영 ✅
+```
+
+### GitHub Secrets 구성
+
+| Secret | 설명 |
+|---|---|
+| `VM_HOST` | Oracle Cloud VM IP (`VM_HOST_REMOVED`) |
+| `VM_USER` | SSH 접속 계정 (`ubuntu`) |
+| `VM_SSH_KEY` | VM 배포 전용 ed25519 개인키 |
+
+### 빌드 최적화
+
+| 항목 | 내용 |
+|---|---|
+| 빌드 위치 | GitHub Actions runner (2 vCPU / 7GB RAM) |
+| VM 작업 | `docker pull` + `docker compose up -d` 만 수행 |
+| 레이어 캐시 | ghcr.io registry cache — `package.json` 미변경 시 `npm ci` 스킵 |
+| 이미지 빌드 방식 | Multi-stage (deps → builder → runner) |
+
+### 워크플로우 파일
+
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
+
+---
 
 ## 🔧 설치 및 실행
 
@@ -279,7 +333,7 @@ docker compose --env-file .env up -d --build
 # 환경 변수 설정 (workspace-fastify/.env)
 GOOGLE_API_KEY=your_google_api_key
 GOOGLE_MODEL=gemini-2.5-flash
-VECTOR_DB_HOST=DB_HOST_REMOVED
+VECTOR_DB_HOST=VM_HOST_REMOVED   # Oracle Cloud DB
 VECTOR_DB_PORT=5432
 VECTOR_DB_NAME=ai2
 VECTOR_DB_USER=novian
