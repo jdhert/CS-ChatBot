@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -21,15 +22,15 @@ jobs:
             set -e
             cd ~/coviAI
 
-            echo "▶ 최신 코드 pull..."
+            echo "[1/4] Pull latest code from main..."
             git pull origin main
 
-            echo "▶ 이미지 빌드 (기존 서비스 유지)..."
+            echo "[2/4] Build Docker images..."
             docker compose --env-file .env build
 
-            echo "▶ 컨테이너 교체 (단절 최소화)..."
+            echo "[3/4] Recreate containers..."
             docker compose --env-file .env up -d --no-build
 
-            echo "▶ 헬스체크..."
+            echo "[4/4] Run health check..."
             sleep 15
-            curl -sf http://localhost/health && echo "✅ 배포 완료" || echo "⚠️ 헬스체크 실패 — 로그 확인 필요"
+            curl -sf http://localhost/health && echo "[ok] Deploy completed" || echo "[warn] Health check failed. Check docker logs on the VM."
