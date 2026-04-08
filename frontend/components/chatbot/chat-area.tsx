@@ -49,9 +49,9 @@ export function ChatArea({
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-col gap-4 p-6">
           {messages.length === 0 && (
-            <div className="flex flex-col items-center pt-8 pb-4 text-center">
-              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-blue-400 text-white shadow-lg">
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-blue-400 text-white shadow-xl">
+                <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -60,13 +60,14 @@ export function ChatArea({
                   />
                 </svg>
               </div>
-              <h2 className="mb-1 text-lg font-semibold text-foreground">코비전 CS AI 코어</h2>
+              <h2 className="mb-2 text-xl font-semibold text-foreground">코비전 CS AI 코어</h2>
               <p className="mb-6 max-w-md text-sm leading-relaxed text-muted-foreground">
                 증상이나 오류 메시지를 입력하면 유사 처리 이력과 안내 답변을 찾아드립니다.
               </p>
-              <QuickActions onSelect={onSendMessage} />
             </div>
           )}
+
+          {messages.length === 0 && <QuickActions onSelect={onSendMessage} />}
 
           {messages.map((message, idx) => {
             const isLastBotMessage =
