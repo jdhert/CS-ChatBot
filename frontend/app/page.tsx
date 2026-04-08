@@ -140,8 +140,16 @@ export default function ChatbotPage() {
     }
   }, [currentMessages, activeConversationId])
 
-  // 새 대화 시작
+  // 새 대화 시작 — 이미 빈 대화가 있으면 그쪽으로 이동 (중복 방지)
   function handleNewConversation() {
+    const existingEmpty = conversations.find((conv) => conv.messages.length === 0)
+    if (existingEmpty) {
+      setActiveConversationId(existingEmpty.id)
+      setCurrentMessages([])
+      saveActiveSessionId(existingEmpty.id)
+      return
+    }
+
     const newConv = createNewConversation()
     setActiveConversationId(newConv.id)
     setCurrentMessages([])
