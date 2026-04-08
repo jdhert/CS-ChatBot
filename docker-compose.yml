@@ -3,6 +3,7 @@ version: '3.8'
 services:
   # AI Core Backend (Fastify)
   backend:
+    image: ghcr.io/jdhert/coviai-backend:latest
     build:
       context: ./workspace-fastify
       dockerfile: Dockerfile
@@ -64,6 +65,7 @@ services:
 
   # Frontend (Next.js)
   frontend:
+    image: ghcr.io/jdhert/coviai-frontend:latest
     build:
       context: ./frontend
       dockerfile: Dockerfile
