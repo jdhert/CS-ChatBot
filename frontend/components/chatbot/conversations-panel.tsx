@@ -27,10 +27,8 @@ export function ConversationsPanel({
 
   return (
     <div className="flex h-full flex-col bg-card">
-      {/* 헤더 */}
       <div className="flex items-center justify-between border-b border-border p-4">
         <div className="flex items-center gap-2">
-          {/* 모바일 닫기 버튼 */}
           {onClose && (
             <button
               onClick={onClose}
@@ -53,7 +51,6 @@ export function ConversationsPanel({
         </button>
       </div>
 
-      {/* 대화 목록 */}
       <div className="flex-1 overflow-y-auto p-3">
         {conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -123,7 +120,6 @@ export function ConversationsPanel({
         )}
       </div>
 
-      {/* 온라인 상태 표시 */}
       <div className="border-t border-border bg-card px-4 py-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="relative flex h-2 w-2">

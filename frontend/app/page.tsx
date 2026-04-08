@@ -92,7 +92,6 @@ export default function ChatbotPage() {
         setCurrentMessages(activeConv.messages)
       }
     } else if (loadedConversations.length > 0) {
-      // 가장 최근 대화 선택
       const latestConv = loadedConversations[0]
       setActiveConversationId(latestConv.id)
       setCurrentMessages(latestConv.messages)
@@ -120,7 +119,6 @@ export default function ChatbotPage() {
     if (activeConversationId && currentMessages.length > 0) {
       const existingConv = conversations.find((conv) => conv.id === activeConversationId)
 
-      // 제목 결정: 기존 제목이 "새 대화"이면 첫 메시지로 업데이트, 아니면 기존 제목 유지
       const shouldUpdateTitle = !existingConv?.title || existingConv.title === "새 대화"
       const title = shouldUpdateTitle
         ? generateConversationTitle(currentMessages[0]?.content ?? "새 대화")
@@ -140,7 +138,7 @@ export default function ChatbotPage() {
     }
   }, [currentMessages, activeConversationId])
 
-  // 새 대화 시작 — 이미 빈 대화가 있으면 그쪽으로 이동 (중복 방지)
+  // 새 대화 시작 — 이미 빈 대화가 있으면 그쪽으로 이동
   function handleNewConversation() {
     const existingEmpty = conversations.find((conv) => conv.messages.length === 0)
     if (existingEmpty) {
@@ -160,7 +158,6 @@ export default function ChatbotPage() {
     saveConversations(newConversations)
   }
 
-  // 대화 선택
   function handleSelectConversation(conversationId: string) {
     setActiveConversationId(conversationId)
     saveActiveSessionId(conversationId)
@@ -171,22 +168,18 @@ export default function ChatbotPage() {
     }
   }
 
-  // 대화 삭제
   function handleDeleteConversation(conversationId: string) {
     const newConversations = deleteConversation(conversations, conversationId)
     setConversations(newConversations)
     saveConversations(newConversations)
 
-    // 삭제한 대화가 활성 대화인 경우
     if (conversationId === activeConversationId) {
       if (newConversations.length > 0) {
-        // 다른 대화 선택
         const nextConv = newConversations[0]
         setActiveConversationId(nextConv.id)
         setCurrentMessages(nextConv.messages)
         saveActiveSessionId(nextConv.id)
       } else {
-        // 대화가 없으면 새 대화 시작 (삭제 후의 상태를 기반으로)
         const newConv = createNewConversation()
         setActiveConversationId(newConv.id)
         setCurrentMessages([])
@@ -199,12 +192,10 @@ export default function ChatbotPage() {
     }
   }
 
-  // 질문 수정하기 — 입력창에 기존 질문 채우기
   function handleEditQuestion(query: string) {
     setInputPrefill((prev) => ({ value: query, seq: (prev?.seq ?? 0) + 1 }))
   }
 
-  // 메시지 재전송
   function handleRetry() {
     const lastUserMessage = [...currentMessages].reverse().find((m) => m.sender === "user")
     if (!lastUserMessage) return
@@ -212,14 +203,12 @@ export default function ChatbotPage() {
     const lastUserIdx = currentMessages.map((_, i) => i).filter((i) => currentMessages[i].sender === "user").pop()
     if (lastUserIdx === undefined) return
 
-    // 마지막 user 메시지 이후의 bot 메시지 제거 후 재전송
     flushSync(() => {
       setCurrentMessages((prev) => prev.slice(0, lastUserIdx))
     })
     submitMessage(lastUserMessage.content)
   }
 
-  // 채팅 내보내기
   function handleExportChat() {
     if (currentMessages.length === 0) {
       toast({
@@ -263,9 +252,7 @@ export default function ChatbotPage() {
     })
   }
 
-  // 메시지 전송 (스트리밍 방식)
   async function submitMessage(content: string) {
-    // 활성 대화가 없으면 새로 생성
     let convId = activeConversationId
     if (!convId) {
       const newConv = createNewConversation(content)
@@ -286,7 +273,6 @@ export default function ChatbotPage() {
     }
     setCurrentMessages((prev) => [...prev, userMessage])
 
-    // Create a temporary assistant message for streaming
     const assistantMessageId = generateUUID()
     const assistantMessage: Message = {
       id: assistantMessageId,
@@ -294,16 +280,16 @@ export default function ChatbotPage() {
       timestamp: new Date(),
       title: "AI Core",
       content: "",
-      status: "searching", // 검색 시작 상태
+      status: "searching",
       answerSource: null,
       retrievalMode: null,
       confidence: null,
       linkUrl: null,
       linkLabel: null,
-      isNewMessage: true, // 새로 생성되는 메시지이므로 타이핑 효과 적용
+      isNewMessage: true,
     }
     setCurrentMessages((prev) => [...prev, assistantMessage])
-    setIsTyping(false) // 스트리밍 메시지 자체가 보이므로 로딩 인디케이터는 숨김
+    setIsTyping(false)
 
     try {
       const response = await fetch("/api/chat/stream", {
@@ -326,10 +312,8 @@ export default function ChatbotPage() {
         throw new Error(`HTTP ${response.status}`)
       }
 
-      // Check if response is JSON (error or no match) or streaming
       const contentType = response.headers.get("content-type")
       if (contentType?.includes("application/json")) {
-        // Handle JSON response (no match or error)
         const jsonData = await response.json()
         const isSecurityBlocked = jsonData.error === "SECURITY_BLOCKED"
         const noMatchMessage: Message = {
@@ -341,7 +325,6 @@ export default function ChatbotPage() {
           status: jsonData.error || "no_match",
           answerSource: "no_match",
         }
-        // Replace the temporary message
         setCurrentMessages((prev) =>
           prev.map((msg) => (msg.id === assistantMessageId ? noMatchMessage : msg))
         )
@@ -380,8 +363,9 @@ export default function ChatbotPage() {
               if (event.type === "metadata") {
                 metadata = event.data
                 if (typeof event.data?.logId === "string") capturedLogId = event.data.logId
-                if (Array.isArray(event.data?.top3Candidates)) capturedTop3 = event.data.top3Candidates as import("@/components/chatbot/chat-message").CandidateCard[]
-                // metadata 수신 즉시 링크/상태 표시 — 첫 chunk 전 5초 공백 제거
+                if (Array.isArray(event.data?.top3Candidates)) {
+                  capturedTop3 = event.data.top3Candidates as import("@/components/chatbot/chat-message").CandidateCard[]
+                }
                 const earlyLinkUrl = typeof metadata?.similarIssueUrl === "string"
                   ? metadata.similarIssueUrl
                   : null
@@ -401,14 +385,12 @@ export default function ChatbotPage() {
                 )
               } else if (event.type === "chunk") {
                 accumulatedText += event.data
-                // 첫 chunk 도착 시 "생성 중" 텍스트를 실제 내용으로 교체하며 실시간 렌더링
                 setCurrentMessages((prev) =>
                   prev.map((msg) =>
                     msg.id === assistantMessageId ? { ...msg, content: accumulatedText, status: "streaming" } : msg
                   )
                 )
               } else if (event.type === "done") {
-                // 스트리밍 완료 — 링크/메타데이터 최종 확정
                 const finalLinkUrl = typeof metadata?.similarIssueUrl === "string"
                   ? metadata.similarIssueUrl
                   : null
@@ -432,15 +414,14 @@ export default function ChatbotPage() {
                 )
               }
             } catch {
-              // Skip invalid JSON
+              // ignore invalid JSON line
             }
           }
         }
       } finally {
-        // 스트림 리더 정리 (메모리 누수 방지)
         reader.releaseLock()
       }
-    } catch (error) {
+    } catch {
       const errorMessage: Message = {
         id: generateUUID(),
         sender: "bot",
@@ -450,7 +431,6 @@ export default function ChatbotPage() {
         status: "error",
         answerSource: "proxy_error",
       }
-      // Replace the temporary message with error message
       setCurrentMessages((prev) =>
         prev.map((msg) => (msg.id === assistantMessageId ? errorMessage : msg))
       )
@@ -461,7 +441,6 @@ export default function ChatbotPage() {
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
-      {/* 모바일 오버레이 배경 */}
       {isSidebarOpen && (
         <div
           className="fixed inset-0 z-20 bg-black/50 md:hidden"
@@ -470,7 +449,6 @@ export default function ChatbotPage() {
         />
       )}
 
-      {/* 왼쪽: 대화 목록 */}
       <div
         className={[
           "fixed inset-y-0 left-0 z-30 w-64 border-r border-border bg-card transition-transform duration-200",
@@ -494,7 +472,6 @@ export default function ChatbotPage() {
         />
       </div>
 
-      {/* 오른쪽: 채팅 영역 */}
       <main className="flex-1 overflow-hidden">
         <ChatArea
           messages={currentMessages}
