@@ -32,9 +32,9 @@ CoviAI는 사내 매뉴얼, 이력 데이터, FAQ 등을 기반으로 사용자 
 - 📄 [개요 문서 보기](./docs/CS-ChatBot_개요.pdf)
 
 ### 현재 데이터 규모
-- **임베딩 벡터**: 44,955개 청크 (소스 기준) / 17,355개 적재 완료
+- **임베딩 벡터**: 44,955개 청크 / 44,955개 적재 완료 (100%)
 - **벡터 차원**: 768 (Google Gemini Embedding 2)
-- **임베딩 커버리지**: ~38.6% (증분 적재 진행 중)
+- **임베딩 커버리지**: 100%
 - **청크 타입**: issue, action, resolution, qa_pair
 - **검색 방식**: Hybrid (Rule-based + Vector Similarity)
 
