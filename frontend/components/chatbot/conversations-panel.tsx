@@ -91,7 +91,7 @@ export function ConversationsPanel({
                           >
                             <p className="truncate text-sm font-medium">{conversation.title}</p>
                             <p className="mt-0.5 truncate text-xs opacity-70">
-                              {conversation.messageCount}개 메시지
+                              {conversation.messages.length}개 메시지
                             </p>
                           </button>
                           <button

@@ -1,122 +1,105 @@
 import type { Message } from "@/components/chatbot/chat-message"
 
 export interface Conversation {
-  id: string          // client_session_id — 백엔드로 conversationId로 전송되는 값
-  sessionId?: string  // DB session_id — DELETE/messages API 호출에 사용
+  id: string
   title: string
-  messageCount: number
   messages: Message[]
-  messagesLoaded: boolean
   createdAt: string
   updatedAt: string
 }
 
-const USER_KEY_STORAGE = "covi_ai_user_key"
-const ACTIVE_SESSION_STORAGE = "covi_ai_active_session"
+const CONVERSATIONS_STORAGE_KEY = "covi_ai_conversations_v1"
+const ACTIVE_SESSION_KEY = "covi_ai_active_session_v1"
+const MAX_CONVERSATIONS = 50
 
-export function getUserKey(): string {
-  if (typeof window === "undefined") return ""
-  let key = window.localStorage.getItem(USER_KEY_STORAGE)
-  if (!key) {
-    key =
-      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID()
-        : `user-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    window.localStorage.setItem(USER_KEY_STORAGE, key)
-  }
-  return key
-}
-
-export function loadActiveSessionId(): string | null {
-  if (typeof window === "undefined") return null
-  return window.localStorage.getItem(ACTIVE_SESSION_STORAGE)
-}
-
-export function saveActiveSessionId(id: string): void {
-  if (typeof window === "undefined") return
-  window.localStorage.setItem(ACTIVE_SESSION_STORAGE, id)
+export function generateConversationId(): string {
+  return `conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 }
 
 export function generateConversationTitle(firstMessage: string): string {
+  // 첫 메시지의 처음 30자를 제목으로 사용
   return firstMessage.length > 30 ? `${firstMessage.slice(0, 30)}...` : firstMessage
 }
 
-interface DbSessionRow {
-  session_id: string
-  client_session_id?: string | null
-  title?: string | null
-  message_count?: number | null
-  created_at: string
-  updated_at: string
-}
+export function loadConversations(): Conversation[] {
+  if (typeof window === "undefined") {
+    return []
+  }
 
-interface DbMessageRow {
-  message_id: string
-  role: string
-  content: string
-  status?: string | null
-  answer_source?: string | null
-  retrieval_mode?: string | null
-  confidence?: number | null
-  similar_issue_url?: string | null
-  log_uuid?: string | null
-  created_at: string
-}
-
-export async function fetchConversations(userKey: string): Promise<Conversation[]> {
-  if (!userKey) return []
   try {
-    const res = await fetch(`/api/conversations?userKey=${encodeURIComponent(userKey)}`)
-    if (!res.ok) return []
-    const data = await res.json()
-    const rows: DbSessionRow[] = data.rows ?? []
-    return rows.map((row) => ({
-      id: row.client_session_id ?? row.session_id,
-      sessionId: row.session_id,
-      title: row.title ?? "새 대화",
-      messageCount: row.message_count ?? 0,
-      messages: [],
-      messagesLoaded: false,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    }))
+    const stored = window.localStorage.getItem(CONVERSATIONS_STORAGE_KEY)
+    if (!stored) {
+      return []
+    }
+
+    const parsed = JSON.parse(stored) as Conversation[]
+    if (!Array.isArray(parsed)) {
+      return []
+    }
+
+    return parsed
+      .filter((conv) => typeof conv?.id === "string" && Array.isArray(conv?.messages))
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
   } catch {
     return []
   }
 }
 
-export async function fetchMessages(sessionId: string): Promise<Message[]> {
+export function saveConversations(conversations: Conversation[]): void {
+  if (typeof window === "undefined") {
+    return
+  }
+
   try {
-    const res = await fetch(`/api/conversations/${sessionId}/messages`)
-    if (!res.ok) return []
-    const data = await res.json()
-    const rows: DbMessageRow[] = data.rows ?? []
-    return rows.map((row) => ({
-      id: row.message_id,
-      sender: (row.role === "user" ? "user" : "bot") as "user" | "bot",
-      content: row.content,
-      timestamp: new Date(row.created_at),
-      title: row.role === "assistant" ? "코비전 CS Bot" : undefined,
-      status: row.status ?? (row.role === "assistant" ? "matched" : undefined),
-      answerSource: row.answer_source ?? null,
-      retrievalMode: row.retrieval_mode ?? null,
-      confidence: row.confidence ?? null,
-      linkUrl: row.similar_issue_url ?? null,
-      linkLabel: row.similar_issue_url ? "유사 이력 바로가기" : null,
-      logId: row.log_uuid ?? null,
-    }))
-  } catch {
-    return []
+    const limited = conversations.slice(0, MAX_CONVERSATIONS)
+    window.localStorage.setItem(CONVERSATIONS_STORAGE_KEY, JSON.stringify(limited))
+  } catch (error) {
+    console.error("Failed to save conversations:", error)
   }
 }
 
-export async function deleteConversationFromDb(sessionId: string): Promise<boolean> {
-  try {
-    const res = await fetch(`/api/conversations/${sessionId}`, { method: "DELETE" })
-    return res.ok
-  } catch {
-    return false
+export function loadActiveSessionId(): string | null {
+  if (typeof window === "undefined") {
+    return null
   }
+
+  return window.localStorage.getItem(ACTIVE_SESSION_KEY)
+}
+
+export function saveActiveSessionId(sessionId: string): void {
+  if (typeof window === "undefined") {
+    return
+  }
+
+  window.localStorage.setItem(ACTIVE_SESSION_KEY, sessionId)
+}
+
+export function createNewConversation(firstMessage?: string): Conversation {
+  const now = new Date().toISOString()
+  return {
+    id: generateConversationId(),
+    title: firstMessage ? generateConversationTitle(firstMessage) : "새 대화",
+    messages: [],
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+export function updateConversation(conversations: Conversation[], updatedConversation: Conversation): Conversation[] {
+  const index = conversations.findIndex((conv) => conv.id === updatedConversation.id)
+  if (index === -1) {
+    // 새 대화 추가
+    return [updatedConversation, ...conversations]
+  }
+
+  // 기존 대화 업데이트
+  const updated = [...conversations]
+  updated[index] = updatedConversation
+  return updated
+}
+
+export function deleteConversation(conversations: Conversation[], conversationId: string): Conversation[] {
+  return conversations.filter((conv) => conv.id !== conversationId)
 }
 
 export function groupConversationsByDate(conversations: Conversation[]): Map<string, Conversation[]> {
@@ -133,12 +116,19 @@ export function groupConversationsByDate(conversations: Conversation[]): Map<str
     const convDay = new Date(convDate.getFullYear(), convDate.getMonth(), convDate.getDate())
 
     let group: string
-    if (convDay.getTime() === today.getTime()) group = "오늘"
-    else if (convDay.getTime() === yesterday.getTime()) group = "어제"
-    else if (convDay >= lastWeek) group = "지난 7일"
-    else group = "이전"
+    if (convDay.getTime() === today.getTime()) {
+      group = "오늘"
+    } else if (convDay.getTime() === yesterday.getTime()) {
+      group = "어제"
+    } else if (convDay >= lastWeek) {
+      group = "지난 7일"
+    } else {
+      group = "이전"
+    }
 
-    if (!groups.has(group)) groups.set(group, [])
+    if (!groups.has(group)) {
+      groups.set(group, [])
+    }
     groups.get(group)!.push(conv)
   }
 

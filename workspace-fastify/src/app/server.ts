@@ -1247,22 +1247,6 @@ export function buildServer(): FastifyInstance {
     }
   });
 
-  app.delete<{ Params: { sessionId: string } }>("/conversations/:sessionId", async (request, reply) => {
-    const sessionId = request.params?.sessionId?.trim();
-    if (!sessionId) {
-      return reply.code(400).send({ error: "INVALID_SESSION_ID" });
-    }
-    const pool = getVectorPool();
-    try {
-      await pool.query(`DELETE FROM ai_core.conversation_message WHERE session_id = $1`, [sessionId]);
-      await pool.query(`DELETE FROM ai_core.conversation_session WHERE session_id = $1`, [sessionId]);
-      return reply.code(204).send();
-    } catch (error) {
-      request.log.error(error, "failed to delete conversation");
-      return reply.code(500).send({ error: "CONVERSATION_DELETE_FAILED" });
-    }
-  });
-
   // ─────────────────────────────────────────────────────────────────────────────
 
   app.addHook("onClose", async () => {
