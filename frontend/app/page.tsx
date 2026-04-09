@@ -1,6 +1,5 @@
 "use client"
 
-// crypto.randomUUID 구형 브라우저 폴리필
 function generateUUID(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID()
@@ -12,7 +11,7 @@ function generateUUID(): string {
   })
 }
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { flushSync } from "react-dom"
 import { ChatArea } from "@/components/chatbot/chat-area"
 import { ConversationsPanel } from "@/components/chatbot/conversations-panel"
@@ -20,53 +19,17 @@ import type { Message } from "@/components/chatbot/chat-message"
 import { toast } from "@/hooks/use-toast"
 import type { Conversation } from "@/lib/conversations"
 import {
-  loadConversations,
-  saveConversations,
+  getUserKey,
   loadActiveSessionId,
   saveActiveSessionId,
-  createNewConversation,
-  updateConversation,
-  deleteConversation,
   generateConversationTitle,
+  fetchConversations,
+  fetchMessages,
+  deleteConversationFromDb,
 } from "@/lib/conversations"
-
-interface ChatDisplay {
-  title?: string | null
-  answerText?: string | null
-  linkUrl?: string | null
-  linkLabel?: string | null
-  status?: string | null
-  answerSource?: string | null
-  retrievalMode?: string | null
-  confidence?: number | null
-}
-
-interface ChatApiResponse {
-  display?: ChatDisplay
-  generatedAnswer?: string | null
-  message?: string | null
-  logId?: string | null
-}
 
 const quickFallbackAnswer =
   "현재 AI Core 응답을 가져오지 못했습니다. 잠시 후 다시 시도하거나, 구체적인 오류 문구와 화면 경로를 함께 입력해 주세요."
-
-function toMessageFromDisplay(display: ChatDisplay | undefined, fallbackText: string, logId?: string | null): Message {
-  return {
-    id: generateUUID(),
-    sender: "bot",
-    timestamp: new Date(),
-    title: display?.title ?? "AI Core",
-    content: display?.answerText ?? fallbackText,
-    linkUrl: display?.linkUrl ?? null,
-    linkLabel: display?.linkLabel ?? null,
-    status: display?.status ?? null,
-    answerSource: display?.answerSource ?? null,
-    retrievalMode: display?.retrievalMode ?? null,
-    confidence: typeof display?.confidence === "number" ? display.confidence : null,
-    logId: logId ?? null,
-  }
-}
 
 export default function ChatbotPage() {
   const [isDarkMode, setIsDarkMode] = useState(false)
@@ -74,73 +37,95 @@ export default function ChatbotPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [inputPrefill, setInputPrefill] = useState<{ value: string; seq: number } | undefined>(undefined)
 
-  // 대화 관리
+  const [userKey, setUserKey] = useState<string>("")
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [currentMessages, setCurrentMessages] = useState<Message[]>([])
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
 
-  // 초기 로드
+  // 초기 로드: userKey 생성 → DB에서 대화 목록 fetch
   useEffect(() => {
-    const loadedConversations = loadConversations()
-    setConversations(loadedConversations)
+    const key = getUserKey()
+    setUserKey(key)
 
-    const savedActiveId = loadActiveSessionId()
-    if (savedActiveId && loadedConversations.some((conv) => conv.id === savedActiveId)) {
-      setActiveConversationId(savedActiveId)
-      const activeConv = loadedConversations.find((conv) => conv.id === savedActiveId)
-      if (activeConv) {
-        setCurrentMessages(activeConv.messages)
+    fetchConversations(key).then((convs) => {
+      setConversations(convs)
+
+      const savedActiveId = loadActiveSessionId()
+      const target = savedActiveId
+        ? convs.find((c) => c.id === savedActiveId) ?? convs[0]
+        : convs[0]
+
+      if (target) {
+        setActiveConversationId(target.id)
+        loadConversationMessages(target)
       }
-    } else if (loadedConversations.length > 0) {
-      const latestConv = loadedConversations[0]
-      setActiveConversationId(latestConv.id)
-      setCurrentMessages(latestConv.messages)
-      saveActiveSessionId(latestConv.id)
-    }
+    })
   }, [])
 
-  // 다크모드 — 마운트 시 localStorage에서 복원
+  // 다크모드 복원
   useEffect(() => {
     const saved = localStorage.getItem("darkMode") === "true"
     if (saved) setIsDarkMode(true)
   }, [])
 
   useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add("dark")
-    } else {
-      document.documentElement.classList.remove("dark")
-    }
+    if (isDarkMode) document.documentElement.classList.add("dark")
+    else document.documentElement.classList.remove("dark")
     localStorage.setItem("darkMode", String(isDarkMode))
   }, [isDarkMode])
 
-  // 대화 저장
-  useEffect(() => {
-    if (activeConversationId && currentMessages.length > 0) {
-      const existingConv = conversations.find((conv) => conv.id === activeConversationId)
-
-      const shouldUpdateTitle = !existingConv?.title || existingConv.title === "새 대화"
-      const title = shouldUpdateTitle
-        ? generateConversationTitle(currentMessages[0]?.content ?? "새 대화")
-        : existingConv.title
-
-      const updatedConv: Conversation = {
-        id: activeConversationId,
-        title,
-        messages: currentMessages,
-        createdAt: existingConv?.createdAt ?? new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }
-
-      const newConversations = updateConversation(conversations, updatedConv)
-      setConversations(newConversations)
-      saveConversations(newConversations)
+  async function loadConversationMessages(conv: Conversation) {
+    if (conv.messagesLoaded) {
+      setCurrentMessages(conv.messages)
+      return
     }
-  }, [currentMessages, activeConversationId])
+    if (!conv.sessionId) {
+      setCurrentMessages([])
+      return
+    }
+    setIsLoadingMessages(true)
+    const msgs = await fetchMessages(conv.sessionId)
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === conv.id ? { ...c, messages: msgs, messagesLoaded: true } : c
+      )
+    )
+    setCurrentMessages(msgs)
+    setIsLoadingMessages(false)
+  }
 
-  // 새 대화 시작 — 이미 빈 대화가 있으면 그쪽으로 이동
+  // DB에서 대화 목록 갱신 (메시지 전송 완료 후 호출)
+  async function refreshConversations(activeId: string, currentMsgs: Message[]) {
+    if (!userKey) return
+    const convs = await fetchConversations(userKey)
+    setConversations((prev) => {
+      return convs.map((fresh) => {
+        const existing = prev.find((p) => p.id === fresh.id)
+        if (existing?.messagesLoaded) {
+          return { ...fresh, messages: existing.messages, messagesLoaded: true }
+        }
+        return fresh
+      })
+    })
+    // 현재 활성 대화 메시지는 in-memory 유지
+    setCurrentMessages(currentMsgs)
+    // 새 대화가 DB에 생겼으면 sessionId 업데이트
+    const matched = convs.find((c) => c.id === activeId)
+    if (matched) {
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === activeId
+            ? { ...c, sessionId: matched.sessionId, messageCount: matched.messageCount }
+            : c
+        )
+      )
+    }
+  }
+
   function handleNewConversation() {
-    const existingEmpty = conversations.find((conv) => conv.messages.length === 0)
+    // 이미 빈 새 대화가 있으면 그쪽으로
+    const existingEmpty = conversations.find((c) => c.messageCount === 0 && !c.messagesLoaded)
     if (existingEmpty) {
       setActiveConversationId(existingEmpty.id)
       setCurrentMessages([])
@@ -148,46 +133,48 @@ export default function ChatbotPage() {
       return
     }
 
-    const newConv = createNewConversation()
-    setActiveConversationId(newConv.id)
+    const newId = generateUUID()
+    const now = new Date().toISOString()
+    const newConv: Conversation = {
+      id: newId,
+      title: "새 대화",
+      messageCount: 0,
+      messages: [],
+      messagesLoaded: true,
+      createdAt: now,
+      updatedAt: now,
+    }
+    setConversations((prev) => [newConv, ...prev])
+    setActiveConversationId(newId)
     setCurrentMessages([])
-    saveActiveSessionId(newConv.id)
-
-    const newConversations = [newConv, ...conversations]
-    setConversations(newConversations)
-    saveConversations(newConversations)
+    saveActiveSessionId(newId)
   }
 
   function handleSelectConversation(conversationId: string) {
+    if (conversationId === activeConversationId) return
     setActiveConversationId(conversationId)
     saveActiveSessionId(conversationId)
 
-    const selectedConv = conversations.find((conv) => conv.id === conversationId)
-    if (selectedConv) {
-      setCurrentMessages(selectedConv.messages)
-    }
+    const conv = conversations.find((c) => c.id === conversationId)
+    if (conv) loadConversationMessages(conv)
   }
 
-  function handleDeleteConversation(conversationId: string) {
-    const newConversations = deleteConversation(conversations, conversationId)
-    setConversations(newConversations)
-    saveConversations(newConversations)
+  async function handleDeleteConversation(conversationId: string) {
+    const conv = conversations.find((c) => c.id === conversationId)
+    if (conv?.sessionId) {
+      await deleteConversationFromDb(conv.sessionId)
+    }
+
+    const remaining = conversations.filter((c) => c.id !== conversationId)
+    setConversations(remaining)
 
     if (conversationId === activeConversationId) {
-      if (newConversations.length > 0) {
-        const nextConv = newConversations[0]
-        setActiveConversationId(nextConv.id)
-        setCurrentMessages(nextConv.messages)
-        saveActiveSessionId(nextConv.id)
+      if (remaining.length > 0) {
+        setActiveConversationId(remaining[0].id)
+        loadConversationMessages(remaining[0])
+        saveActiveSessionId(remaining[0].id)
       } else {
-        const newConv = createNewConversation()
-        setActiveConversationId(newConv.id)
-        setCurrentMessages([])
-        saveActiveSessionId(newConv.id)
-
-        const updatedConversations = [newConv, ...newConversations]
-        setConversations(updatedConversations)
-        saveConversations(updatedConversations)
+        handleNewConversation()
       }
     }
   }
@@ -199,42 +186,26 @@ export default function ChatbotPage() {
   function handleRetry() {
     const lastUserMessage = [...currentMessages].reverse().find((m) => m.sender === "user")
     if (!lastUserMessage) return
-
     const lastUserIdx = currentMessages.map((_, i) => i).filter((i) => currentMessages[i].sender === "user").pop()
     if (lastUserIdx === undefined) return
-
-    flushSync(() => {
-      setCurrentMessages((prev) => prev.slice(0, lastUserIdx))
-    })
+    flushSync(() => setCurrentMessages((prev) => prev.slice(0, lastUserIdx)))
     submitMessage(lastUserMessage.content)
   }
 
   function handleExportChat() {
     if (currentMessages.length === 0) {
-      toast({
-        title: "내보낼 대화가 없습니다",
-        description: "메시지가 생긴 뒤 다시 시도해 주세요.",
-        variant: "destructive",
-      })
+      toast({ title: "내보낼 대화가 없습니다", description: "메시지가 생긴 뒤 다시 시도해 주세요.", variant: "destructive" })
       return
     }
-
-    const lines: string[] = [
-      "=== 코비전 CS AI Core 대화 내보내기 ===",
-      `내보낸 시각: ${new Date().toLocaleString("ko-KR")}`,
-      "",
-    ]
-
+    const lines: string[] = ["=== 코비전 CS Bot 대화 내보내기 ===", `내보낸 시각: ${new Date().toLocaleString("ko-KR")}`, ""]
     for (const msg of currentMessages) {
-      const ts = new Date(msg.timestamp)
-      const time = ts.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
-      const sender = msg.sender === "user" ? "사용자" : (msg.title ?? "AI Core")
+      const time = new Date(msg.timestamp).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
+      const sender = msg.sender === "user" ? "사용자" : (msg.title ?? "CS Bot")
       lines.push(`[${time}] ${sender}`)
       lines.push(msg.content)
       if (msg.linkUrl) lines.push(`  링크: ${msg.linkUrl}`)
       lines.push("")
     }
-
     const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -245,24 +216,29 @@ export default function ChatbotPage() {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-
-    toast({
-      title: "대화를 내보냈습니다",
-      description: fileName,
-    })
+    toast({ title: "대화를 내보냈습니다", description: fileName })
   }
+
+  // submitMessage 완료 후 최신 메시지를 ref로 캡처해서 refreshConversations에 전달
+  const latestMessagesRef = useRef<Message[]>([])
 
   async function submitMessage(content: string) {
     let convId = activeConversationId
     if (!convId) {
-      const newConv = createNewConversation(content)
-      convId = newConv.id
+      convId = generateUUID()
+      const now = new Date().toISOString()
+      const newConv: Conversation = {
+        id: convId,
+        title: generateConversationTitle(content),
+        messageCount: 0,
+        messages: [],
+        messagesLoaded: true,
+        createdAt: now,
+        updatedAt: now,
+      }
+      setConversations((prev) => [newConv, ...prev])
       setActiveConversationId(convId)
       saveActiveSessionId(convId)
-
-      const newConversations = [newConv, ...conversations]
-      setConversations(newConversations)
-      saveConversations(newConversations)
     }
 
     const userMessage: Message = {
@@ -271,14 +247,12 @@ export default function ChatbotPage() {
       sender: "user",
       timestamp: new Date(),
     }
-    setCurrentMessages((prev) => [...prev, userMessage])
-
     const assistantMessageId = generateUUID()
     const assistantMessage: Message = {
       id: assistantMessageId,
       sender: "bot",
       timestamp: new Date(),
-      title: "AI Core",
+      title: "코비전 CS Bot",
       content: "",
       status: "searching",
       answerSource: null,
@@ -288,19 +262,31 @@ export default function ChatbotPage() {
       linkLabel: null,
       isNewMessage: true,
     }
-    setCurrentMessages((prev) => [...prev, assistantMessage])
-    setIsTyping(false)
+
+    setCurrentMessages((prev) => {
+      const next = [...prev, userMessage, assistantMessage]
+      latestMessagesRef.current = next
+      return next
+    })
+
+    // 제목 업데이트 (첫 메시지일 때)
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === convId && (c.title === "새 대화" || c.messageCount === 0)
+          ? { ...c, title: generateConversationTitle(content) }
+          : c
+      )
+    )
 
     try {
       const response = await fetch("/api/chat/stream", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query: content,
-          retrievalScope: "all",
+          retrievalScope: "scc",
           conversationId: convId,
+          userKey,
           conversationHistory: currentMessages
             .filter((m) => m.sender === "user" || (m.sender === "bot" && m.content && m.status === "matched"))
             .slice(-6)
@@ -308,9 +294,7 @@ export default function ChatbotPage() {
         }),
       })
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
       const contentType = response.headers.get("content-type")
       if (contentType?.includes("application/json")) {
@@ -325,16 +309,16 @@ export default function ChatbotPage() {
           status: jsonData.error || "no_match",
           answerSource: "no_match",
         }
-        setCurrentMessages((prev) =>
-          prev.map((msg) => (msg.id === assistantMessageId ? noMatchMessage : msg))
-        )
+        setCurrentMessages((prev) => {
+          const next = prev.map((msg) => (msg.id === assistantMessageId ? noMatchMessage : msg))
+          latestMessagesRef.current = next
+          return next
+        })
         return
       }
 
       const reader = response.body?.getReader()
-      if (!reader) {
-        throw new Error("No response body")
-      }
+      if (!reader) throw new Error("No response body")
 
       const decoder = new TextDecoder()
       let buffer = ""
@@ -355,10 +339,8 @@ export default function ChatbotPage() {
           for (const line of lines) {
             const trimmed = line.trim()
             if (!trimmed || !trimmed.startsWith("data: ")) continue
-
             try {
-              const jsonStr = trimmed.slice(6)
-              const event = JSON.parse(jsonStr)
+              const event = JSON.parse(trimmed.slice(6))
 
               if (event.type === "metadata") {
                 metadata = event.data
@@ -366,44 +348,36 @@ export default function ChatbotPage() {
                 if (Array.isArray(event.data?.top3Candidates)) {
                   capturedTop3 = event.data.top3Candidates as import("@/components/chatbot/chat-message").CandidateCard[]
                 }
-                const earlyLinkUrl = typeof metadata?.similarIssueUrl === "string"
-                  ? metadata.similarIssueUrl
-                  : null
-                const earlyLinkLabel = earlyLinkUrl ? "유사 이력 바로가기" : null
-                setCurrentMessages((prev) =>
-                  prev.map((msg) =>
+                const earlyLinkUrl = typeof metadata?.similarIssueUrl === "string" ? metadata.similarIssueUrl : null
+                setCurrentMessages((prev) => {
+                  const next = prev.map((msg) =>
                     msg.id === assistantMessageId
-                      ? {
-                          ...msg,
-                          content: "답변을 생성하고 있습니다...",
-                          linkUrl: earlyLinkUrl,
-                          linkLabel: earlyLinkLabel,
-                          status: "generating",
-                        }
+                      ? { ...msg, content: "답변을 생성하고 있습니다...", linkUrl: earlyLinkUrl, linkLabel: earlyLinkUrl ? "유사 이력 바로가기" : null, status: "generating" }
                       : msg
                   )
-                )
+                  latestMessagesRef.current = next
+                  return next
+                })
               } else if (event.type === "chunk") {
                 accumulatedText += event.data
-                setCurrentMessages((prev) =>
-                  prev.map((msg) =>
+                setCurrentMessages((prev) => {
+                  const next = prev.map((msg) =>
                     msg.id === assistantMessageId ? { ...msg, content: accumulatedText, status: "streaming" } : msg
                   )
-                )
+                  latestMessagesRef.current = next
+                  return next
+                })
               } else if (event.type === "done") {
-                const finalLinkUrl = typeof metadata?.similarIssueUrl === "string"
-                  ? metadata.similarIssueUrl
-                  : null
-                const finalLinkLabel = finalLinkUrl ? "유사 이력 바로가기" : null
-                setCurrentMessages((prev) =>
-                  prev.map((msg) =>
+                const finalLinkUrl = typeof metadata?.similarIssueUrl === "string" ? metadata.similarIssueUrl : null
+                setCurrentMessages((prev) => {
+                  const next = prev.map((msg) =>
                     msg.id === assistantMessageId
                       ? {
                           ...msg,
                           content: accumulatedText,
                           ...metadata,
                           linkUrl: finalLinkUrl,
-                          linkLabel: finalLinkLabel,
+                          linkLabel: finalLinkUrl ? "유사 이력 바로가기" : null,
                           logId: capturedLogId,
                           top3Candidates: capturedTop3 ?? undefined,
                           status: "matched",
@@ -411,15 +385,21 @@ export default function ChatbotPage() {
                         }
                       : msg
                   )
-                )
+                  latestMessagesRef.current = next
+                  return next
+                })
               }
             } catch {
-              // ignore invalid JSON line
+              // invalid JSON line 무시
             }
           }
         }
       } finally {
         reader.releaseLock()
+        // 스트림 완료 후 DB에서 대화 목록 갱신 (sessionId, messageCount 동기화)
+        const capturedId = convId!
+        const capturedMsgs = latestMessagesRef.current
+        refreshConversations(capturedId, capturedMsgs)
       }
     } catch {
       const errorMessage: Message = {
@@ -431,9 +411,11 @@ export default function ChatbotPage() {
         status: "error",
         answerSource: "proxy_error",
       }
-      setCurrentMessages((prev) =>
-        prev.map((msg) => (msg.id === assistantMessageId ? errorMessage : msg))
-      )
+      setCurrentMessages((prev) => {
+        const next = prev.map((msg) => (msg.id === assistantMessageId ? errorMessage : msg))
+        latestMessagesRef.current = next
+        return next
+      })
     } finally {
       setIsTyping(false)
     }
@@ -475,7 +457,7 @@ export default function ChatbotPage() {
       <main className="flex-1 overflow-hidden">
         <ChatArea
           messages={currentMessages}
-          isTyping={isTyping}
+          isTyping={isTyping || isLoadingMessages}
           isDarkMode={isDarkMode}
           onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
           onSendMessage={submitMessage}
