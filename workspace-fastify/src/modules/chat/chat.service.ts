@@ -1600,7 +1600,7 @@ async function fetchChunkRows(scope: RetrievalScope, queries: string[]): Promise
       coalesce(specificity_score, 0.20)::float8 as "specificityScore",
       coalesce(closure_penalty_score, 0.0)::float8 as "closurePenaltyScore",
       coalesce(resolution_stage, 0)::int4 as "resolutionStage"
-    from ai_core.v_scc_chunk_preview
+    from ai_core.mv_scc_chunk_preview
     where char_length(coalesce(chunk_text, '')) > 0
       and chunk_type in ('issue', 'action', 'resolution', 'qa_pair')
   `;
