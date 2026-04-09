@@ -527,6 +527,25 @@ export function buildServer(): FastifyInstance {
   const queryCacheCleanupTimer = setInterval(evictExpiredEntries, 5 * 60_000);
   queryCacheCleanupTimer.unref?.();
 
+  // HNSW 인덱스 버퍼 캐시 워밍 (서버 시작 후 첫 요청 지연 방지)
+  setTimeout(async () => {
+    try {
+      const pool = getVectorPool();
+      const warmupVec = Array.from({ length: 768 }, () => 0.1);
+      const literal = `[${warmupVec.join(",")}]`;
+      await pool.query(
+        `SELECT chunk_id FROM ai_core.scc_chunk_embeddings
+         WHERE embedding_model = 'google:gemini-embedding-2-preview'
+         ORDER BY (embedding_vec::vector(768)) <=> $1::vector(768)
+         LIMIT 1`,
+        [literal]
+      );
+      app.log.info("HNSW index warmup complete");
+    } catch (e) {
+      app.log.warn("HNSW index warmup failed (non-critical): " + String(e));
+    }
+  }, 3000);
+
   // 자동 인제스트 스케줄러
   const ingestScheduler: IngestSchedulerHandle = startIngestScheduler({
     info: (msg) => app.log.info(msg),
