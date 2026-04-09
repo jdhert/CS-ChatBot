@@ -29,13 +29,13 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
           <Bot className="h-5 w-5" />
         </div>
         <div>
-          <h1 className="text-base font-semibold text-foreground">코비전 CS AI Core</h1>
+          <h1 className="text-sm font-semibold text-foreground md:text-base">코비전 CS Bot</h1>
           <div className="flex items-center gap-1.5">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
             </span>
-            <span className="text-xs text-muted-foreground">AI Core 3101 연결 중</span>
+            <span className="text-xs text-muted-foreground">연결 중</span>
           </div>
         </div>
       </div>

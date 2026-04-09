@@ -126,7 +126,7 @@ export function ConversationsPanel({
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
             <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span>
           </span>
-          <span>AI 코어 온라인</span>
+          <span>CS Bot 온라인</span>
         </div>
       </div>
     </div>

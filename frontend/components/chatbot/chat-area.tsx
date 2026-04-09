@@ -60,7 +60,7 @@ export function ChatArea({
                   />
                 </svg>
               </div>
-              <h2 className="mb-2 text-xl font-semibold text-foreground">코비전 CS AI 코어</h2>
+              <h2 className="mb-2 text-xl font-semibold text-foreground">코비전 CS Bot</h2>
               <p className="mb-6 max-w-md text-sm leading-relaxed text-muted-foreground">
                 증상이나 오류 메시지를 입력하면 유사 처리 이력과 안내 답변을 찾아드립니다.
               </p>
