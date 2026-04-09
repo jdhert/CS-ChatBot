@@ -1,256 +1,237 @@
-# Docker Deployment Guide
+# Docker 배포 가이드
 
-## 아키텍처
+## 운영 환경 구조
 
 ```
-Client (Browser)
-  ↓ (port 80)
-Nginx (Reverse Proxy)
-  ├─→ /api/*     → Backend (Fastify:3101)
-  └─→ /*         → Frontend (Next.js:3000)
+사용자 브라우저
+  ↓ HTTPS (443)
+Nginx (SSL 종료 / 리버스 프록시)
+  ├─→ /api/*  → Backend  (Fastify:3101)
+  └─→ /*      → Frontend (Next.js:3000)
+              ↓
+         PostgreSQL 16 + pgvector
+         (Oracle Cloud VM 로컬 DB)
 ```
 
-## 사전 준비
+**운영 도메인:** https://csbotservice.com  
+**서버:** Oracle Cloud VM (Ubuntu 22.04, 1GB RAM + 4GB Swap)
 
-### 1. 환경변수 설정
+---
 
-`.env` 파일을 프로젝트 루트에 생성:
+## CI/CD 자동 배포
+
+`main` 브랜치에 push하면 GitHub Actions가 자동으로 빌드 및 배포합니다.
+
+```
+git push origin main
+  └─ [build] GitHub Actions에서 이미지 빌드 → ghcr.io 푸시
+  └─ [deploy] VM SSH → docker pull → docker compose up -d
+```
+
+**수동 배포가 필요한 경우에만 아래 명령어를 사용하세요.**
+
+---
+
+## 수동 배포 (VM에서)
+
+### 최초 설치
 
 ```bash
-cp .env.example .env
-# .env 파일을 열어서 실제 값으로 수정
+# 1. 코드 클론
+git clone https://github.com/jdhert/CS-ChatBot.git ~/coviAI
+cd ~/coviAI
+
+# 2. .env 파일 생성
+cat > .env << 'EOF'
+GOOGLE_API_KEY=your-google-api-key
+GOOGLE_MODEL=gemini-2.5-flash-lite
+VECTOR_DB_HOST=VM_HOST_REMOVED
+VECTOR_DB_PORT=5432
+VECTOR_DB_NAME=ai2
+VECTOR_DB_USER=novian
+VECTOR_DB_PASSWORD=REMOVED
+PGVECTOR_SEARCH_ENABLED=true
+QUERY_REWRITE_ENABLED=true
+EOF
+
+# 3. SSL 인증서 발급 (최초 1회)
+sudo apt install certbot
+sudo certbot certonly --standalone -d csbotservice.com -d www.csbotservice.com
+
+# 4. Docker 실행
+docker compose --env-file .env up -d --build
 ```
 
-필수 환경변수:
-- `GOOGLE_API_KEY`: Google Gemini API 키
-
-### 2. Next.js 설정 확인
-
-`frontend/next.config.js`에 다음 설정 추가:
-
-```javascript
-module.exports = {
-  output: 'standalone', // Docker 배포를 위한 standalone 빌드
-}
-```
-
-## 배포 명령어
-
-### 개발 환경
+### 업데이트 배포
 
 ```bash
-# 전체 빌드 및 실행
-docker-compose up --build
-
-# 백그라운드 실행
-docker-compose up -d --build
-
-# 로그 확인
-docker-compose logs -f
-
-# 특정 서비스 로그
-docker-compose logs -f backend
-docker-compose logs -f frontend
-docker-compose logs -f nginx
+cd ~/coviAI
+git pull origin main
+docker compose --env-file .env build   # 이미지 빌드 (기존 서비스 유지)
+docker compose --env-file .env up -d --no-build  # 컨테이너 교체 (~10초 단절)
 ```
 
-### 프로덕션 환경
+---
 
-```bash
-# 프로덕션 빌드
-docker-compose -f docker-compose.yml up -d --build
+## 환경변수
 
-# 상태 확인
-docker-compose ps
+### 필수
 
-# 헬스체크
-curl http://localhost/health
-curl http://localhost/api/health
+| 변수 | 설명 |
+|------|------|
+| `GOOGLE_API_KEY` | Google Gemini API 키 |
+
+### 주요 설정 (기본값으로 동작)
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `GOOGLE_MODEL` | `gemini-2.5-flash-lite` | LLM 모델 |
+| `VECTOR_DB_HOST` | `VM_HOST_REMOVED` | DB 호스트 |
+| `PGVECTOR_SEARCH_ENABLED` | `true` | pgvector 검색 사용 |
+| `QUERY_REWRITE_ENABLED` | `true` | 쿼리 리라이팅 |
+| `LLM_MAX_OUTPUT_TOKENS` | `1536` | LLM 최대 출력 토큰 |
+| `LLM_SKIP_ON_HIGH_CONFIDENCE` | `true` | 고신뢰도 시 LLM 스킵 |
+| `LLM_SKIP_MIN_CONFIDENCE` | `0.75` | LLM 스킵 최소 신뢰도 |
+| `LLM_TIMEOUT_MS` | `10000` | LLM 타임아웃 (ms) |
+| `LLM_CANDIDATE_TOP_N` | `3` | LLM 전달 후보 수 |
+
+### 속도 최적화 (VM .env에 추가 권장)
+
+```env
+LLM_MAX_OUTPUT_TOKENS=800
+LLM_TIMEOUT_MS=8000
+LLM_CANDIDATE_TOP_N=3
+LLM_SKIP_ON_HIGH_CONFIDENCE=true
+LLM_SKIP_MIN_CONFIDENCE=0.75
 ```
+
+---
 
 ## 서비스 관리
 
-### 중지 및 재시작
-
 ```bash
-# 중지
-docker-compose stop
+# 상태 확인
+docker compose ps
+
+# 로그 확인
+docker compose logs -f
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f nginx
+
+# 헬스체크
+curl http://localhost/health
 
 # 재시작
-docker-compose restart
+docker compose restart backend
+docker compose restart nginx
 
-# 특정 서비스만 재시작
-docker-compose restart backend
-
-# 완전 종료 (컨테이너 삭제)
-docker-compose down
-
-# 볼륨까지 삭제
-docker-compose down -v
+# 완전 종료
+docker compose down
 ```
 
-### 스케일링
+---
+
+## SSL 인증서
+
+Let's Encrypt 인증서는 90일마다 갱신이 필요합니다.
 
 ```bash
-# 백엔드 인스턴스 3개로 스케일 아웃
-docker-compose up -d --scale backend=3
-
-# Nginx에서 로드밸런싱 자동 처리
+# 수동 갱신 (Docker 내리고 갱신 후 재시작)
+cd ~/coviAI
+docker compose down
+sudo certbot renew
+docker compose --env-file .env up -d
 ```
 
-## 접속 정보
+**자동 갱신 cron 설정:**
 
-- **Frontend**: http://localhost
-- **Backend API**: http://localhost/api
-- **Health Check**: http://localhost/health
-
-## CORS 해결
-
-모든 요청이 동일 오리진(`http://localhost`)에서 처리되므로 CORS 문제가 발생하지 않습니다.
-
-Frontend에서 API 호출 시:
-
-```typescript
-// ✅ 올바른 방법 (상대 경로)
-fetch('/api/chat', { ... })
-
-// ❌ 잘못된 방법 (절대 경로)
-fetch('http://localhost:3101/chat', { ... })
+```bash
+sudo crontab -e
+# 매월 1일 새벽 3시 자동 갱신
+0 3 1 * * cd /home/ubuntu/coviAI && docker compose down && certbot renew --quiet && docker compose --env-file .env up -d
 ```
+
+---
 
 ## 트러블슈팅
 
-### 1. 백엔드 연결 실패
+### 백엔드 응답 없음
 
 ```bash
-# 백엔드 로그 확인
-docker-compose logs backend
-
-# DB 연결 확인
-docker-compose exec backend wget -O- http://localhost:3101/health
+docker compose logs backend --tail 50
+curl http://localhost:3101/health
 ```
 
-### 2. 프론트엔드 빌드 실패
+### Nginx 502 Bad Gateway
 
 ```bash
-# Next.js 빌드 로그 확인
-docker-compose logs frontend
+# backend/frontend 헬스체크 통과 전 nginx가 먼저 뜨는 경우
+docker compose restart nginx
 
-# 컨테이너 내부 접속
-docker-compose exec frontend sh
+# Nginx 설정 확인
+docker compose exec nginx nginx -t
 ```
 
-### 3. Nginx 프록시 오류
+### SSL 인증서 오류
 
 ```bash
-# Nginx 설정 테스트
-docker-compose exec nginx nginx -t
+# 인증서 만료 확인
+sudo certbot certificates
 
-# Nginx 재시작
-docker-compose restart nginx
-
-# 로그 확인
-docker-compose logs nginx
+# 인증서 경로 확인 (컨테이너 마운트)
+ls /etc/letsencrypt/live/csbotservice.com/
 ```
 
-### 4. 포트 충돌
-
-80번 포트가 이미 사용 중인 경우:
-
-```yaml
-# docker-compose.yml 수정
-nginx:
-  ports:
-    - "8080:80"  # 8080 포트로 변경
-```
-
-## 성능 최적화
-
-### 1. 이미지 크기 최적화
-
-현재 multi-stage build를 사용하여 최소화되어 있습니다.
-
-### 2. 캐싱 활용
-
-빌드 시간 단축을 위해 레이어 캐싱 활용:
+### Docker 이미지 pull 실패 (ghcr.io)
 
 ```bash
-docker-compose build --parallel
+# GitHub Container Registry 로그인
+echo "GITHUB_PAT" | docker login ghcr.io -u USERNAME --password-stdin
+
+# 또는 로컬 빌드로 대체
+docker compose --env-file .env up -d --build
 ```
 
-### 3. 리소스 제한
-
-필요시 `docker-compose.yml`에 리소스 제한 추가:
-
-```yaml
-services:
-  backend:
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
-```
-
-## 클라우드 마이그레이션 준비
-
-### AWS ECS/Fargate
+### 메모리 부족 (1GB VM)
 
 ```bash
-# ECR에 이미지 푸시
-aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.ap-northeast-2.amazonaws.com
+# 메모리 / Swap 확인
+free -h
 
-docker tag ai-core-backend:latest <account-id>.dkr.ecr.ap-northeast-2.amazonaws.com/ai-core-backend:latest
-docker push <account-id>.dkr.ecr.ap-northeast-2.amazonaws.com/ai-core-backend:latest
+# 미사용 이미지 정리
+docker image prune -f
+docker system prune -f
 ```
 
-### Kubernetes
-
-```bash
-# Helm 차트 또는 kubectl 매니페스트 작성
-kubectl apply -f k8s/
-```
-
-## 모니터링
-
-### 로그 수집
-
-```bash
-# 모든 로그를 파일로 저장
-docker-compose logs > logs/deployment.log
-
-# 실시간 로그 스트리밍
-docker-compose logs -f --tail=100
-```
-
-### 메트릭 수집
-
-Prometheus + Grafana 추가 고려:
-
-```yaml
-# docker-compose.yml에 추가
-prometheus:
-  image: prom/prometheus
-  volumes:
-    - ./prometheus.yml:/etc/prometheus/prometheus.yml
-  ports:
-    - "9090:9090"
-
-grafana:
-  image: grafana/grafana
-  ports:
-    - "3001:3000"
-```
+---
 
 ## 보안 체크리스트
 
-- [x] 환경변수를 통한 민감 정보 관리
-- [x] .env 파일 `.gitignore`에 추가
+- [x] 환경변수로 민감 정보 관리 (`.env` 파일)
+- [x] `.env` 파일 `.gitignore` 등록
 - [x] Non-root 사용자로 컨테이너 실행
-- [x] 불필요한 포트 노출 제거 (expose vs ports)
-- [ ] HTTPS 인증서 적용 (클라우드 마이그레이션 시)
-- [ ] 방화벽 규칙 설정
-- [ ] 정기적인 이미지 업데이트 및 취약점 스캔
+- [x] 불필요한 포트 노출 제거 (`expose` vs `ports`)
+- [x] HTTPS 적용 (Let's Encrypt / Nginx SSL)
+- [x] HTTP → HTTPS 자동 리다이렉트
+- [x] HSTS 헤더 적용
+- [x] Oracle Cloud Security List 방화벽 설정 (80/443 오픈)
+- [ ] API Rate Limiting (`@fastify/rate-limit` 미적용)
+- [ ] 정기적인 이미지 취약점 스캔
+
+---
+
+## 변경 이력
+
+### 2026-04-09 (최신)
+- ✅ Oracle Cloud VM 이관 완료 반영
+- ✅ CI/CD GitHub Actions 파이프라인 섹션 추가
+- ✅ SSL/Let's Encrypt 운영 절차 추가
+- ✅ 속도 최적화 환경변수 가이드 추가
+- ✅ AWS/K8s 마이그레이션 섹션 제거 (Oracle Cloud로 완료)
+
+### 2026-04-02
+- ✅ 대화 이력 DB 영속화 관련 환경변수 추가
+
+### 2026-03-25
+- ✅ 초기 Docker 배포 가이드 작성

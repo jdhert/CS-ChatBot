@@ -6,19 +6,22 @@ CS 챗봇 시스템의 REST API 문서입니다.
 - [개요](#개요)
 - [공통 사항](#공통-사항)
 - [엔드포인트](#엔드포인트)
-  - [POST /chat](#post-chat)
+  - [POST /chat/stream](#post-chatstream)
   - [POST /retrieval/search](#post-retrievalsearch)
-  - [GET /chat/test](#get-chattest)
+  - [GET /health](#get-health)
+  - [GET /conversations](#get-conversations)
+  - [GET /conversations/:sessionId/messages](#get-conversationssessionidmessages)
 
 ---
 
 ## 개요
 
-**Base URL:** `http://localhost:3101`
-
-**인증:** 현재 버전에서는 인증이 필요 없습니다.
-
-**응답 형식:** JSON / Server-Sent Events (SSE)
+| 항목 | 값 |
+|------|-----|
+| **운영 Base URL** | `https://csbotservice.com/api` |
+| **로컬 Base URL** | `http://localhost:3101` |
+| **인증** | 없음 (내부 서비스) |
+| **응답 형식** | JSON / Server-Sent Events (SSE) |
 
 ---
 
@@ -28,54 +31,50 @@ CS 챗봇 시스템의 REST API 문서입니다.
 
 ```http
 Content-Type: application/json
-Accept: application/json
 ```
 
-### 에러 응답
+### 보안 차단
 
-모든 에러는 다음 형식으로 반환됩니다:
+아래 유형의 질의는 자동 차단됩니다:
 
+- SQL Injection / XSS / 스크립트 삽입
+- 주민등록번호 / 개인정보 / 민감정보 요청
+- 해킹 / 권한 탈취 / 계정 우회 관련
+
+**차단 응답:**
 ```json
 {
-  "error": {
-    "message": "에러 메시지",
-    "code": "ERROR_CODE",
-    "status": 400
-  }
+  "error": "SECURITY_BLOCKED",
+  "message": "보안 정책에 따라 처리할 수 없는 질의입니다."
 }
 ```
-
-### HTTP 상태 코드
-
-| 코드 | 설명 |
-|------|------|
-| 200 | 성공 |
-| 400 | 잘못된 요청 |
-| 429 | 요청 횟수 초과 (Rate Limit) |
-| 500 | 서버 내부 오류 |
 
 ---
 
 ## 엔드포인트
 
-### POST /chat
+### POST /chat/stream
 
-사용자 질문에 대한 답변을 스트리밍 방식으로 제공합니다.
+사용자 질문에 대해 SSE 스트리밍으로 답변을 제공합니다.
+하이브리드 RAG 검색(Rule + Vector) → LLM 답변 생성 → 스트리밍 순서로 처리됩니다.
 
 #### 요청
 
-**URL:** `/chat`
-
-**Method:** `POST`
-
-**Content-Type:** `application/json`
-
-**Request Body:**
+```http
+POST /chat/stream
+Content-Type: application/json
+```
 
 ```json
 {
-  "question": "코비젼 메일 설정 방법을 알려주세요",
-  "scope": "all"
+  "query": "휴가신청서 상신이 불가해",
+  "retrievalScope": "scc",
+  "conversationHistory": [
+    { "role": "user", "content": "이전 질문" },
+    { "role": "assistant", "content": "이전 답변" }
+  ],
+  "clientConversationId": "uuid-string",
+  "userKey": "user-identifier"
 }
 ```
 
@@ -83,297 +82,282 @@ Accept: application/json
 
 | 필드 | 타입 | 필수 | 기본값 | 설명 |
 |------|------|------|--------|------|
-| `question` | string | ✅ | - | 사용자 질문 (최대 500자) |
-| `scope` | string | ❌ | "all" | 검색 범위 ("all", "manual", "scc") |
+| `query` | string | ✅ | - | 사용자 질문 |
+| `retrievalScope` | string | ❌ | `"scc"` | 검색 범위 (`scc` / `manual`) |
+| `conversationHistory` | array | ❌ | `[]` | 멀티턴 대화 이력 (최근 6개) |
+| `clientConversationId` | string | ❌ | - | 클라이언트 대화 세션 ID |
+| `userKey` | string | ❌ | - | 사용자 식별자 |
 
-#### 응답
+#### 응답 (SSE 스트림)
 
 **Content-Type:** `text/event-stream; charset=utf-8`
 
-**SSE 이벤트 스트림:**
+**이벤트 순서:**
 
 ```
-data: {"type":"token","content":"안"}
+data: {"type":"metadata", "data": { ... }}
 
-data: {"type":"token","content":"녕"}
-
-data: {"type":"token","content":"하"}
-
-data: {"type":"token","content":"세"}
-
-data: {"type":"token","content":"요"}
-
-data: {"type":"metadata","bestRequireId":"6c11c32e-df4d-4b38-bc93-06df653b46a9","confidence":0.92}
+data: {"type":"chunk", "content":"안"}
+data: {"type":"chunk", "content":"녕"}
+...
 
 data: {"type":"done"}
 ```
 
 **이벤트 타입:**
 
-| 타입 | 설명 | 예시 |
-|------|------|------|
-| `token` | 답변 텍스트 토큰 (스트리밍) | `{"type":"token","content":"안녕"}` |
-| `metadata` | 검색 메타데이터 | `{"type":"metadata","bestRequireId":"...","confidence":0.92}` |
-| `done` | 스트림 종료 | `{"type":"done"}` |
+| 타입 | 설명 |
+|------|------|
+| `metadata` | 검색 결과 메타데이터 (스트리밍 시작 전 1회) |
+| `chunk` | LLM 답변 텍스트 청크 |
+| `done` | 스트림 종료 |
 
-**Metadata 필드:**
+**metadata 이벤트 상세:**
 
 ```json
 {
   "type": "metadata",
-  "bestRequireId": "6c11c32e-df4d-4b38-bc93-06df653b46a9",
-  "confidence": 0.92,
-  "similarIssueUrl": "https://cs.covision.co.kr/...",
-  "timings": {
-    "retrievalMs": 1442,
-    "llmMs": 3250,
-    "totalMs": 4692,
-    "cacheHit": false
+  "data": {
+    "logId": "uuid",
+    "bestRequireId": "6c11c32e-df4d-4b38-bc93-06df653b46a9",
+    "bestSccId": "12345",
+    "confidence": 0.87,
+    "similarIssueUrl": "https://cs.covision.co.kr/WebSite/Basic/ServiceManagement/Service_View.aspx?scc_id=12345",
+    "retrievalMode": "hybrid",
+    "vectorUsed": true,
+    "llmSkipped": false,
+    "answerSource": "llm",
+    "display": {
+      "title": "휴가신청서 상신 불가",
+      "answerText": "...",
+      "linkUrl": "https://cs.covision.co.kr/...",
+      "linkLabel": "유사 이력 바로가기",
+      "status": "matched"
+    },
+    "top3Candidates": [
+      {
+        "requireId": "...",
+        "sccId": "...",
+        "previewText": "...",
+        "confidence": 0.87,
+        "chunkType": "qa_pair",
+        "linkUrl": "..."
+      }
+    ],
+    "timings": {
+      "ruleMs": 320,
+      "embeddingMs": 450,
+      "vectorMs": 40,
+      "rerankMs": 80,
+      "retrievalMs": 890,
+      "llmMs": 2100,
+      "totalMs": 2990,
+      "cacheHit": false
+    }
   }
 }
 ```
 
-#### 예시
+**display.status 값:**
 
-**cURL:**
+| 값 | 설명 |
+|---|---|
+| `matched` | 유사 이력 발견, 답변 제공 |
+| `needs_more_info` | 관련 이력 없음, 추가 정보 요청 |
+
+**answerSource 값:**
+
+| 값 | 설명 |
+|---|---|
+| `llm` | LLM이 생성한 답변 |
+| `deterministic_fallback` | 하이브리드 검색 후 고정 포맷 답변 |
+| `rule_only` | 벡터 검색 없이 Rule만으로 생성 |
+
+#### cURL 예시
 
 ```bash
-curl -X POST http://localhost:3101/chat \
+curl -X POST https://csbotservice.com/api/chat/stream \
   -H "Content-Type: application/json" \
-  -d '{
-    "question": "코비젼 메일 설정 방법",
-    "scope": "all"
-  }'
+  -d '{"query":"휴가신청 불가","retrievalScope":"scc"}' \
+  | grep "metadata"
 ```
 
-**JavaScript (Fetch API):**
+#### 타이밍 정보 확인
 
-```javascript
-const eventSource = new EventSource('/chat', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    question: '코비젼 메일 설정 방법',
-    scope: 'all'
-  })
-});
-
-eventSource.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-
-  if (data.type === 'token') {
-    console.log('Token:', data.content);
-  } else if (data.type === 'metadata') {
-    console.log('Metadata:', data);
-  } else if (data.type === 'done') {
-    eventSource.close();
-  }
-};
+```bash
+curl -s -X POST https://csbotservice.com/api/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"query":"휴가신청 불가","retrievalScope":"scc"}' \
+  | grep "^data:" | grep "metadata" \
+  | python3 -c "
+import sys, json
+line = sys.stdin.read().strip()
+data = json.loads(line.replace('data: ',''))
+print(data['data']['timings'])
+"
 ```
 
 ---
 
 ### POST /retrieval/search
 
-RAG 검색 엔진을 직접 호출하여 관련 문서를 검색합니다. (LLM 답변 생성 없음)
+LLM 없이 RAG 검색 결과만 반환합니다. 디버깅 및 점수 시각화용입니다.
 
 #### 요청
 
-**URL:** `/retrieval/search`
-
-**Method:** `POST`
-
-**Request Body:**
+```http
+POST /retrieval/search
+Content-Type: application/json
+```
 
 ```json
 {
-  "question": "메일 설정",
-  "scope": "all"
+  "query": "휴가신청 불가",
+  "retrievalScope": "scc"
 }
 ```
 
 #### 응답
-
-**Content-Type:** `application/json`
 
 ```json
 {
   "candidates": [
     {
       "requireId": "6c11c32e-df4d-4b38-bc93-06df653b46a9",
-      "chunkId": "e6c062c6-b862-5334-eacc-b34e7c0e4edf",
-      "chunkType": "resolution",
-      "chunkText": "메일 설정은 관리자 > 시스템 설정에서...",
-      "confidence": 0.92,
-      "rerankedScore": 8.5
-    },
-    {
-      "requireId": "fe8d5f21-09f9-820c-cd58-d59dff86990a",
-      "chunkId": "a498da70-8086-eea7-d152-a36584a7d343",
-      "chunkType": "action",
-      "chunkText": "1. 관리자 메뉴 접속\n2. 시스템 설정 클릭...",
+      "sccId": "12345",
+      "chunkType": "qa_pair",
+      "previewText": "휴가신청서 상신 시 결재선이...",
       "confidence": 0.87,
-      "rerankedScore": 7.8
+      "score": 0.87,
+      "vectorSimilarity": 0.82,
+      "linkUrl": "https://cs.covision.co.kr/..."
     }
   ],
+  "retrievalMode": "hybrid",
+  "vectorUsed": true,
+  "vectorModelTag": "google:gemini-embedding-2-preview",
+  "vectorStrategy": "pgvector",
   "timings": {
-    "ruleMs": 297,
-    "embeddingMs": 884,
-    "vectorMs": 36,
-    "rerankMs": 213,
-    "retrievalMs": 1442,
+    "ruleMs": 320,
+    "embeddingMs": 450,
+    "vectorMs": 40,
+    "rerankMs": 80,
+    "retrievalMs": 890,
     "cacheHit": false
   }
 }
 ```
 
-**응답 필드:**
-
-| 필드 | 타입 | 설명 |
-|------|------|------|
-| `candidates` | array | 검색된 문서 후보 (최대 5개) |
-| `candidates[].requireId` | string | 요구사항 ID (UUID) |
-| `candidates[].chunkId` | string | 청크 ID (UUID) |
-| `candidates[].chunkType` | string | 청크 타입 (issue/action/resolution/qa_pair) |
-| `candidates[].chunkText` | string | 청크 텍스트 내용 |
-| `candidates[].confidence` | number | 신뢰도 점수 (0~1) |
-| `candidates[].rerankedScore` | number | Reranking 점수 |
-| `timings` | object | 성능 측정 데이터 |
-| `timings.ruleMs` | number | Rule-based 검색 시간 (ms) |
-| `timings.embeddingMs` | number | 임베딩 생성 시간 (ms) |
-| `timings.vectorMs` | number | Vector 검색 시간 (ms) |
-| `timings.rerankMs` | number | Reranking 시간 (ms) |
-| `timings.retrievalMs` | number | 전체 검색 시간 (ms) |
-| `timings.cacheHit` | boolean | 캐시 사용 여부 |
-
-#### 예시
-
-**cURL:**
-
-```bash
-curl -X POST http://localhost:3101/retrieval/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "question": "메일 설정",
-    "scope": "all"
-  }'
-```
-
 ---
 
-### GET /chat/test
+### GET /health
 
-챗봇 테스트 페이지를 제공합니다. (개발/디버깅용)
-
-#### 요청
-
-**URL:** `/chat/test`
-
-**Method:** `GET`
+서버 및 DB 연결 상태를 확인합니다.
 
 #### 응답
 
-**Content-Type:** `text/html`
-
-HTML 페이지가 반환됩니다.
-
----
-
-## 성능 최적화
-
-### 캐싱
-
-시스템은 메모리 기반 캐싱을 사용하여 성능을 최적화합니다:
-
-- **Query Embedding Cache**: 동일한 질문의 임베딩 재사용
-  - TTL: 5분 (기본값)
-  - Cache Key: `{modelTag}::{normalizedQuery}`
-
-- **Retrieval Cache**: 동일한 질문의 검색 결과 재사용
-  - TTL: 30초 (기본값)
-  - Cache Key: `{scope}::{normalizedQuery}`
-
-캐시 히트 시 응답 시간이 **70-90% 단축**됩니다.
-
-### Rate Limiting
-
-현재 버전에서는 Rate Limiting이 적용되지 않습니다. (향후 추가 예정)
-
----
-
-## 보안
-
-### 입력 검증
-
-악의적인 쿼리는 자동으로 차단됩니다:
-
-**차단 키워드:**
-- 보안 우회/차단 관련
-- 권한 상승 관련
-- 계정/토큰 탈취 관련
-- SQL Injection, XSS 등
-
-차단 시 응답:
 ```json
 {
-  "answer": "⚠️ 보안상 처리할 수 없는 질의입니다.",
-  "confidence": 0,
-  "timings": { ... }
+  "status": "ok",
+  "db": "connected",
+  "cache": {
+    "size": 12,
+    "maxSize": 500
+  },
+  "uptime": 3600
 }
 ```
 
 ---
 
-## 에러 처리
+### GET /conversations
 
-### 일반적인 에러 시나리오
+저장된 대화 세션 목록을 반환합니다.
 
-**1. 빈 질문**
+#### 요청
+
+```http
+GET /conversations?userKey=user-identifier&limit=20
+```
+
+| 파라미터 | 타입 | 설명 |
+|---|---|---|
+| `userKey` | string | 사용자 식별자 |
+| `limit` | number | 최대 반환 건수 (기본 20) |
+
+#### 응답
 
 ```json
-{
-  "error": {
-    "message": "Question is required",
-    "status": 400
+[
+  {
+    "sessionId": "uuid",
+    "clientSessionId": "client-uuid",
+    "userKey": "user-identifier",
+    "title": "휴가신청 불가 문의",
+    "createdAt": "2026-04-09T10:00:00Z",
+    "updatedAt": "2026-04-09T10:05:00Z"
   }
-}
+]
 ```
 
-**2. 임베딩 생성 실패 (429 Rate Limit)**
+---
+
+### GET /conversations/:sessionId/messages
+
+특정 세션의 메시지 목록을 반환합니다.
+
+#### 응답
 
 ```json
-{
-  "candidates": [],
-  "timings": {
-    "embeddingMs": 0,
-    "embeddingError": "GOOGLE_EMBEDDING_HTTP_429"
+[
+  {
+    "messageId": "uuid",
+    "sessionId": "uuid",
+    "role": "user",
+    "content": "휴가신청 불가",
+    "createdAt": "2026-04-09T10:00:00Z"
+  },
+  {
+    "messageId": "uuid",
+    "sessionId": "uuid",
+    "role": "assistant",
+    "content": "휴가신청서 상신 시...",
+    "logId": "uuid",
+    "createdAt": "2026-04-09T10:00:05Z"
   }
-}
+]
 ```
 
-이 경우 시스템은 **Rule-based 검색만** 사용하여 답변을 제공합니다.
+---
 
-**3. LLM 타임아웃**
+## 캐시 정책
 
-```json
-{
-  "answer": "[시스템 오류] LLM 응답 시간 초과",
-  "confidence": 0
-}
-```
+| 캐시 | TTL | Key |
+|---|---|---|
+| Query Embedding Cache | 60분 | `{modelTag}::{query}` |
+| Retrieval Cache | 30초 | `{scope}::{query}` |
+
+캐시 히트 시 응답 시간 **수백ms → 즉시** 응답.
 
 ---
 
 ## 변경 이력
 
+### 2026-04-09 (최신)
+- ✅ `/chat/stream` 메인 엔드포인트로 정정 (기존 `/chat` 명세 오류 수정)
+- ✅ `display` / `answerSource` / `top3Candidates` 응답 필드 추가
+- ✅ `timings` 세분화 (ruleMs / embeddingMs / vectorMs / rerankMs / llmMs)
+- ✅ `/conversations` / `/conversations/:sessionId/messages` 엔드포인트 추가
+- ✅ 보안 차단 정책 (주민등록번호 / 개인정보 포함)
+- ✅ Base URL Oracle Cloud 운영 URL로 업데이트
+
+### 2026-04-02
+- ✅ 대화 이력 DB 영속화 (conversation_session / conversation_message)
+- ✅ 쿼리 리라이팅 활성화
+
+### 2026-03-31
+- ✅ 하이브리드 검색 안정화 (Rule + Vector)
+- ✅ GIN FTS 기반 Rule 검색 최적화
+
 ### 2026-03-25
 - ✅ 초기 API 문서 작성
-- ✅ SSE 스트리밍 명세 추가
-
-### 2026-03-23
-- ✅ 성능 최적화: Rule-based 검색 속도 70-90% 개선
-- ✅ 캐시 메커니즘 도입
-
----
-
-**문의:** AI Core Team
