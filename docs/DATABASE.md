@@ -2,52 +2,36 @@
 
 CS 챗봇 시스템의 데이터베이스 구조와 스키마 문서입니다.
 
-## 목차
-- [개요](#개요)
-- [ERD](#erd)
-- [테이블 구조](#테이블-구조)
-- [뷰](#뷰)
-- [인덱스](#인덱스)
-- [쿼리 예시](#쿼리-예시)
-
----
-
 ## 개요
 
-**DBMS:** PostgreSQL 15+
+| 항목 | 값 |
+|------|-----|
+| **DBMS** | PostgreSQL 16 |
+| **호스트** | Oracle Cloud VM (VM_HOST_REMOVED:5432) |
+| **Extensions** | `pgvector 0.8.2`, `uuid-ossp` |
+| **Schema** | `ai_core` (RAG 데이터), `public` (SCC 원본) |
+| **임베딩 모델** | `google:gemini-embedding-2-preview` (768-dim) |
 
-**Extensions:**
-- `pgvector 0.8.2` - Vector similarity search
-- `uuid-ossp` - UUID generation
+### 현재 데이터 규모
 
-**Schema:** `ai_core`
-
-**데이터 규모:**
-- Source chunks: 13,255개
-- Embeddings: 13,255개
-- Embedding dimension: 768 (Google Gemini)
+| 객체 | 행 수 |
+|------|-----:|
+| `ai_core.v_scc_chunk_preview` (소스 청크) | 44,955 |
+| `ai_core.scc_chunk_embeddings` (임베딩 적재) | 44,955 (100% 완료) |
+| `ai_core.embedding_ingest_state` | 1 |
+| `ai_core.conversation_session` | 운영 중 누적 |
+| `ai_core.conversation_message` | 운영 중 누적 |
 
 ---
 
 ## ERD
-
-### 전체 구조
 
 ```mermaid
 erDiagram
     SCC_SOURCE ||--o{ V_SCC_CHUNK_PREVIEW : "generates"
     V_SCC_CHUNK_PREVIEW ||--o{ SCC_CHUNK_EMBEDDINGS : "has"
     SCC_CHUNK_EMBEDDINGS }o--|| EMBEDDING_INGEST_STATE : "tracks"
-
-    SCC_SOURCE {
-        uuid require_id PK
-        bigint scc_id
-        text issue_text
-        text action_text
-        text resolution_text
-        integer reply_state
-        timestamp ingested_at
-    }
+    CONVERSATION_SESSION ||--o{ CONVERSATION_MESSAGE : "contains"
 
     V_SCC_CHUNK_PREVIEW {
         uuid chunk_id PK "Deterministic UUID"
@@ -59,28 +43,28 @@ erDiagram
         text module_tag
         integer reply_state
         float resolved_weight
-        timestamp ingested_at
         float state_weight
         float evidence_weight
         float text_len_score
         float tech_signal_score
         float specificity_score
         float closure_penalty_score
-        text resolution_stage
+        integer resolution_stage
         integer feature_len
+        timestamp ingested_at
     }
 
     SCC_CHUNK_EMBEDDINGS {
         uuid chunk_id PK
-        text embedding_model PK "google:gemini-embedding-2-preview"
+        text embedding_model PK
         bigint scc_id
         uuid require_id
         text chunk_type
         text chunk_text
-        text text_hash "MD5 hash"
+        text text_hash "MD5(chunk_text)"
         integer embedding_dim "768"
         float8_array embedding_values
-        vector_768 embedding_vec "pgvector type"
+        vector embedding_vec "pgvector(768)"
         float8 embedding_norm
         timestamp source_ingested_at
         timestamp embedded_at
@@ -88,358 +72,262 @@ erDiagram
     }
 
     EMBEDDING_INGEST_STATE {
-        text embedding_model PK
-        integer last_batch_size
+        text state_key PK
+        timestamp last_source_ingested_at
         timestamp last_run_at
+        text last_status "ok/error/running/never"
+        text last_message
+        timestamp updated_at
+    }
+
+    CONVERSATION_SESSION {
+        uuid session_id PK
+        text client_session_id
+        text user_key
+        text title
         timestamp created_at
         timestamp updated_at
     }
-```
 
-### 데이터 플로우
-
-```mermaid
-flowchart LR
-    A[SCC Source Data] --> B[v_scc_chunk_preview]
-    B --> C{Chunking Logic}
-    C --> D[issue chunks]
-    C --> E[action chunks]
-    C --> F[resolution chunks]
-    C --> G[qa_pair chunks]
-
-    D --> H[chunk_id generation]
-    E --> H
-    F --> H
-    G --> H
-
-    H --> I[scc_chunk_embeddings]
-    I --> J[Embedding API]
-    J --> K[Google Gemini]
-    K --> L[768-dim vector]
-    L --> I
+    CONVERSATION_MESSAGE {
+        uuid message_id PK
+        uuid session_id FK
+        text role "user/assistant"
+        text content
+        text log_id
+        jsonb metadata
+        timestamp created_at
+    }
 ```
 
 ---
 
-## 테이블 구조
+## 테이블 / 뷰 상세
 
-### 1. scc_chunk_embeddings
+### 1. ai_core.mv_scc_chunk_preview (Materialized View)
 
-임베딩 벡터를 저장하는 메인 테이블입니다.
+`v_scc_chunk_preview`를 기반으로 생성한 Materialized View입니다. 검색 쿼리 성능 최적화를 위해 사용합니다.
 
-#### 스키마
+```sql
+-- 갱신 (신규 SCC 데이터 반영 시)
+REFRESH MATERIALIZED VIEW ai_core.mv_scc_chunk_preview;
+```
+
+**인덱스:**
+```sql
+idx_mv_scc_chunk_require   -- btree(require_id)
+```
+
+> **알려진 이슈:** `v_scc_chunk_preview_base`의 정규식 패턴이 `'s+'`로 잘못 설정되어 텍스트 내 's' 문자가 제거됩니다 (`Base` → `Ba e`). 수정 시 전체 재임베딩 필요로 인해 보류 중.
+
+---
+
+### 2. ai_core.v_scc_chunk_preview
+
+MV의 원본 뷰입니다. 검색 코드는 MV를 사용하며, 이 뷰는 임베딩 인제스트 기준 소스로 사용됩니다.
+
+**청크 타입:**
+
+| 타입 | 설명 |
+|------|------|
+| `issue` | 문제 증상 설명 |
+| `action` | 처리 조치 내용 |
+| `resolution` | 해결 방법 |
+| `qa_pair` | 질의응답 쌍 |
+
+**chunk_id 생성 방식:**
+
+```sql
+-- make_stable_chunk_uuid() 함수 사용
+-- require_id + chunk_type + chunk_seq + reply_state + MD5(chunk_text) → UUID
+-- 동일 입력 → 항상 동일한 chunk_id (Deterministic)
+```
+
+**주요 스코어 컬럼:**
+
+| 컬럼 | 설명 |
+|------|------|
+| `state_weight` | 처리 상태 가중치 |
+| `resolved_weight` | 해결 완료 가중치 |
+| `evidence_weight` | 증거 데이터 가중치 |
+| `text_len_score` | 텍스트 길이 점수 |
+| `tech_signal_score` | 기술 신호 점수 |
+| `specificity_score` | 구체성 점수 |
+| `closure_penalty_score` | 종료 패널티 (음수 가중치) |
+
+---
+
+### 2. ai_core.scc_chunk_embeddings
+
+각 청크의 임베딩 벡터를 저장하는 메인 테이블입니다.
 
 ```sql
 CREATE TABLE ai_core.scc_chunk_embeddings (
-  chunk_id          UUID NOT NULL,
-  embedding_model   TEXT NOT NULL,
-  scc_id            BIGINT,
-  require_id        UUID,
-  chunk_type        TEXT,
-  chunk_text        TEXT,
-  text_hash         TEXT,
-  embedding_dim     INTEGER,
-  embedding_values  FLOAT8[],
-  embedding_vec     VECTOR(768),
-  embedding_norm    FLOAT8,
+  chunk_id           UUID          NOT NULL,
+  embedding_model    TEXT          NOT NULL,
+  scc_id             BIGINT,
+  require_id         UUID,
+  chunk_type         TEXT,
+  chunk_text         TEXT,
+  text_hash          TEXT,                    -- MD5(chunk_text), 변경 감지용
+  embedding_dim      INTEGER,                 -- 768
+  embedding_values   FLOAT8[],               -- 배열 fallback
+  embedding_vec      VECTOR(768),             -- pgvector 검색용
+  embedding_norm     FLOAT8,
   source_ingested_at TIMESTAMPTZ,
-  embedded_at       TIMESTAMPTZ DEFAULT NOW(),
-  updated_at        TIMESTAMPTZ DEFAULT NOW(),
-
+  embedded_at        TIMESTAMPTZ DEFAULT NOW(),
+  updated_at         TIMESTAMPTZ DEFAULT NOW(),
   PRIMARY KEY (chunk_id, embedding_model)
 );
 ```
 
-#### 컬럼 설명
+**현재 상태:**
 
-| 컬럼 | 타입 | NULL | 설명 |
-|------|------|------|------|
-| `chunk_id` | UUID | NOT NULL | 청크 고유 ID (deterministic) |
-| `embedding_model` | TEXT | NOT NULL | 임베딩 모델명 (예: `google:gemini-embedding-2-preview`) |
-| `scc_id` | BIGINT | NULL | SCC 원본 ID |
-| `require_id` | UUID | NULL | 요구사항 ID |
-| `chunk_type` | TEXT | NULL | 청크 타입 (issue/action/resolution/qa_pair) |
-| `chunk_text` | TEXT | NULL | 청크 텍스트 (원본) |
-| `text_hash` | TEXT | NULL | 텍스트 MD5 해시 (변경 감지용) |
-| `embedding_dim` | INTEGER | NULL | 임베딩 차원 (768) |
-| `embedding_values` | FLOAT8[] | NULL | 임베딩 배열 (fallback) |
-| `embedding_vec` | VECTOR(768) | NULL | pgvector 타입 (검색용) |
-| `embedding_norm` | FLOAT8 | NULL | 벡터 노름 |
-| `source_ingested_at` | TIMESTAMPTZ | NULL | 소스 데이터 수집 시각 |
-| `embedded_at` | TIMESTAMPTZ | NOT NULL | 임베딩 생성 시각 |
-| `updated_at` | TIMESTAMPTZ | NOT NULL | 마지막 업데이트 시각 |
+| embedding_model | embedding_dim | 행 수 |
+|---|---:|---:|
+| `google:gemini-embedding-2-preview` | 768 | 44,955 (100%) |
 
-#### 제약 조건
-
-**Primary Key:**
-```sql
-PRIMARY KEY (chunk_id, embedding_model)
-```
-- 동일한 청크를 다른 모델로 임베딩 가능
-- 모델별로 별도 row 저장
-
-**Unique Constraint:**
-없음 (복합 PK로 충분)
-
-#### 현재 데이터 상태
+**pgvector 인덱스:**
 
 ```sql
-SELECT
-  embedding_model,
-  embedding_dim,
-  COUNT(*) as row_count
-FROM ai_core.scc_chunk_embeddings
-GROUP BY embedding_model, embedding_dim;
+-- HNSW 인덱스 (cosine similarity, 768-dim)
+CREATE INDEX idx_scc_chunk_embeddings_hnsw
+  ON ai_core.scc_chunk_embeddings
+  USING hnsw ((embedding_vec::vector(768)) vector_cosine_ops)
+  WITH (m = 16, ef_construction = 64);
 ```
 
-**결과:**
-| embedding_model | embedding_dim | row_count |
-|-----------------|---------------|-----------|
-| `google:gemini-embedding-2-preview` | 768 | 13,255 |
+- 서버 시작 3초 후 warmup 쿼리 자동 실행 (버퍼 캐시 프리로드)
+- 첫 요청 vectorMs ~500ms, 이후 ~15ms (캐시 warm 상태)
 
 ---
 
-### 2. embedding_ingest_state
+### 3. ai_core.embedding_ingest_state
 
-임베딩 동기화 상태를 추적하는 테이블입니다.
-
-#### 스키마
+임베딩 동기화 잡의 상태를 추적합니다.
 
 ```sql
 CREATE TABLE ai_core.embedding_ingest_state (
-  embedding_model   TEXT PRIMARY KEY,
-  last_batch_size   INTEGER,
-  last_run_at       TIMESTAMPTZ,
+  state_key                TEXT PRIMARY KEY,
+  last_source_ingested_at  TIMESTAMPTZ,
+  last_run_at              TIMESTAMPTZ,
+  last_status              TEXT,   -- ok / error / running / never
+  last_message             TEXT,
+  updated_at               TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**state_key 예시:** `scc_chunk_embeddings:google:gemini-embedding-2-preview`
+
+---
+
+### 4. ai_core.conversation_session
+
+사용자 대화 세션을 저장합니다. `/chat/stream` 응답 후 자동 저장(fire-and-forget)됩니다.
+
+```sql
+CREATE TABLE ai_core.conversation_session (
+  session_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_session_id TEXT,        -- 프론트엔드 로컬 UUID
+  user_key          TEXT,        -- 사용자 식별자
+  title             TEXT,
   created_at        TIMESTAMPTZ DEFAULT NOW(),
   updated_at        TIMESTAMPTZ DEFAULT NOW()
 );
 ```
 
-#### 컬럼 설명
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `embedding_model` | TEXT | 임베딩 모델명 (PK) |
-| `last_batch_size` | INTEGER | 마지막 배치 크기 |
-| `last_run_at` | TIMESTAMPTZ | 마지막 실행 시각 |
-| `created_at` | TIMESTAMPTZ | 생성 시각 |
-| `updated_at` | TIMESTAMPTZ | 업데이트 시각 |
-
 ---
 
-## 뷰
+### 5. ai_core.conversation_message
 
-### 1. v_scc_chunk_preview
-
-SCC 데이터를 청킹한 프리뷰 뷰입니다.
-
-#### 정의
+각 대화 세션의 메시지를 저장합니다.
 
 ```sql
-CREATE OR REPLACE VIEW ai_core.v_scc_chunk_preview AS
-SELECT
-  ai_core.make_stable_chunk_uuid(
-    b.require_id,
-    b.chunk_type,
-    b.chunk_seq,
-    b.reply_state,
-    b.chunk_text
-  ) AS chunk_id,
-  b.scc_id,
-  b.require_id,
-  b.chunk_type,
-  b.chunk_seq,
-  b.chunk_text,
-  b.module_tag,
-  b.reply_state,
-  b.resolved_weight,
-  b.ingested_at,
-  b.state_weight,
-  b.evidence_weight,
-  b.text_len_score,
-  b.tech_signal_score,
-  b.specificity_score,
-  b.closure_penalty_score,
-  b.resolution_stage,
-  b.feature_len
-FROM ai_core.v_scc_chunk_preview_base b;
+CREATE TABLE ai_core.conversation_message (
+  message_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id  UUID REFERENCES ai_core.conversation_session(session_id),
+  role        TEXT,        -- user / assistant
+  content     TEXT,
+  log_id      UUID,        -- query_log 연결
+  metadata    JSONB,       -- 추가 진단 정보
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
 ```
-
-#### 주요 특징
-
-**Deterministic chunk_id:**
-- `make_stable_chunk_uuid()` 함수 사용
-- 입력값: `require_id`, `chunk_type`, `chunk_seq`, `reply_state`, `chunk_text`
-- MD5 해시 기반 UUID 생성
-- **항상 동일한 입력 → 동일한 chunk_id**
-
-**청크 타입:**
-- `issue`: 문제 설명
-- `action`: 처리 조치
-- `resolution`: 해결 방법
-- `qa_pair`: 질의응답 쌍
-
-#### 스코어 필드
-
-| 필드 | 설명 | 범위 |
-|------|------|------|
-| `resolved_weight` | 해결 여부 가중치 | 0~1 |
-| `state_weight` | 상태 가중치 | 0~1 |
-| `evidence_weight` | 증거 가중치 | 0~1 |
-| `text_len_score` | 텍스트 길이 점수 | 0~1 |
-| `tech_signal_score` | 기술 신호 점수 | 0~1 |
-| `specificity_score` | 구체성 점수 | 0~1 |
-| `closure_penalty_score` | 종료 패널티 점수 | 0~1 |
 
 ---
 
-### 2. v_scc_embedding_status
+### 6. ai_core.query_log
 
-임베딩 커버리지 상태를 확인하는 뷰입니다.
+모든 `/chat/stream` 요청의 로그를 자동 기록합니다.
 
-```sql
-SELECT
-  embedding_model,
-  (SELECT COUNT(*) FROM ai_core.v_scc_chunk_preview) AS source_chunk_rows,
-  COUNT(*) AS embedded_chunks,
-  ROUND(100.0 * COUNT(*) /
-    (SELECT COUNT(*) FROM ai_core.v_scc_chunk_preview), 2
-  ) AS coverage_pct
-FROM ai_core.scc_chunk_embeddings
-GROUP BY embedding_model;
-```
-
-**결과 예시:**
-| embedding_model | source_chunk_rows | embedded_chunks | coverage_pct |
-|-----------------|-------------------|-----------------|--------------|
-| `google:gemini-embedding-2-preview` | 13,255 | 13,255 | 100.00 |
-
----
-
-### 3. v_scc_embedding_coverage
-
-커버리지 세부 정보를 제공하는 뷰입니다.
+| 컬럼 | 설명 |
+|------|------|
+| `log_uuid` | 로그 ID (UUID) |
+| `query` | 사용자 질문 |
+| `confidence` | 최종 신뢰도 |
+| `retrieval_mode` | `hybrid` / `rule_only` |
+| `answer_source` | `llm` / `deterministic_fallback` / `rule_only` |
+| `user_feedback` | 👍👎 피드백 (`positive` / `negative`) |
+| `created_at` | 기록 시각 |
 
 ---
 
 ## 인덱스
 
-### 현재 인덱스 상태
-
-**Primary Key Index:**
 ```sql
--- scc_chunk_embeddings_pkey
-CREATE UNIQUE INDEX ON ai_core.scc_chunk_embeddings (chunk_id, embedding_model);
-```
+-- mv_scc_chunk_preview (Materialized View)
+idx_mv_scc_chunk_require               -- btree(require_id)
 
-**ANN Index (Vector Search):**
-현재 없음 (HNSW 인덱스 추가 예정)
+-- scc_chunk_embeddings
+scc_chunk_embeddings_pkey              -- (chunk_id, embedding_model)
+idx_scc_chunk_embeddings_require       -- require_id
+idx_scc_chunk_embeddings_scc           -- scc_id
+idx_scc_chunk_embeddings_chunk_type    -- chunk_type
+idx_scc_chunk_embeddings_model         -- embedding_model
+idx_scc_chunk_embeddings_model_dim     -- (embedding_model, embedding_dim)
+idx_scc_chunk_embeddings_embedded_at   -- embedded_at
+idx_scc_chunk_embeddings_hnsw          -- hnsw((embedding_vec::vector(768)) vector_cosine_ops)
 
-### 권장 인덱스
-
-향후 추가 권장:
-
-```sql
--- chunk_type 필터링용
-CREATE INDEX idx_embeddings_chunk_type
-ON ai_core.scc_chunk_embeddings (chunk_type);
-
--- require_id 조회용
-CREATE INDEX idx_embeddings_require_id
-ON ai_core.scc_chunk_embeddings (require_id);
-
--- text_hash 중복 체크용
-CREATE INDEX idx_embeddings_text_hash
-ON ai_core.scc_chunk_embeddings (text_hash);
+-- public.scc_request / scc_reply (GIN FTS - Rule 검색 핵심)
+idx_scc_request_fts                    -- gin(to_tsvector('simple', title || context))
+idx_scc_reply_fts                      -- gin(to_tsvector('simple', reply))
 ```
 
 ---
 
-## 함수
+## 주요 SQL
 
-### make_stable_chunk_uuid()
-
-Deterministic UUID를 생성하는 함수입니다.
-
-#### 정의
+### 임베딩 현황 확인
 
 ```sql
-CREATE OR REPLACE FUNCTION ai_core.make_stable_chunk_uuid(
-  p_require_id UUID,
-  p_chunk_type TEXT,
-  p_chunk_seq INTEGER,
-  p_reply_state INTEGER,
-  p_chunk_text TEXT
-) RETURNS UUID
-LANGUAGE plpgsql
-IMMUTABLE
-AS $$
-DECLARE
-  raw_key TEXT;
-  h TEXT;
-BEGIN
-  raw_key := concat_ws(
-    '|',
-    COALESCE(p_require_id::TEXT, ''),
-    COALESCE(p_chunk_type, ''),
-    COALESCE(p_chunk_seq::TEXT, ''),
-    COALESCE(p_reply_state::TEXT, ''),
-    MD5(COALESCE(p_chunk_text, ''))
-  );
+-- 모델별 임베딩 수
+SELECT embedding_model, embedding_dim, COUNT(*)
+FROM ai_core.scc_chunk_embeddings
+GROUP BY embedding_model, embedding_dim;
 
-  h := MD5(raw_key);
-
-  RETURN (
-    SUBSTR(h, 1, 8) || '-' ||
-    SUBSTR(h, 9, 4) || '-' ||
-    SUBSTR(h, 13, 4) || '-' ||
-    SUBSTR(h, 17, 4) || '-' ||
-    SUBSTR(h, 21, 12)
-  )::UUID;
-END;
-$$;
+-- 소스 대비 커버리지
+SELECT
+  (SELECT COUNT(*) FROM ai_core.v_scc_chunk_preview) AS source_chunks,
+  COUNT(*) AS embedded_chunks,
+  ROUND(100.0 * COUNT(*) /
+    (SELECT COUNT(*) FROM ai_core.v_scc_chunk_preview), 2) AS coverage_pct
+FROM ai_core.scc_chunk_embeddings
+WHERE embedding_model = 'google:gemini-embedding-2-preview';
 ```
 
-#### 특징
-
-- **IMMUTABLE**: 동일 입력 → 동일 출력 보장
-- MD5 해시 기반
-- 청크 텍스트는 해시값만 사용 (전체 텍스트 포함 시 키가 너무 길어짐)
-
----
-
-## 쿼리 예시
-
-### 1. 특정 요구사항의 모든 청크 조회
+### 임베딩 안 된 청크 찾기
 
 ```sql
-SELECT
-  chunk_id,
-  chunk_type,
-  chunk_seq,
-  chunk_text
-FROM ai_core.v_scc_chunk_preview
-WHERE require_id = '6c11c32e-df4d-4b38-bc93-06df653b46a9'
-ORDER BY chunk_seq;
-```
-
-### 2. 임베딩이 없는 청크 찾기
-
-```sql
-SELECT
-  v.chunk_id,
-  v.require_id,
-  v.chunk_type,
-  v.chunk_text
+SELECT v.chunk_id, v.require_id, v.chunk_type
 FROM ai_core.v_scc_chunk_preview v
 LEFT JOIN ai_core.scc_chunk_embeddings e
   ON e.chunk_id = v.chunk_id
   AND e.embedding_model = 'google:gemini-embedding-2-preview'
 WHERE e.chunk_id IS NULL
-LIMIT 10;
+LIMIT 20;
 ```
 
-### 3. Vector Similarity Search
+### Vector Similarity Search
 
 ```sql
 SELECT
@@ -453,99 +341,45 @@ ORDER BY embedding_vec <=> $1::VECTOR
 LIMIT 10;
 ```
 
-### 4. 임베딩 커버리지 확인
+### 인제스트 상태 확인
 
 ```sql
-SELECT
-  (SELECT COUNT(*) FROM ai_core.v_scc_chunk_preview) AS total_chunks,
-  COUNT(*) AS embedded_chunks,
-  ROUND(100.0 * COUNT(*) /
-    (SELECT COUNT(*) FROM ai_core.v_scc_chunk_preview), 2
-  ) AS coverage_pct
-FROM ai_core.scc_chunk_embeddings
-WHERE embedding_model = 'google:gemini-embedding-2-preview';
+SELECT * FROM ai_core.embedding_ingest_state ORDER BY updated_at DESC;
 ```
 
-### 5. 중복 chunk_id 검사
+### pgvector 확장 확인
 
 ```sql
-SELECT
-  chunk_id,
-  COUNT(*) AS dup_count
-FROM ai_core.v_scc_chunk_preview
-GROUP BY chunk_id
-HAVING COUNT(*) > 1;
+SELECT extname, extversion FROM pg_extension WHERE extname = 'vector';
 ```
-
-**결과:** 0 rows (중복 없음 보장)
 
 ---
 
-## 데이터 정합성
+## DB 운영 스크립트
 
-### Chunk ID 안정성
-
-**테스트:**
-```sql
--- 첫 번째 조회
-SELECT chunk_id FROM ai_core.v_scc_chunk_preview
-ORDER BY require_id, chunk_type, chunk_seq LIMIT 5;
-
--- 두 번째 조회 (동일해야 함)
-SELECT chunk_id FROM ai_core.v_scc_chunk_preview
-ORDER BY require_id, chunk_type, chunk_seq LIMIT 5;
-```
-
-**결과:** ✅ 항상 동일 (Deterministic UUID)
-
-### Stale Embeddings 검사
-
-```sql
--- 임베딩은 있지만 소스가 없는 경우
-SELECT COUNT(*) AS stale_rows
-FROM ai_core.scc_chunk_embeddings e
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM ai_core.v_scc_chunk_preview v
-  WHERE v.chunk_id = e.chunk_id
-);
-```
-
-**결과:** 0 rows (Stale 없음)
-
----
-
-## 마이그레이션
-
-### chunk_id 안정화 마이그레이션
-
-기존 뷰를 deterministic UUID로 전환:
-
-```bash
-# 스크립트 실행
-node workspace-fastify/scripts/fix-stable-chunk-view.mjs
-```
-
-**작업 내용:**
-1. `make_stable_chunk_uuid()` 함수 생성
-2. `v_scc_chunk_preview_base` 스냅샷 생성
-3. `v_scc_chunk_preview` 뷰 교체
-4. Stale embeddings 삭제
+| 명령 | 역할 |
+|------|------|
+| `npm run db:init:vector` | ai_core 스키마 / 테이블 / 뷰 초기화 |
+| `npm run db:fix:stable-chunk-view` | Deterministic chunk_id 적용 |
+| `npm run db:enable:pgvector` | embedding_vec 컬럼 backfill 및 pgvector 활성화 |
+| `npm run ingest:sync:scc-embeddings` | 미임베딩 청크 증분 적재 |
+| `npm run db:check:vector` | 현재 모델 / 차원 / 커버리지 확인 |
 
 ---
 
 ## 변경 이력
 
+### 2026-04-09 (최신)
+- ✅ 데이터 규모 업데이트: 44,955 소스 청크, 임베딩 커버리지 100%
+- ✅ mv_scc_chunk_preview Materialized View 섹션 추가
+- ✅ HNSW 인덱스 생성 완료 반영 (m=16, ef_construction=64)
+- ✅ GIN FTS 인덱스 목록 추가 (scc_request / scc_reply)
+- ✅ 알려진 이슈 (`s+` 정규식 버그) 문서화
+
 ### 2026-03-25
-- ✅ 데이터베이스 문서 초안 작성
+- ✅ 초기 데이터베이스 문서 작성
 - ✅ ERD 다이어그램 추가
-- ✅ 쿼리 예시 추가
 
 ### 2026-03-23
 - ✅ Deterministic UUID 전환
-- ✅ 데이터 확장: 3,243 → 13,255 rows
-- ✅ 임베딩 커버리지 100% 달성
-
----
-
-**문의:** AI Core Team
+- ✅ 임베딩 데이터 확장: 3,243 → 13,255

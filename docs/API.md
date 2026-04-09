@@ -334,7 +334,7 @@ GET /conversations?userKey=user-identifier&limit=20
 
 | 캐시 | TTL | Key |
 |---|---|---|
-| Query Embedding Cache | 60분 | `{modelTag}::{query}` |
+| Query Embedding Cache | 5분 | `{modelTag}::{query}` |
 | Retrieval Cache | 30초 | `{scope}::{query}` |
 
 캐시 히트 시 응답 시간 **수백ms → 즉시** 응답.
@@ -344,6 +344,7 @@ GET /conversations?userKey=user-identifier&limit=20
 ## 변경 이력
 
 ### 2026-04-09 (최신)
+- ✅ Query Embedding Cache TTL 오류 수정 (60분 → 5분)
 - ✅ `/chat/stream` 메인 엔드포인트로 정정 (기존 `/chat` 명세 오류 수정)
 - ✅ `display` / `answerSource` / `top3Candidates` 응답 필드 추가
 - ✅ `timings` 세분화 (ruleMs / embeddingMs / vectorMs / rerankMs / llmMs)
