@@ -162,7 +162,7 @@ export function useChat(args: {
       isNewMessage: true,
     }
 
-    const historyForRequest = currentMessages
+    const historyForRequest = [...currentMessages, userMessage]
       .filter((m) => m.sender === "user" || (m.sender === "bot" && m.content && m.status === "matched"))
       .slice(-6)
       .map((m) => ({ role: m.sender === "user" ? "user" : "assistant", content: m.content }))
