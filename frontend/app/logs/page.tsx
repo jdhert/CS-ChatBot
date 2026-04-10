@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
@@ -12,8 +12,6 @@ import {
   Zap,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-// ─── 타입 ────────────────────────────────────────────────────────────────────
 
 interface LogRow {
   log_uuid: string
@@ -51,8 +49,6 @@ interface LogsResponse {
   rows: LogRow[]
 }
 
-// ─── 상수 ────────────────────────────────────────────────────────────────────
-
 const SCC_VIEW_URL =
   "https://cs.covision.co.kr/WebSite/Basic/ServiceManagement/Service_View.aspx"
 
@@ -65,12 +61,10 @@ const FILTER_OPTIONS = [
 
 const ANSWER_SOURCE_LABEL: Record<string, string> = {
   llm: "LLM",
-  deterministic_fallback: "결정적",
-  rule_only: "룰",
-  llm_stream: "스트림",
+  deterministic_fallback: "결정형 안내",
+  rule_only: "룰 기반",
+  llm_stream: "스트리밍 LLM",
 }
-
-// ─── 유틸 ────────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string) {
   const d = new Date(iso)
@@ -109,18 +103,24 @@ function StatusBadge({ row }: { row: LogRow }) {
     return (
       <span className="flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
         <XCircle className="h-3 w-3" />
-        {row.failure_reason === "NO_MATCH" ? "결과없음" : row.failure_reason === "LOW_CONFIDENCE" ? "낮은정확도" : "실패"}
+        {row.failure_reason === "NO_MATCH"
+          ? "결과 없음"
+          : row.failure_reason === "LOW_CONFIDENCE"
+            ? "낮은 정확도"
+            : "실패"}
       </span>
     )
   }
+
   if (row.is_no_match) {
     return (
       <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
         <AlertTriangle className="h-3 w-3" />
-        결과없음
+        결과 없음
       </span>
     )
   }
+
   return (
     <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
       <CheckCircle2 className="h-3 w-3" />
@@ -139,8 +139,6 @@ function TimingChip({ label, ms }: { label: string; ms: number | null }) {
   )
 }
 
-// ─── 로그 행 ─────────────────────────────────────────────────────────────────
-
 function LogRowCard({ row }: { row: LogRow }) {
   const [expanded, setExpanded] = useState(false)
   const sccUrl = row.best_require_id
@@ -154,20 +152,17 @@ function LogRowCard({ row }: { row: LogRow }) {
         row.is_failure ? "border-red-200 dark:border-red-800/60" : "border-border",
       )}
     >
-      {/* 헤더 행 */}
       <button
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full items-start gap-3 p-4 text-left"
         type="button"
       >
         <div className="min-w-0 flex-1 space-y-1.5">
-          {/* 쿼리 + 상태 */}
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge row={row} />
-            <span className="text-sm font-medium text-foreground line-clamp-1">{row.query}</span>
+            <span className="line-clamp-1 text-sm font-medium text-foreground">{row.query}</span>
           </div>
 
-          {/* 메타 정보 */}
           <div className="flex flex-wrap items-center gap-3">
             <ConfidenceBar value={row.confidence} />
             {row.retrieval_mode && (
@@ -179,13 +174,13 @@ function LogRowCard({ row }: { row: LogRow }) {
                     : "bg-muted text-muted-foreground",
                 )}
               >
-                {row.retrieval_mode === "hybrid" ? "하이브리드" : "룰"}
+                {row.retrieval_mode === "hybrid" ? "하이브리드" : "룰 전용"}
               </span>
             )}
             {row.vector_used && (
               <span className="flex items-center gap-0.5 text-[10px] text-blue-600 dark:text-blue-400">
                 <Zap className="h-2.5 w-2.5" />
-                벡터
+                벡터 사용
               </span>
             )}
             {row.answer_source && (
@@ -195,7 +190,7 @@ function LogRowCard({ row }: { row: LogRow }) {
             )}
             {row.user_feedback && (
               <span className="text-[10px] text-muted-foreground">
-                {row.user_feedback === "up" ? "👍" : "👎"}
+                {row.user_feedback === "up" ? "좋아요" : "싫어요"}
               </span>
             )}
             <span className="ml-auto text-[10px] text-muted-foreground">{formatDate(row.created_at)}</span>
@@ -203,10 +198,8 @@ function LogRowCard({ row }: { row: LogRow }) {
         </div>
       </button>
 
-      {/* 펼쳐진 상세 */}
       {expanded && (
-        <div className="border-t border-border px-4 pb-4 pt-3 space-y-3">
-          {/* 타이밍 */}
+        <div className="space-y-3 border-t border-border px-4 pb-4 pt-3">
           <div className="flex flex-wrap gap-1.5">
             <TimingChip label="룰" ms={row.rule_ms} />
             <TimingChip label="임베딩" ms={row.embedding_ms} />
@@ -215,7 +208,6 @@ function LogRowCard({ row }: { row: LogRow }) {
             <TimingChip label="전체" ms={row.total_ms} />
           </div>
 
-          {/* 상세 필드 */}
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-3">
             {row.chunk_type && (
               <>
@@ -231,19 +223,18 @@ function LogRowCard({ row }: { row: LogRow }) {
             )}
             {row.llm_skip_reason && (
               <>
-                <dt className="text-muted-foreground">LLM 스킵 이유</dt>
+                <dt className="text-muted-foreground">LLM 스킵 사유</dt>
                 <dd className="font-medium text-foreground">{row.llm_skip_reason}</dd>
               </>
             )}
             {row.failure_reason && (
               <>
-                <dt className="text-muted-foreground">실패 이유</dt>
+                <dt className="text-muted-foreground">실패 사유</dt>
                 <dd className="font-medium text-red-600 dark:text-red-400">{row.failure_reason}</dd>
               </>
             )}
           </dl>
 
-          {/* SCC 링크 */}
           {sccUrl && (
             <a
               href={sccUrl}
@@ -251,7 +242,7 @@ function LogRowCard({ row }: { row: LogRow }) {
               rel="noreferrer"
               className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
             >
-              SCC 이력 보기 →
+              SCC 이력 보기
             </a>
           )}
         </div>
@@ -260,10 +251,7 @@ function LogRowCard({ row }: { row: LogRow }) {
   )
 }
 
-// ─── 메인 페이지 ──────────────────────────────────────────────────────────────
-
 export default function LogsPage() {
-  // 챗봇 페이지와 다크모드 상태 공유 (localStorage)
   useEffect(() => {
     const apply = (dark: boolean) => {
       document.documentElement.classList.toggle("dark", dark)
@@ -295,11 +283,11 @@ export default function LogsPage() {
           signal: abortRef.current.signal,
         })
         const json = await res.json()
-        if (!res.ok) throw new Error(json.error ?? "로드 실패")
+        if (!res.ok) throw new Error(json.error ?? "로그를 불러오지 못했습니다")
         setData(json)
       } catch (e) {
         if (e instanceof Error && e.name === "AbortError") return
-        setError(e instanceof Error ? e.message : "알 수 없는 오류")
+        setError(e instanceof Error ? e.message : "알 수 없는 오류가 발생했습니다")
       } finally {
         setLoading(false)
       }
@@ -317,21 +305,18 @@ export default function LogsPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      {/* 헤더 */}
       <header className="sticky top-0 z-10 border-b border-border bg-card px-4 py-3 md:px-6">
         <div className="mx-auto flex max-w-4xl items-center gap-3">
           <Link
             href="/"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            aria-label="챗봇으로 돌아가기"
+            aria-label="채팅으로 돌아가기"
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <h1 className="text-sm font-semibold text-foreground">쿼리 로그</h1>
           <div className="ml-auto flex items-center gap-2">
-            {data && (
-              <span className="text-xs text-muted-foreground">총 {data.total.toLocaleString()}건</span>
-            )}
+            {data && <span className="text-xs text-muted-foreground">총 {data.total.toLocaleString()}건</span>}
             <button
               onClick={() => fetchLogs(filter, offset)}
               disabled={loading}
@@ -345,7 +330,6 @@ export default function LogsPage() {
       </header>
 
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-6 md:px-6">
-        {/* 필터 탭 */}
         <div className="mb-4 flex flex-wrap gap-1.5">
           {FILTER_OPTIONS.map((opt) => (
             <button
@@ -363,14 +347,12 @@ export default function LogsPage() {
           ))}
         </div>
 
-        {/* 에러 */}
         {error && (
           <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300">
             {error}
           </div>
         )}
 
-        {/* 로딩 스켈레톤 */}
         {loading && !data && (
           <div className="space-y-3">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -379,14 +361,12 @@ export default function LogsPage() {
           </div>
         )}
 
-        {/* 결과 없음 */}
         {!loading && data && data.rows.length === 0 && (
           <div className="rounded-xl border border-border bg-card py-16 text-center text-sm text-muted-foreground">
             해당 조건의 로그가 없습니다.
           </div>
         )}
 
-        {/* 로그 목록 */}
         {data && data.rows.length > 0 && (
           <div className="space-y-2">
             {data.rows.map((row) => (
@@ -395,7 +375,6 @@ export default function LogsPage() {
           </div>
         )}
 
-        {/* 페이지네이션 */}
         {totalPages > 1 && (
           <div className="mt-6 flex items-center justify-center gap-2">
             <button

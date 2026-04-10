@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import Link from "next/link"
 import { Bot, Download, Menu, Moon, ScrollText, Search, Sun } from "lucide-react"
@@ -14,7 +14,6 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
   return (
     <header className="flex items-center justify-between border-b border-border bg-card px-4 py-4 md:px-6">
       <div className="flex items-center gap-3">
-        {/* 모바일 햄버거 버튼 */}
         {onOpenSidebar && (
           <button
             onClick={onOpenSidebar}
@@ -25,9 +24,11 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
             <Menu className="h-5 w-5" />
           </button>
         )}
+
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary to-blue-400 text-white shadow-lg">
           <Bot className="h-5 w-5" />
         </div>
+
         <div>
           <h1 className="text-sm font-semibold text-foreground md:text-base">코비전 CS Bot</h1>
           <div className="flex items-center gap-1.5">
@@ -39,23 +40,26 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
           </div>
         </div>
       </div>
+
       <div className="flex items-center gap-2">
         <Link
           href="/search"
           className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-          aria-label="이력 검색"
-          title="SCC 이력 검색"
+          aria-label="검색"
+          title="검색"
         >
           <Search className="h-5 w-5" />
         </Link>
+
         <Link
           href="/logs"
           className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-          aria-label="쿼리 로그"
-          title="쿼리 로그 대시보드"
+          aria-label="로그 대시보드"
+          title="로그 대시보드"
         >
           <ScrollText className="h-5 w-5" />
         </Link>
+
         {onExportChat && (
           <button
             onClick={onExportChat}
@@ -67,10 +71,12 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
             <Download className="h-5 w-5" />
           </button>
         )}
+
         <button
           onClick={onToggleDarkMode}
           className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           aria-label="다크 모드 전환"
+          title={isDarkMode ? "라이트 모드로 전환" : "다크 모드로 전환"}
           type="button"
         >
           {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}

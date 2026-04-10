@@ -1,11 +1,10 @@
-"use client"
+﻿"use client"
 
 import { Bot, Check, ChevronDown, ChevronUp, Copy, ExternalLink, Info, Pencil, RotateCcw, ShieldAlert, ThumbsDown, ThumbsUp, User } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { useTypingEffect } from "@/hooks/use-typing-effect"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { useState } from "react"
+import { cn } from "@/lib/utils"
 
 export interface CandidateCard {
   requireId: string
@@ -99,7 +98,7 @@ function CopyButton({ text }: { text: string }) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      // clipboard API 미지원 환경 무시
+      // clipboard API unavailable
     }
   }
 
@@ -109,6 +108,7 @@ function CopyButton({ text }: { text: string }) {
       className="rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
       aria-label="답변 복사"
       title="답변 복사"
+      type="button"
     >
       {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
     </button>
@@ -124,7 +124,7 @@ function FeedbackButtons({ logId }: { logId: string }) {
     try {
       await submitFeedback(logId, feedback)
     } catch {
-      // 실패해도 UI 상태는 유지 (fire-and-forget)
+      // 실패해도 UI 상태는 유지
     }
   }
 
@@ -138,7 +138,8 @@ function FeedbackButtons({ logId }: { logId: string }) {
           "rounded p-0.5 transition-colors",
           voted === "up" ? "text-green-500" : "text-muted-foreground hover:text-green-500 disabled:opacity-40",
         )}
-        aria-label="도움됨"
+        aria-label="도움이 됐어요"
+        type="button"
       >
         <ThumbsUp className="h-3.5 w-3.5" />
       </button>
@@ -149,7 +150,8 @@ function FeedbackButtons({ logId }: { logId: string }) {
           "rounded p-0.5 transition-colors",
           voted === "down" ? "text-red-500" : "text-muted-foreground hover:text-red-500 disabled:opacity-40",
         )}
-        aria-label="도움 안됨"
+        aria-label="도움이 안 됐어요"
+        type="button"
       >
         <ThumbsDown className="h-3.5 w-3.5" />
       </button>
@@ -170,14 +172,13 @@ const CHUNK_TYPE_LABEL: Record<string, string> = {
 }
 
 function SuggestedQuestions({ candidates, onSelect }: { candidates: CandidateCard[]; onSelect: (q: string) => void }) {
-  // top1은 링크 버튼으로 이미 표시되므로 index 1, 2만 사용
   const suggestions = candidates
     .slice(1, 3)
-    .map((c) => {
-      const firstLine = c.previewText.split("\n")[0].trim()
-      return firstLine.length > 42 ? firstLine.slice(0, 42) + "…" : firstLine
+    .map((candidate) => {
+      const firstLine = candidate.previewText.split("\n")[0].trim()
+      return firstLine.length > 42 ? `${firstLine.slice(0, 42)}…` : firstLine
     })
-    .filter((t) => t.length > 0)
+    .filter((text) => text.length > 0)
 
   if (suggestions.length === 0) return null
 
@@ -185,11 +186,12 @@ function SuggestedQuestions({ candidates, onSelect }: { candidates: CandidateCar
     <div className="mt-3">
       <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">관련 질문</p>
       <div className="flex flex-wrap gap-1.5">
-        {suggestions.map((text, i) => (
+        {suggestions.map((text, index) => (
           <button
-            key={i}
+            key={index}
             onClick={() => onSelect(text)}
-            className="rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs text-foreground transition-colors hover:bg-primary/10 hover:border-primary/50"
+            className="rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs text-foreground transition-colors hover:border-primary/50 hover:bg-primary/10"
+            type="button"
           >
             {text}
           </button>
@@ -206,45 +208,40 @@ function CandidateCards({ candidates }: { candidates: CandidateCard[] }) {
 
   return (
     <div className="mt-3">
-      {/* 토글 버튼 */}
       <button
-        onClick={() => setIsExpanded((v) => !v)}
+        onClick={() => setIsExpanded((value) => !value)}
         className="flex items-center gap-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+        type="button"
       >
-        {isExpanded ? (
-          <ChevronUp className="h-3 w-3" />
-        ) : (
-          <ChevronDown className="h-3 w-3" />
-        )}
+        {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
         유사 이력 {candidates.length}건
-        {!isExpanded && <span className="text-[10px] opacity-60">— 더 보기</span>}
+        {!isExpanded && <span className="text-[10px] opacity-60">펼쳐보기</span>}
       </button>
 
-      {/* 카드 목록 (펼쳐진 경우만) */}
       {isExpanded && (
         <div className="mt-2 flex flex-col gap-1.5">
-          {candidates.map((c, i) => (
+          {candidates.map((candidate, index) => (
             <a
-              key={c.requireId}
-              href={c.linkUrl}
+              key={candidate.requireId}
+              href={candidate.linkUrl}
               target="_blank"
               rel="noreferrer"
               className="group flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs transition-colors hover:bg-muted"
             >
               <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
-                {i + 1}
+                {index + 1}
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <span className="font-medium text-foreground">SCC {c.sccId}</span>
+                  <span className="font-medium text-foreground">SCC {candidate.sccId}</span>
                   <span className="rounded bg-primary/10 px-1 py-0.5 text-[10px] text-primary">
-                    {CHUNK_TYPE_LABEL[c.chunkType] ?? c.chunkType}
+                    {CHUNK_TYPE_LABEL[candidate.chunkType] ?? candidate.chunkType}
                   </span>
                   <span className="ml-auto text-[10px] text-muted-foreground">
-                    {Math.round(c.score * 100)}%
+                    {Math.round(candidate.score * 100)}%
                   </span>
                 </div>
-                <p className="mt-0.5 line-clamp-2 break-words text-muted-foreground">{c.previewText}</p>
+                <p className="mt-0.5 line-clamp-2 break-words text-muted-foreground">{candidate.previewText}</p>
               </div>
               <ExternalLink className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
             </a>
@@ -260,24 +257,14 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
   const isNoMatch = !isUser && message.answerSource === "no_match"
   const isSecurityBlocked = !isUser && message.status === "SECURITY_BLOCKED"
   const isSearching = !isUser && message.status === "searching"
-  const isGenerating = !isUser && (!isSearching && (!message.content || message.status === "generating"))
-
-  const shouldShowTypingEffect = false
-  const { displayedText } = useTypingEffect({
-    text: message.content,
-    speed: 8,
-    enabled: shouldShowTypingEffect,
-  })
+  const isGenerating = !isUser && !isSearching && (!message.content || message.status === "generating")
 
   const contentToDisplay = message.content
   const isError = !isUser && message.status === "error"
   const canRetry = isError && onRetry != null
   const canEditQuestion = isNoMatch && onEditQuestion != null && originalQuery != null
   const showActions = !isUser && !isNoMatch && !isSecurityBlocked && !isGenerating && !isSearching
-  const showCandidates =
-    showActions &&
-    Array.isArray(message.top3Candidates) &&
-    message.top3Candidates.length > 1  // Top1만 있으면 이미 링크 버튼으로 표시됨
+  const showCandidates = showActions && Array.isArray(message.top3Candidates) && message.top3Candidates.length > 1
   const showSuggestions = showCandidates && onSuggestedQuestion != null
 
   return (
@@ -315,10 +302,9 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
                 ? "rounded-tl-sm border border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300"
                 : isNoMatch
                   ? "rounded-tl-sm border border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
-                  : "rounded-tl-sm bg-card text-card-foreground border border-border",
+                  : "rounded-tl-sm border border-border bg-card text-card-foreground",
           )}
         >
-          {/* 제목 */}
           {!isUser && message.title ? (
             <div
               className={cn(
@@ -334,7 +320,6 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
             </div>
           ) : null}
 
-          {/* 본문 */}
           {isSearching ? (
             <div className="flex items-center gap-2 text-muted-foreground">
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
@@ -355,7 +340,6 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
             <BotMessageContent content={contentToDisplay} />
           )}
 
-          {/* Top1 링크 버튼 */}
           {!isUser && message.linkUrl ? (
             <a
               href={message.linkUrl}
@@ -368,16 +352,10 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
             </a>
           ) : null}
 
-          {/* Top3 유사 이력 카드 */}
           {showCandidates && <CandidateCards candidates={message.top3Candidates!} />}
-
-          {/* 관련 질문 추천 chips */}
-          {showSuggestions && (
-            <SuggestedQuestions candidates={message.top3Candidates!} onSelect={onSuggestedQuestion!} />
-          )}
+          {showSuggestions && <SuggestedQuestions candidates={message.top3Candidates!} onSelect={onSuggestedQuestion!} />}
         </div>
 
-        {/* 타임스탬프 + 복사 + 피드백 + 재전송 */}
         <div className={cn("flex items-center gap-1.5 px-1", isUser ? "flex-row-reverse" : "flex-row")}>
           <span className="text-[10px] text-muted-foreground">{formatTimestamp(message.timestamp)}</span>
           {showActions && <CopyButton text={contentToDisplay} />}
@@ -387,7 +365,8 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
               onClick={onRetry}
               className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               title="다시 시도"
-              aria-label="메시지 재전송"
+              aria-label="메시지 다시 시도"
+              type="button"
             >
               <RotateCcw className="h-3 w-3" />
               다시 시도
@@ -399,6 +378,7 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
               className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               title="입력창에 질문 불러오기"
               aria-label="질문 수정하기"
+              type="button"
             >
               <Pencil className="h-3 w-3" />
               질문 수정하기
