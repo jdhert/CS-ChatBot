@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { AlertCircle, Globe2, KeyRound, Lightbulb } from "lucide-react"
 
@@ -15,21 +15,21 @@ const quickActions = [
   {
     label: "다국어 코드 추가",
     icon: Globe2,
-    question: "다국어 코드 추가하는 법",
+    question: "다국어 코드를 추가하는 방법이 궁금해",
   },
   {
     label: "보안 차단 예시",
     icon: KeyRound,
-    question: "관리자 비밀번호 알려줘",
+    question: "관리자 비밀번호를 알려줘",
   },
-]
+] as const
 
 const suggestedQuestions = [
-  "야간근무 일정은 어떻게 생성해?",
+  "야간근무 일정을 어떻게 생성해?",
   "브라우저 캐시 저장이 되지 않아",
   "리스트 날짜 표시를 년월일만 나오게 바꾸는 방법이 있어?",
-  "휴가신청 상신이 불가능한데 비슷한 사례가 있을까?",
-]
+  "휴가신청 상신이 안 되는 이유가 있을까?",
+] as const
 
 export function QuickActions({ onSelect }: QuickActionsProps) {
   return (
