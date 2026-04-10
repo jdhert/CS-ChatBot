@@ -1,4 +1,4 @@
-﻿import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance } from "fastify";
 import fastifyCors from "@fastify/cors";
 import { renderChatTestPage } from "../modules/chat/chatTestPage.js";
 import {
@@ -33,7 +33,7 @@ import { startIngestScheduler, type IngestSchedulerHandle } from "../platform/sc
 const COVISION_SERVICE_VIEW_BASE_URL =
   "https://cs.covision.co.kr/WebSite/Basic/ServiceManagement/Service_View.aspx";
 
-// 질의 로그 적재용 스키마
+// ─── 쿼리 로그 ────────────────────────────────────────────────────────────────
 interface QueryLogEntry {
   logUuid: string;
   query: string;
@@ -60,7 +60,7 @@ interface QueryLogEntry {
   totalMs?: number;
 }
 
-// 대화 세션 / 메시지 저장용 구조
+// ─── 대화 세션 영속화 ────────────────────────────────────────────────────────
 
 interface ConversationSessionInput {
   clientSessionId?: string | null;
@@ -82,12 +82,6 @@ interface ConversationMessageInput {
   similarIssueUrl?: string | null;
   logUuid?: string | null;
   metadata?: Record<string, unknown>;
-}
-
-interface ConversationPersistenceContext {
-  conversationId: string;
-  userMessageId: string;
-  assistantMessageId: string;
 }
 
 function buildConversationTitle(query: string): string {
@@ -179,74 +173,9 @@ async function appendConversationMessage(input: ConversationMessageInput): Promi
   return input.messageId;
 }
 
-async function startConversationPersistence(input: {
-  clientSessionId?: string | null;
-  userKey?: string | null;
-  title: string;
-  query: string;
-  retrievalScope: RetrievalScope;
-}): Promise<ConversationPersistenceContext> {
-  const conversationId = await ensureConversationSession({
-    clientSessionId: input.clientSessionId,
-    userKey: input.userKey,
-    title: input.title,
-  });
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const userMessageId = crypto.randomUUID();
-  const assistantMessageId = crypto.randomUUID();
-
-  await appendConversationMessage({
-    messageId: userMessageId,
-    sessionId: conversationId,
-    role: "user",
-    content: input.query,
-    status: "submitted",
-    metadata: {
-      retrievalScope: input.retrievalScope,
-      clientConversationId: input.clientSessionId ?? null,
-    },
-  });
-
-  return {
-    conversationId,
-    userMessageId,
-    assistantMessageId,
-  };
-}
-
-async function finishConversationPersistence(input: {
-  context: ConversationPersistenceContext;
-  content: string;
-  status: string | null;
-  answerSource?: string | null;
-  retrievalMode?: string | null;
-  confidence?: number | null;
-  bestRequireId?: string | null;
-  bestSccId?: string | null;
-  similarIssueUrl?: string | null;
-  logUuid?: string | null;
-  metadata?: Record<string, unknown>;
-}): Promise<string> {
-  await appendConversationMessage({
-    messageId: input.context.assistantMessageId,
-    sessionId: input.context.conversationId,
-    role: "assistant",
-    content: input.content,
-    status: input.status,
-    answerSource: input.answerSource ?? null,
-    retrievalMode: input.retrievalMode ?? null,
-    confidence: input.confidence ?? null,
-    bestRequireId: input.bestRequireId ?? null,
-    bestSccId: input.bestSccId ?? null,
-    similarIssueUrl: input.similarIssueUrl ?? null,
-    logUuid: input.logUuid ?? null,
-    metadata: input.metadata ?? {},
-  });
-
-  return input.context.assistantMessageId;
-}
-
-// 쿼리 로그는 응답 지연을 줄이기 위해 fire-and-forget으로 적재
+// fire-and-forget: 응답 속도에 영향 없도록 await 하지 않음
 function logQuery(entry: QueryLogEntry): void {
   const pool = getVectorPool();
   const isFailure = entry.isFailure ?? (entry.isNoMatch || (entry.confidence !== undefined && entry.confidence < 0.35));
@@ -287,9 +216,9 @@ function logQuery(entry: QueryLogEntry): void {
       entry.llmMs ?? null,
       entry.totalMs ?? null,
     ]
-  ).catch(() => { /* 로그 적재 실패는 무시 */ });
+  ).catch(() => { /* 로그 실패는 무시 */ });
 }
-// 대화 이력 정제: 최근 4턴만 유지하고 role/content를 검증
+// 대화 이력 정제: 최대 4 turn, role/content 타입 검증
 function sanitizeHistory(raw: unknown): ConversationTurn[] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -303,26 +232,28 @@ function sanitizeHistory(raw: unknown): ConversationTurn[] {
     .slice(-4)
     .map((t) => ({ role: t.role, content: t.content.slice(0, 500) }));
 }
-// 보안 차단 키워드 목록 - 악의적 의도가 명확한 표현만 차단
-// "비밀번호 변경", "password 변경" 같은 정상 CS 문의는 허용
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 보안 차단 키워드 목록 - 악의적 의도가 명확한 패턴만 차단
+// "비밀번호 변경", "password 변경" 같은 정당한 CS 문의는 허용
 const BLOCKED_SECURITY_KEYWORDS = [
-  // 보안 우회/차단 해제
+  // 보안 우회/차단 관련
   "보안차단", "보안우회", "보안해제", "보안 차단", "보안 우회", "보안 해제",
 
-  // 권한 획득/탈취
-  "권한획득", "권한 획득",
+  // 권한 상승 관련 (악의적 의도가 명확한 경우)
+  "권한상승", "권한 상승",
   "루트권한 획득", "root권한 획득", "관리자권한 획득", "admin권한 획득",
   "sudo 우회", "권한 탈취",
 
-  // 비밀번호/계정 정보 요청
+  // 비밀번호/계정 정보 요청 (악의적 의도가 명확한 경우만)
   "비밀번호 알려", "패스워드 알려", "암호 알려",
   "관리자 비밀번호 알려", "admin password 알려", "root password 알려",
   "db 비밀번호", "데이터베이스 비밀번호", "database password",
-  "비밀번호탈취", "비밀번호 탈취", "패스워드해킹", "패스워드 해킹",
+  "비밀번호탈취", "비밀번호 탈취", "패스워드크랙", "패스워드 크랙",
   "password crack", "password cracking", "password stealing", "password dump",
 
   // 공격 기법
-  "해킹", "크랙", "익스플로잇",
+  "해킹", "크랙", "크래킹",
   "SQL인젝션", "SQL injection", "sql inject",
   "XSS공격", "XSS 공격", "CSRF공격", "CSRF 공격",
   "백도어", "backdoor", "악성코드", "멀웨어", "malware", "랜섬웨어", "ransomware",
@@ -336,7 +267,7 @@ const BLOCKED_SECURITY_KEYWORDS = [
 ] as const;
 
 /**
- * 질의에 보안 차단 키워드가 포함되어 있는지 검사
+ * 쿼리에 보안 차단 키워드가 포함되어 있는지 검사
  */
 function containsBlockedKeyword(query: string): boolean {
   const lowerQuery = query.toLowerCase();
@@ -346,26 +277,26 @@ function containsBlockedKeyword(query: string): boolean {
 }
 
 /**
- * DB 뷰의 regexp_replace(text, '\s+', ' ', 'g') 버그 때문에
- * 's' 문자가 공백으로 치환된 텍스트를 표시용으로 복구합니다.
- * 검색과 임베딩 파이프라인에는 적용하지 않습니다.
+ * DB 뷰의 regexp_replace(text, 's+', ' ', 'g') 버그로 인해
+ * 's' 문자가 공백으로 치환된 텍스트를 표시용으로 복원합니다.
+ * 검색/임베딩 파이프라인에는 적용하지 않습니다.
  */
 function repairStrippedS(text: string): string {
   return text
-    // SCC 화면/메뉴 축약어
+    // SCC 도메인 식별자
     .replace(/\bBa e([Cc]onfig)\b/g, 'Base$1')
     .replace(/\bba e([Cc]onfig)\b/g, 'base$1')
     .replace(/\bPo t([Cc]enter)\b/g, 'Post$1')
     .replace(/\bSy tem(SMS)?\b/g, 'System$1')
     .replace(/\bsy tem\b/g, 'system')
-    // SQL / 프로그램 키워드
+    // SQL / 프로그래밍 키워드
     .replace(/\bIN ERT(\s+INTO)?\b/g, 'INSERT$1')
     .replace(/\bin ert\b/g, 'insert')
     .replace(/\bIN ERTED\b/g, 'INSERTED')
     .replace(/\bin erted\b/g, 'inserted')
     .replace(/\b elect\b/g, 'select')
     .replace(/\bSELECT\b/g, 'SELECT')
-    // 공통 축약 복구
+    // 공통 앱 단어
     .replace(/\b([Uu]) er([Cc]ode|[Dd]omain[Cc]ode|[Ii][Dd])?\b/g, (_, u, suffix) =>
       `${u === 'U' ? 'U' : 'u'}ser${suffix ?? ''}`)
     .replace(/\b([Ss]) torage\b/gi, 'Storage')
@@ -596,7 +527,7 @@ export function buildServer(): FastifyInstance {
   const queryCacheCleanupTimer = setInterval(evictExpiredEntries, 5 * 60_000);
   queryCacheCleanupTimer.unref?.();
 
-  // HNSW 인덱스 버퍼 캐시 워밍업 (서버 시작 후 첫 요청 지연 방지)
+  // HNSW 인덱스 버퍼 캐시 워밍 (서버 시작 후 첫 요청 지연 방지)
   setTimeout(async () => {
     try {
       const pool = getVectorPool();
@@ -615,7 +546,7 @@ export function buildServer(): FastifyInstance {
     }
   }, 3000);
 
-  // 자동 임베스트 스케줄러
+  // 자동 인제스트 스케줄러
   const ingestScheduler: IngestSchedulerHandle = startIngestScheduler({
     info: (msg) => app.log.info(msg),
     warn: (msg) => app.log.warn(msg),
@@ -652,7 +583,6 @@ export function buildServer(): FastifyInstance {
     const conversationHistory = sanitizeHistory(request.body?.conversationHistory);
     const clientConversationId = request.body?.conversationId?.trim() || null;
     const userKey = request.body?.userKey?.trim() || null;
-    let persistenceContext: ConversationPersistenceContext | null = null;
 
     if (!query) {
       return reply.code(400).send({
@@ -677,18 +607,6 @@ export function buildServer(): FastifyInstance {
     }
 
     try {
-      try {
-        persistenceContext = await startConversationPersistence({
-          clientSessionId: clientConversationId,
-          userKey,
-          title: buildConversationTitle(query),
-          query,
-          retrievalScope: scope,
-        });
-      } catch (error) {
-        request.log.warn(error, "failed to persist conversation user turn before /chat response");
-      }
-
       const rewrite = await rewriteQueryForRetrieval(query, conversationHistory);
       const effectiveQuery = rewrite.rewrittenQuery;
 
@@ -824,36 +742,47 @@ export function buildServer(): FastifyInstance {
         totalMs,
       });
 
+      // 대화 세션 영속화 (fire-and-forget)
       const top3Candidates = (result.candidates ?? []).slice(0, 3);
-      if (persistenceContext) {
-        try {
-          await finishConversationPersistence({
-            context: persistenceContext,
-            content: finalAnswer ?? "",
-            status: answerSource,
-            answerSource,
-            retrievalMode: result.retrievalMode,
-            confidence: result.confidence,
-            bestRequireId: selectedRequireId,
-            bestSccId: selectedSccId,
-            similarIssueUrl: selectedUrl,
-            logUuid,
-            metadata: {
-              top3Candidates,
-              queryRewritten: rewrite.rewriteUsed,
-              rewrittenQuery: rewrite.rewriteUsed ? effectiveQuery : null
-            }
-          });
-        } catch (error) {
-          request.log.warn(error, "failed to persist conversation assistant turn before /chat response");
-        }
-      }
+      ensureConversationSession({
+        clientSessionId: clientConversationId,
+        userKey,
+        title: buildConversationTitle(query)
+      }).then(async (conversationId) => {
+        const userMessageId = crypto.randomUUID();
+        await appendConversationMessage({
+          messageId: userMessageId,
+          sessionId: conversationId,
+          role: "user",
+          content: query,
+          status: "submitted",
+          metadata: { retrievalScope: scope, clientConversationId }
+        });
+        await appendConversationMessage({
+          messageId: crypto.randomUUID(),
+          sessionId: conversationId,
+          role: "assistant",
+          content: finalAnswer ?? "",
+          status: answerSource,
+          answerSource,
+          retrievalMode: result.retrievalMode,
+          confidence: result.confidence,
+          bestRequireId: selectedRequireId,
+          bestSccId: selectedSccId,
+          similarIssueUrl: selectedUrl,
+          logUuid,
+          metadata: {
+            top3Candidates,
+            queryRewritten: rewrite.rewriteUsed,
+            rewrittenQuery: rewrite.rewriteUsed ? effectiveQuery : null
+          }
+        });
+      }).catch((err) => {
+        request.log.warn(err, "conversation persistence failed (non-critical)");
+      });
 
       return reply.code(200).send({
         logId: logUuid,
-        conversationId: persistenceContext?.conversationId ?? null,
-        userMessageId: persistenceContext?.userMessageId ?? null,
-        assistantMessageId: persistenceContext?.assistantMessageId ?? null,
         ...result,
         bestRequireId: selectedRequireId,
         bestSccId: selectedSccId,
@@ -906,7 +835,6 @@ export function buildServer(): FastifyInstance {
     const conversationHistory = sanitizeHistory(request.body?.conversationHistory);
     const clientConversationId = request.body?.conversationId?.trim() || null;
     const userKey = request.body?.userKey?.trim() || null;
-    let persistenceContext: ConversationPersistenceContext | null = null;
 
     if (!query) {
       return reply.code(400).send({
@@ -934,44 +862,14 @@ export function buildServer(): FastifyInstance {
       request.log.warn({ query }, "Blocked query due to security keywords");
       return reply.code(200).send({
         error: "SECURITY_BLOCKED",
-        message: "보안 정책상 해당 질문에 대해서는 답변을 제공할 수 없습니다.\n\n보안 관련 문의는 담당자에게 직접 문의해 주시기 바랍니다."
+        message: "보안 정책상 해당 질문에 대해서는 답변할 수 없습니다.\n\n보안 관련 문의는 담당자에게 직접 문의해 주시기 바랍니다."
       });
     }
 
-    try {
-      persistenceContext = await startConversationPersistence({
-        clientSessionId: clientConversationId,
-        userKey,
-        title: buildConversationTitle(query),
-        query,
-        retrievalScope: scope,
-      });
-    } catch (error) {
-      request.log.warn(error, "failed to persist conversation user turn before /chat/stream flow");
-    }
-
-    // 캐시 히트 시 저장된 스트림 결과 재생
+    // ─── 캐시 히트 처리 ───────────────────────────────────────────────────────
     const cachedResult = getCachedResult(query, scope);
     if (cachedResult) {
-      request.log.info({ query, scope }, "Cache hit ??replaying cached stream result");
-      if (persistenceContext) {
-        try {
-          await finishConversationPersistence({
-            context: persistenceContext,
-            content: cachedResult.fullText,
-            status: "llm_stream",
-            answerSource: "llm_stream",
-            retrievalMode: "hybrid",
-            logUuid,
-            metadata: {
-              ...(cachedResult.metadata ?? {}),
-              cacheHit: true,
-            }
-          });
-        } catch (error) {
-          request.log.warn(error, "failed to persist cached assistant turn before /chat/stream replay");
-        }
-      }
+      request.log.info({ query, scope }, "Cache hit — replaying cached stream result");
       reply.raw.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
@@ -980,15 +878,11 @@ export function buildServer(): FastifyInstance {
       });
       reply.raw.write(`data: ${JSON.stringify({ type: "metadata", data: { ...cachedResult.metadata, cacheHit: true } })}\n\n`);
       reply.raw.write(`data: ${JSON.stringify({ type: "chunk", data: cachedResult.fullText })}\n\n`);
-      reply.raw.write(`data: ${JSON.stringify({ type: "done", data: {
-        conversationId: persistenceContext?.conversationId ?? null,
-        userMessageId: persistenceContext?.userMessageId ?? null,
-        assistantMessageId: persistenceContext?.assistantMessageId ?? null
-      } })}\n\n`);
+      reply.raw.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
       reply.raw.end();
       return;
     }
-    // 검색 실행
+    // ─────────────────────────────────────────────────────────────────────────
 
     try {
       const rewrite = await rewriteQueryForRetrieval(query, conversationHistory);
@@ -1032,33 +926,10 @@ export function buildServer(): FastifyInstance {
         });
 
         const noMatchMessage = hasCandidates && topScore >= 0.3
-          ? "관련된 유사 후보는 찾았지만 정확도가 충분하지 않습니다.\n\n구체적인 증상이나 메뉴명을 포함해서 다시 질문해 주시면 더 정확한 결과를 찾을 수 있습니다."
-          : "관련 처리 이력을 찾지 못했습니다.\n\n오류 메시지나 증상을 구체적으로 입력해 주세요.\n메뉴명 또는 기능명을 함께 입력하면 더 나은 결과를 찾을 수 있습니다.\n예: '전자결재 상신 버튼이 안 보여요', '급여 계산 오류 발생'";
-
-        if (persistenceContext) {
-          try {
-            await finishConversationPersistence({
-              context: persistenceContext,
-              content: noMatchMessage,
-              status: "no_match",
-              answerSource: "rule_only",
-              retrievalMode: result.retrievalMode,
-              confidence: result.confidence,
-              logUuid,
-              metadata: {
-                hasCandidates,
-                topScore
-              }
-            });
-          } catch (error) {
-            request.log.warn(error, "failed to persist no-match assistant turn before /chat/stream response");
-          }
-        }
+          ? "관련 유사 사례를 찾았지만 정확도가 충분하지 않습니다.\n\n더 구체적인 증상이나 메뉴명을 포함해서 다시 질문해 주시면 더 정확한 결과를 찾을 수 있습니다."
+          : "관련 처리 이력을 찾지 못했습니다.\n\n• 오류 메시지나 증상을 구체적으로 입력해 주세요\n• 메뉴명 또는 기능명을 함께 입력하면 더 잘 찾을 수 있습니다\n• 예: '전자결재 상신 버튼이 안 눌려요', '급여 계산 오류 발생'";
 
         return reply.code(200).send({
-          conversationId: persistenceContext?.conversationId ?? null,
-          userMessageId: persistenceContext?.userMessageId ?? null,
-          assistantMessageId: persistenceContext?.assistantMessageId ?? null,
           error: "NO_MATCH",
           confidence: result.confidence,
           hasCandidates,
@@ -1074,11 +945,11 @@ export function buildServer(): FastifyInstance {
         "X-Accel-Buffering": "no"
       });
 
-      // metadata를 먼저 전송해 프론트에서 링크와 상태를 즉시 표시할 수 있게 함
+      // Send metadata first — 프론트에서 링크/상태를 즉시 표시할 수 있도록 similarIssueUrl 포함
       const similarIssueUrl = result.bestRequireId
         ? `${COVISION_SERVICE_VIEW_BASE_URL}?req_id=${result.bestRequireId}&system=Menu01&alias=Menu01.Service.List&mnid=705`
         : null;
-      // Top3 후보를 카드 표시용으로 정제 (previewText 100자 기준)
+      // Top3 후보를 카드 표시용으로 정제 (previewText 80자 truncate)
       const top3Candidates = result.candidates.slice(0, 3).map((c) => ({
         requireId: c.requireId,
         sccId: c.sccId,
@@ -1090,9 +961,6 @@ export function buildServer(): FastifyInstance {
 
       const metadata = {
         logId: logUuid,
-        conversationId: persistenceContext?.conversationId ?? null,
-        userMessageId: persistenceContext?.userMessageId ?? null,
-        assistantMessageId: persistenceContext?.assistantMessageId ?? null,
         bestRequireId: result.bestRequireId,
         bestSccId: result.bestSccId,
         confidence: result.confidence,
@@ -1120,7 +988,7 @@ export function buildServer(): FastifyInstance {
       // Send done signal
       request.log.info({ totalChunks: chunkCount }, "Stream completed");
 
-      // 스트림 완료 후 결과를 캐시에 저장 (LLM 응답이 있을 때만)
+      // 스트리밍 완료 후 결과를 캐시에 저장 (LLM 응답이 있을 때만)
       if (accumulatedText.length > 0) {
         setCachedResult(query, scope, {
           metadata,
@@ -1151,31 +1019,40 @@ export function buildServer(): FastifyInstance {
         totalMs: Date.now() - retrievalStartedAt,
       });
 
-      if (persistenceContext) {
-        try {
-          await finishConversationPersistence({
-            context: persistenceContext,
-            content: accumulatedText,
-            status: "llm_stream",
-            answerSource: "llm_stream",
-            retrievalMode: result.retrievalMode,
-            confidence: result.confidence,
-            bestRequireId: result.bestRequireId,
-            bestSccId: result.bestSccId,
-            similarIssueUrl,
-            logUuid,
-            metadata: { top3Candidates, queryRewritten: rewrite.rewriteUsed }
-          });
-        } catch (error) {
-          request.log.warn(error, "failed to persist conversation assistant turn before /chat/stream done");
-        }
-      }
+      // 대화 세션 영속화 (fire-and-forget)
+      ensureConversationSession({
+        clientSessionId: clientConversationId,
+        userKey,
+        title: buildConversationTitle(query)
+      }).then(async (conversationId) => {
+        await appendConversationMessage({
+          messageId: crypto.randomUUID(),
+          sessionId: conversationId,
+          role: "user",
+          content: query,
+          status: "submitted",
+          metadata: { retrievalScope: scope, clientConversationId }
+        });
+        await appendConversationMessage({
+          messageId: crypto.randomUUID(),
+          sessionId: conversationId,
+          role: "assistant",
+          content: accumulatedText,
+          status: "llm_stream",
+          answerSource: "llm_stream",
+          retrievalMode: result.retrievalMode,
+          confidence: result.confidence,
+          bestRequireId: result.bestRequireId,
+          bestSccId: result.bestSccId,
+          similarIssueUrl,
+          logUuid,
+          metadata: { top3Candidates, queryRewritten: rewrite.rewriteUsed }
+        });
+      }).catch((err) => {
+        request.log.warn(err, "conversation persistence failed (non-critical)");
+      });
 
-      reply.raw.write(`data: ${JSON.stringify({ type: "done", data: {
-        conversationId: persistenceContext?.conversationId ?? null,
-        userMessageId: persistenceContext?.userMessageId ?? null,
-        assistantMessageId: persistenceContext?.assistantMessageId ?? null
-      } })}\n\n`);
+      reply.raw.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
       reply.raw.end();
     } catch (error) {
       request.log.error(error, "failed to run /chat/stream");
@@ -1188,7 +1065,7 @@ export function buildServer(): FastifyInstance {
     }
   });
 
-  // 사용자 피드백 저장 API
+  // ─── 사용자 피드백 ────────────────────────────────────────────────────────────
   app.post<{ Body: { logId: string; feedback: "up" | "down" } }>("/feedback", async (request, reply) => {
     const { logId, feedback } = request.body ?? {};
     if (!logId || !["up", "down"].includes(feedback)) {
@@ -1257,7 +1134,7 @@ export function buildServer(): FastifyInstance {
     }
   });
 
-  // 쿼리 로그 대시보드 API
+  // ─── 쿼리 로그 대시보드 API ──────────────────────────────────────────────────
   app.get("/admin/logs", async (request, reply) => {
     const qs = request.query as Record<string, string>;
     const limit = Math.min(Math.max(parseInt(qs.limit ?? "50", 10) || 50, 1), 200);
@@ -1301,14 +1178,13 @@ export function buildServer(): FastifyInstance {
       return reply.code(500).send({ error: "ADMIN_LOGS_FAILED" });
     }
   });
-  // 대화 이력 조회 API
+  // ─── 대화 이력 조회 API ───────────────────────────────────────────────────────
 
   app.get("/conversations", async (request, reply) => {
     const qs = request.query as Record<string, string>;
     const clientSessionId = qs.clientSessionId?.trim() || null;
     const userKey = qs.userKey?.trim() || null;
     const limit = Math.min(Math.max(parseInt(qs.limit ?? "20", 10) || 20, 1), 100);
-    const includeMessages = (qs.includeMessages ?? "").trim().toLowerCase() === "true";
     if (!clientSessionId && !userKey) {
       return reply.code(400).send({
         error: "INVALID_QUERY",
@@ -1329,7 +1205,7 @@ export function buildServer(): FastifyInstance {
       }
       params.push(limit);
       const whereClause = conditions.length > 0 ? `where ${conditions.join(" or ")}` : "";
-      const sessionResult = await pool.query(
+      const result = await pool.query(
         `select session_id, client_session_id, user_key, title, status, message_count,
                 last_message_at, created_at, updated_at
            from ai_core.conversation_session
@@ -1338,35 +1214,7 @@ export function buildServer(): FastifyInstance {
           limit $${params.length}`,
         params
       );
-
-      if (!includeMessages || sessionResult.rows.length === 0) {
-        return reply.code(200).send({ rows: sessionResult.rows });
-      }
-
-      const sessionIds = sessionResult.rows.map((row) => row.session_id);
-      const messageResult = await pool.query(
-        `select session_id, message_id, turn_index, role, content, status,
-                answer_source, retrieval_mode, confidence, best_require_id, best_scc_id,
-                similar_issue_url, log_uuid, metadata, created_at
-           from ai_core.conversation_message
-          where session_id = any($1::uuid[])
-          order by session_id asc, turn_index asc, created_at asc`,
-        [sessionIds]
-      );
-
-      const messageMap = new Map<string, unknown[]>();
-      for (const row of messageResult.rows) {
-        const items = messageMap.get(row.session_id) ?? [];
-        items.push(row);
-        messageMap.set(row.session_id, items);
-      }
-
-      const rows = sessionResult.rows.map((row) => ({
-        ...row,
-        messages: messageMap.get(row.session_id) ?? []
-      }));
-
-      return reply.code(200).send({ rows });
+      return reply.code(200).send({ rows: result.rows });
     } catch (error) {
       request.log.error(error, "failed to fetch conversations");
       return reply.code(500).send({ error: "CONVERSATION_LIST_FAILED" });
@@ -1399,49 +1247,7 @@ export function buildServer(): FastifyInstance {
     }
   });
 
-  app.delete<{ Params: { clientSessionId: string } }>("/conversations/:clientSessionId", async (request, reply) => {
-    const clientSessionId = request.params?.clientSessionId?.trim();
-    const userKey = (request.query as Record<string, string> | undefined)?.userKey?.trim() || null;
-
-    if (!clientSessionId) {
-      return reply.code(400).send({
-        error: "INVALID_CLIENT_SESSION_ID",
-        message: "`clientSessionId` is required."
-      });
-    }
-
-    const pool = getVectorPool();
-    try {
-      const existing = await pool.query<{ session_id: string; user_key: string | null }>(
-        `select session_id, user_key
-           from ai_core.conversation_session
-          where client_session_id = $1
-          limit 1`,
-        [clientSessionId]
-      );
-
-      if (!existing.rowCount || !existing.rows[0]?.session_id) {
-        return reply.code(404).send({ error: "CONVERSATION_NOT_FOUND" });
-      }
-
-      if (userKey && existing.rows[0].user_key && existing.rows[0].user_key !== userKey) {
-        return reply.code(403).send({ error: "CONVERSATION_DELETE_FORBIDDEN" });
-      }
-
-      await pool.query(
-        `delete from ai_core.conversation_session
-          where session_id = $1`,
-        [existing.rows[0].session_id]
-      );
-
-      return reply.code(200).send({ ok: true, clientSessionId });
-    } catch (error) {
-      request.log.error(error, "failed to delete conversation");
-      return reply.code(500).send({ error: "CONVERSATION_DELETE_FAILED" });
-    }
-  });
-
-  // 서버 종료 시 캐시 정리와 DB 연결 해제
+  // ─────────────────────────────────────────────────────────────────────────────
 
   app.addHook("onClose", async () => {
     stopCacheCleanupInterval();
@@ -1452,4 +1258,3 @@ export function buildServer(): FastifyInstance {
 
   return app;
 }
-
