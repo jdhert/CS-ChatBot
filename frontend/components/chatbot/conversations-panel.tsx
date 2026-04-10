@@ -1,8 +1,9 @@
-﻿"use client"
+"use client"
 
 import { MessageSquarePlus, Trash2, X } from "lucide-react"
-import { groupConversationsByDate, type Conversation } from "@/lib/conversations"
 import { cn } from "@/lib/utils"
+import type { Conversation } from "@/lib/conversations"
+import { groupConversationsByDate } from "@/lib/conversations"
 
 interface ConversationsPanelProps {
   conversations: Conversation[]
@@ -55,7 +56,7 @@ export function ConversationsPanel({
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <MessageSquarePlus className="mb-3 h-12 w-12 text-muted-foreground opacity-50" />
             <p className="text-sm text-muted-foreground">아직 대화가 없습니다.</p>
-            <p className="mt-1 text-xs text-muted-foreground">새 대화를 시작해보세요.</p>
+            <p className="mt-1 text-xs text-muted-foreground">새 대화를 시작해보세요!</p>
           </div>
         ) : (
           <div className="space-y-6">
@@ -94,8 +95,8 @@ export function ConversationsPanel({
                             </p>
                           </button>
                           <button
-                            onClick={(event) => {
-                              event.stopPropagation()
+                            onClick={(e) => {
+                              e.stopPropagation()
                               onDeleteConversation(conversation.id)
                             }}
                             className={cn(
