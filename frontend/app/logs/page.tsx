@@ -1,13 +1,19 @@
-﻿"use client"
+"use client"
 
+import type { ReactNode } from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
   AlertTriangle,
   ArrowLeft,
+  BarChart3,
   CheckCircle2,
   Clock,
+  MessageCircleWarning,
   RefreshCw,
+  Search,
+  ThumbsDown,
+  ThumbsUp,
   XCircle,
   Zap,
 } from "lucide-react"
@@ -46,7 +52,26 @@ interface LogsResponse {
   limit: number
   offset: number
   filter: string
+  q: string
+  days: number
+  summary: LogSummary | null
   rows: LogRow[]
+}
+
+interface LogSummary {
+  total: number
+  failure_count: number
+  no_match_count: number
+  low_confidence_count: number
+  feedback_up_count: number
+  feedback_down_count: number
+  hybrid_count: number
+  rule_only_count: number
+  slow_count: number
+  avg_confidence: number | null
+  avg_total_ms: number | null
+  avg_retrieval_ms: number | null
+  latest_at: string | null
 }
 
 const SCC_VIEW_URL =
@@ -57,6 +82,18 @@ const FILTER_OPTIONS = [
   { value: "failure", label: "실패" },
   { value: "no_match", label: "결과 없음" },
   { value: "low_confidence", label: "낮은 정확도" },
+  { value: "feedback_down", label: "싫어요" },
+  { value: "feedback_up", label: "좋아요" },
+  { value: "slow", label: "느린 쿼리" },
+  { value: "hybrid", label: "하이브리드" },
+  { value: "rule_only", label: "룰 전용" },
+] as const
+
+const DAY_OPTIONS = [
+  { value: 1, label: "1일" },
+  { value: 7, label: "7일" },
+  { value: 30, label: "30일" },
+  { value: 90, label: "90일" },
 ] as const
 
 const ANSWER_SOURCE_LABEL: Record<string, string> = {
@@ -136,6 +173,39 @@ function TimingChip({ label, ms }: { label: string; ms: number | null }) {
       <Clock className="h-2.5 w-2.5" />
       {label} {ms}ms
     </span>
+  )
+}
+
+function SummaryCard({
+  label,
+  value,
+  sub,
+  tone = "neutral",
+  icon,
+}: {
+  label: string
+  value: string
+  sub?: string
+  tone?: "neutral" | "success" | "warning" | "danger" | "info"
+  icon: ReactNode
+}) {
+  const toneClass = {
+    neutral: "border-border bg-card text-muted-foreground",
+    success: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300",
+    warning: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300",
+    danger: "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300",
+    info: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300",
+  }[tone]
+
+  return (
+    <div className={cn("rounded-2xl border p-3 shadow-sm", toneClass)}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-medium">{label}</span>
+        <span className="opacity-80">{icon}</span>
+      </div>
+      <div className="mt-2 text-xl font-semibold tabular-nums text-foreground">{value}</div>
+      {sub && <div className="mt-1 text-[11px] opacity-80">{sub}</div>}
+    </div>
   )
 }
 
@@ -265,6 +335,9 @@ export default function LogsPage() {
   }, [])
 
   const [filter, setFilter] = useState<string>("all")
+  const [query, setQuery] = useState("")
+  const [appliedQuery, setAppliedQuery] = useState("")
+  const [days, setDays] = useState(7)
   const [data, setData] = useState<LogsResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -273,13 +346,20 @@ export default function LogsPage() {
   const abortRef = useRef<AbortController | null>(null)
 
   const fetchLogs = useCallback(
-    async (f: string, o: number) => {
+    async (f: string, o: number, q: string, d: number) => {
       abortRef.current?.abort()
       abortRef.current = new AbortController()
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`/api/admin/logs?filter=${f}&limit=${limit}&offset=${o}`, {
+        const params = new URLSearchParams({
+          filter: f,
+          limit: String(limit),
+          offset: String(o),
+          days: String(d),
+        })
+        if (q.trim()) params.set("q", q.trim())
+        const res = await fetch(`/api/admin/logs?${params.toString()}`, {
           signal: abortRef.current.signal,
         })
         const json = await res.json()
@@ -297,8 +377,8 @@ export default function LogsPage() {
 
   useEffect(() => {
     setOffset(0)
-    fetchLogs(filter, 0)
-  }, [filter, fetchLogs])
+    fetchLogs(filter, 0, appliedQuery, days)
+  }, [filter, appliedQuery, days, fetchLogs])
 
   const totalPages = data ? Math.ceil(data.total / limit) : 0
   const currentPage = Math.floor(offset / limit)
@@ -306,7 +386,7 @@ export default function LogsPage() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <header className="sticky top-0 z-10 border-b border-border bg-card px-4 py-3 md:px-6">
-        <div className="mx-auto flex max-w-4xl items-center gap-3">
+        <div className="mx-auto flex max-w-6xl items-center gap-3">
           <Link
             href="/"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -318,7 +398,7 @@ export default function LogsPage() {
           <div className="ml-auto flex items-center gap-2">
             {data && <span className="text-xs text-muted-foreground">총 {data.total.toLocaleString()}건</span>}
             <button
-              onClick={() => fetchLogs(filter, offset)}
+              onClick={() => fetchLogs(filter, offset, appliedQuery, days)}
               disabled={loading}
               className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
               aria-label="새로고침"
@@ -329,7 +409,100 @@ export default function LogsPage() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-6 md:px-6">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-6">
+        {data?.summary && (
+          <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <SummaryCard
+              label={`${data.days}일 내 로그`}
+              value={data.summary.total.toLocaleString()}
+              sub={data.summary.latest_at ? `최근 ${formatDate(data.summary.latest_at)}` : "최근 로그 없음"}
+              icon={<BarChart3 className="h-4 w-4" />}
+              tone="info"
+            />
+            <SummaryCard
+              label="실패 / 결과 없음"
+              value={`${data.summary.failure_count.toLocaleString()}건`}
+              sub={`no-match ${data.summary.no_match_count.toLocaleString()} · 저신뢰 ${data.summary.low_confidence_count.toLocaleString()}`}
+              icon={<MessageCircleWarning className="h-4 w-4" />}
+              tone={data.summary.failure_count > 0 ? "danger" : "success"}
+            />
+            <SummaryCard
+              label="사용자 피드백"
+              value={`${data.summary.feedback_up_count.toLocaleString()} / ${data.summary.feedback_down_count.toLocaleString()}`}
+              sub="좋아요 / 싫어요"
+              icon={
+                <span className="flex items-center gap-1">
+                  <ThumbsUp className="h-3.5 w-3.5" />
+                  <ThumbsDown className="h-3.5 w-3.5" />
+                </span>
+              }
+              tone={data.summary.feedback_down_count > 0 ? "warning" : "neutral"}
+            />
+            <SummaryCard
+              label="평균 응답 시간"
+              value={data.summary.avg_total_ms ? `${data.summary.avg_total_ms.toLocaleString()}ms` : "-"}
+              sub={`느린 쿼리 ${data.summary.slow_count.toLocaleString()} · hybrid ${data.summary.hybrid_count.toLocaleString()}`}
+              icon={<Clock className="h-4 w-4" />}
+              tone={data.summary.slow_count > 0 ? "warning" : "neutral"}
+            />
+          </div>
+        )}
+
+        <form
+          className="mb-4 grid gap-2 rounded-2xl border border-border bg-card p-3 shadow-sm md:grid-cols-[1fr_auto_auto]"
+          onSubmit={(event) => {
+            event.preventDefault()
+            setOffset(0)
+            setAppliedQuery(query)
+          }}
+        >
+          <label className="relative block">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="질문 키워드 검색"
+              className="h-10 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary"
+            />
+          </label>
+          <select
+            value={days}
+            onChange={(event) => {
+              setDays(Number(event.target.value))
+              setOffset(0)
+            }}
+            className="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-primary"
+            aria-label="조회 기간"
+          >
+            {DAY_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                최근 {opt.label}
+              </option>
+            ))}
+          </select>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              className="h-10 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              검색
+            </button>
+            {(appliedQuery || query) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery("")
+                  setAppliedQuery("")
+                  setOffset(0)
+                }}
+                className="h-10 rounded-xl border border-border px-4 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+              >
+                초기화
+              </button>
+            )}
+          </div>
+        </form>
+
         <div className="mb-4 flex flex-wrap gap-1.5">
           {FILTER_OPTIONS.map((opt) => (
             <button
@@ -381,7 +554,7 @@ export default function LogsPage() {
               onClick={() => {
                 const o = Math.max(0, offset - limit)
                 setOffset(o)
-                fetchLogs(filter, o)
+                fetchLogs(filter, o, appliedQuery, days)
               }}
               disabled={offset === 0}
               className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
@@ -395,7 +568,7 @@ export default function LogsPage() {
               onClick={() => {
                 const o = offset + limit
                 setOffset(o)
-                fetchLogs(filter, o)
+                fetchLogs(filter, o, appliedQuery, days)
               }}
               disabled={offset + limit >= (data?.total ?? 0)}
               className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"

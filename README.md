@@ -177,6 +177,7 @@ graph TB
 ### 6. 운영 기능
 - 쿼리 로그 자동 기록 (`ai_core.query_log`)
 - 운영 smoke 평가 (`npm run smoke:prod`)
+- 관리자 운영 로그 대시보드 (`/logs`) 요약/필터/검색
 - JSP AJAX 연동용 `display` 응답 계약 문서화
 - 인메모리 쿼리 캐시 (동일 질문 반복 시 즉시 응답)
 - 자동 인제스트 스케줄러 (미임베딩 청크 주기적 동기화)
@@ -534,6 +535,7 @@ sequenceDiagram
 - [x] 대화 이력 DB hydrate 및 삭제 UX 안정화
 - [x] JSP AJAX `display` 응답 계약 문서화
 - [x] `query_log` 운영 스키마 보정 (`log_uuid`, `is_failure`, `failure_reason`, `user_feedback`)
+- [x] 관리자 운영 로그 강화 (`/logs` 요약 카드, 검색어/기간/피드백/느린쿼리 필터)
 
 ### 완료 (2026-04-02 추가)
 - [x] nginx `depends_on` healthcheck 조건 추가 (502 재발 방지)
@@ -571,6 +573,7 @@ sequenceDiagram
 - ✅ **운영 smoke 평가 추가** — `npm run smoke:prod`로 `csbotservice.com` 대표 질문 4건 검증, 현재 4/4 통과
 - ✅ **JSP AJAX 연동 계약 문서화** — `/chat` JSON 응답의 `display` 객체 기준으로 렌더링 계약 고정
 - ✅ **query_log 운영 스키마 보정** — `log_uuid`, `is_failure`, `failure_reason`, `user_feedback` 보장 및 `db:migrate:query-log` 추가
+- ✅ **관리자 운영 로그 강화** — `/logs`에서 기간/검색어/피드백/느린쿼리/검색모드 필터와 요약 카드 제공
 - ✅ **평가 산출물 관리 정리** — `*.latest.json`은 실행 결과로 보고 Git 추적 제외, seed 파일만 기준 데이터로 관리
 
 ### 2026-04-07

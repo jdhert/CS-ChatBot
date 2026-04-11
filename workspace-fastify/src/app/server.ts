@@ -1262,16 +1262,52 @@ export function buildServer(): FastifyInstance {
     const qs = request.query as Record<string, string>;
     const limit = Math.min(Math.max(parseInt(qs.limit ?? "50", 10) || 50, 1), 200);
     const offset = Math.max(parseInt(qs.offset ?? "0", 10) || 0, 0);
-    const filter = qs.filter ?? "all"; // all | failure | no_match | low_confidence
+    const filter = qs.filter ?? "all";
+    const q = qs.q?.trim() ?? "";
+    const days = Math.min(Math.max(parseInt(qs.days ?? "7", 10) || 7, 1), 90);
+    const allowedFilters = new Set([
+      "all",
+      "failure",
+      "no_match",
+      "low_confidence",
+      "feedback_down",
+      "feedback_up",
+      "slow",
+      "hybrid",
+      "rule_only",
+    ]);
+    const activeFilter = allowedFilters.has(filter) ? filter : "all";
 
-    const whereClause =
-      filter === "failure"        ? "where is_failure = true" :
-      filter === "no_match"       ? "where is_no_match = true" :
-      filter === "low_confidence" ? "where confidence < 0.45 and is_no_match = false" :
+    const baseConditions: string[] = [];
+    const baseParams: unknown[] = [];
+    if (days > 0) {
+      baseParams.push(days);
+      baseConditions.push(`created_at >= now() - ($${baseParams.length}::int * interval '1 day')`);
+    }
+    if (q) {
+      baseParams.push(`%${q}%`);
+      baseConditions.push(`query ilike $${baseParams.length}`);
+    }
+
+    const filterCondition =
+      activeFilter === "failure"        ? "is_failure = true" :
+      activeFilter === "no_match"       ? "is_no_match = true" :
+      activeFilter === "low_confidence" ? "confidence < 0.45 and is_no_match = false" :
+      activeFilter === "feedback_down"  ? "user_feedback = 'down'" :
+      activeFilter === "feedback_up"    ? "user_feedback = 'up'" :
+      activeFilter === "slow"           ? "coalesce(total_ms, retrieval_ms, 0) >= 5000" :
+      activeFilter === "hybrid"         ? "retrieval_mode = 'hybrid'" :
+      activeFilter === "rule_only"      ? "retrieval_mode = 'rule_only'" :
       "";
+
+    const rowConditions = [...baseConditions];
+    if (filterCondition) rowConditions.push(filterCondition);
+    const baseWhereClause = baseConditions.length > 0 ? `where ${baseConditions.join(" and ")}` : "";
+    const rowWhereClause = rowConditions.length > 0 ? `where ${rowConditions.join(" and ")}` : "";
 
     const pool = getVectorPool();
     try {
+      const rowParams = [...baseParams, limit, offset];
       const [rowsResult, countResult] = await Promise.all([
         pool.query(
           `select log_uuid, query, retrieval_scope, confidence, best_require_id, best_scc_id,
@@ -1281,19 +1317,41 @@ export function buildServer(): FastifyInstance {
                   rule_ms, embedding_ms, vector_ms, rerank_ms, retrieval_ms, llm_ms, total_ms,
                   user_feedback, created_at
            from ai_core.query_log
-           ${whereClause}
+           ${rowWhereClause}
            order by created_at desc
-           limit $1 offset $2`,
-          [limit, offset]
+           limit $${baseParams.length + 1} offset $${baseParams.length + 2}`,
+          rowParams
         ),
-        pool.query(`select count(*) as total from ai_core.query_log ${whereClause}`)
+        pool.query(`select count(*) as total from ai_core.query_log ${rowWhereClause}`, baseParams),
       ]);
+      const summaryResult = await pool.query(
+        `select
+            count(*)::int as total,
+            count(*) filter (where is_failure = true)::int as failure_count,
+            count(*) filter (where is_no_match = true)::int as no_match_count,
+            count(*) filter (where confidence < 0.45 and is_no_match = false)::int as low_confidence_count,
+            count(*) filter (where user_feedback = 'up')::int as feedback_up_count,
+            count(*) filter (where user_feedback = 'down')::int as feedback_down_count,
+            count(*) filter (where retrieval_mode = 'hybrid')::int as hybrid_count,
+            count(*) filter (where retrieval_mode = 'rule_only')::int as rule_only_count,
+            count(*) filter (where coalesce(total_ms, retrieval_ms, 0) >= 5000)::int as slow_count,
+            round(avg(confidence)::numeric, 4)::float as avg_confidence,
+            round(avg(total_ms)::numeric, 0)::int as avg_total_ms,
+            round(avg(retrieval_ms)::numeric, 0)::int as avg_retrieval_ms,
+            max(created_at) as latest_at
+           from ai_core.query_log
+           ${baseWhereClause}`,
+        baseParams
+      );
 
       return reply.code(200).send({
         total: parseInt(countResult.rows[0].total, 10),
         limit,
         offset,
-        filter,
+        filter: activeFilter,
+        q,
+        days,
+        summary: summaryResult.rows[0],
         rows: rowsResult.rows
       });
     } catch (error) {
