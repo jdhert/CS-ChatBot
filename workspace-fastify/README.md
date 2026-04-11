@@ -103,6 +103,9 @@ curl -X POST https://csbotservice.com/api/retrieval/search \
 | `/api/retrieval/search` | `/retrieval/search` |
 | `/api/admin/logs` | `/admin/logs` |
 | `/api/feedback` | `/feedback` |
+| `/api/conversations` | `/conversations` |
+| `/api/conversations/:sessionId` | `/conversations/:sessionId` |
+| `/api/conversations/:sessionId/messages` | `/conversations/:sessionId/messages` |
 
 운영에서 사용하면 안 되는 경로:
 

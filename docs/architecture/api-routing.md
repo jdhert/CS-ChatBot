@@ -20,6 +20,9 @@ location /api/ {
 | `/api/retrieval/search` | `/retrieval/search` | `POST /retrieval/search` |
 | `/api/admin/logs` | `/admin/logs` | `GET /admin/logs` |
 | `/api/feedback` | `/feedback` | `POST /feedback` |
+| `/api/conversations` | `/conversations` | `GET /conversations` |
+| `/api/conversations/:sessionId` | `/conversations/:sessionId` | `DELETE /conversations/:sessionId` |
+| `/api/conversations/:sessionId/messages` | `/conversations/:sessionId/messages` | `GET /conversations/:sessionId/messages` |
 | `/health` | `/health` | `GET /health` |
 
 ## 운영 기준 프론트 호출 규칙
@@ -32,6 +35,9 @@ location /api/ {
 - `/api/retrieval/search`
 - `/api/admin/logs`
 - `/api/feedback`
+- `/api/conversations`
+- `/api/conversations/:sessionId`
+- `/api/conversations/:sessionId/messages`
 
 ### 사용하면 안 되는 경로
 
