@@ -15,6 +15,7 @@ export default function ChatbotPage() {
     activeConversationId,
     currentMessages,
     browserUserKey,
+    deletingConversationIds,
     setCurrentMessages,
     startNewConversation,
     ensureConversation,
@@ -71,6 +72,7 @@ export default function ChatbotPage() {
         <ConversationsPanel
           conversations={conversations}
           activeConversationId={activeConversationId}
+          deletingConversationIds={deletingConversationIds}
           onSelectConversation={(id) => {
             selectConversation(id)
             setIsSidebarOpen(false)

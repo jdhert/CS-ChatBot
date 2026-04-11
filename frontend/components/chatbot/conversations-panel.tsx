@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 interface ConversationsPanelProps {
   conversations: Conversation[]
   activeConversationId: string | null
+  deletingConversationIds?: Set<string>
   onSelectConversation: (conversationId: string) => void
   onNewConversation: () => void
   onDeleteConversation: (conversationId: string) => void
@@ -16,6 +17,7 @@ interface ConversationsPanelProps {
 export function ConversationsPanel({
   conversations,
   activeConversationId,
+  deletingConversationIds,
   onSelectConversation,
   onNewConversation,
   onDeleteConversation,
@@ -73,6 +75,7 @@ export function ConversationsPanel({
                   <div className="space-y-1">
                     {groupConversations.map((conversation) => {
                       const isActive = conversation.id === activeConversationId
+                      const isDeleting = deletingConversationIds?.has(conversation.id) ?? false
                       return (
                         <div
                           key={conversation.id}
@@ -100,11 +103,12 @@ export function ConversationsPanel({
                             }}
                             className={cn(
                               "shrink-0 rounded-md p-1.5 transition-all",
-                              "opacity-0 group-hover:opacity-100",
+                              isDeleting ? "opacity-50" : "opacity-0 group-hover:opacity-100",
                               "hover:bg-destructive/10",
                             )}
+                            disabled={isDeleting}
                             type="button"
-                            title="대화 삭제"
+                            title={isDeleting ? "삭제 중" : "대화 삭제"}
                           >
                             <Trash2 className="h-3.5 w-3.5 text-muted-foreground transition-colors hover:text-destructive" />
                           </button>

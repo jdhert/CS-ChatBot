@@ -29,6 +29,7 @@ export function useConversations() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [currentMessages, setCurrentMessages] = useState<Message[]>([])
   const [browserUserKey, setBrowserUserKey] = useState<string | null>(null)
+  const [deletingConversationIds, setDeletingConversationIds] = useState<Set<string>>(() => new Set())
 
   const applyConversationSelection = useCallback((nextConversations: Conversation[], preferredId?: string | null) => {
     if (nextConversations.length === 0) {
@@ -166,8 +167,21 @@ export function useConversations() {
 
   const removeConversation = useCallback(
     async (conversationId: string) => {
+      if (deletingConversationIds.has(conversationId)) {
+        return
+      }
+
+      const targetConversation = conversations.find((conv) => conv.id === conversationId)
+      if (!targetConversation) {
+        return
+      }
+
+      setDeletingConversationIds((prev) => new Set(prev).add(conversationId))
+
       try {
-        await deleteConversationFromServer(conversationId, browserUserKey)
+        if (targetConversation.messages.length > 0) {
+          await deleteConversationFromServer(conversationId, browserUserKey)
+        }
       } catch (error) {
         toast({
           title: "대화를 삭제하지 못했습니다",
@@ -175,6 +189,12 @@ export function useConversations() {
           variant: "destructive",
         })
         return
+      } finally {
+        setDeletingConversationIds((prev) => {
+          const next = new Set(prev)
+          next.delete(conversationId)
+          return next
+        })
       }
 
       const next = deleteConversation(conversations, conversationId)
@@ -195,18 +215,12 @@ export function useConversations() {
         return
       }
 
-      const newConv = createNewConversation()
-      const reset = [newConv]
-      setActiveConversationId(newConv.id)
+      setActiveConversationId(null)
       setCurrentMessages([])
-      saveActiveSessionId(newConv.id)
-      setConversations(reset)
-      saveConversations(reset)
       clearActiveSessionId()
-      saveActiveSessionId(newConv.id)
       toast({ title: "대화를 삭제했습니다" })
     },
-    [activeConversationId, browserUserKey, conversations],
+    [activeConversationId, browserUserKey, conversations, deletingConversationIds],
   )
 
   return {
@@ -214,6 +228,7 @@ export function useConversations() {
     activeConversationId,
     currentMessages,
     browserUserKey,
+    deletingConversationIds,
     setCurrentMessages,
     setActiveConversationId,
     startNewConversation,
