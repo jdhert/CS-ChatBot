@@ -118,6 +118,29 @@ curl -X POST https://csbotservice.com/api/retrieval/search \
 상세 정리:
 - [docs/architecture/api-routing.md](../docs/architecture/api-routing.md)
 
+## 운영 Smoke 평가
+
+배포 후 `csbotservice.com`에서 대표 질문이 정상 답변/링크를 반환하는지 빠르게 확인할 수 있습니다.
+
+```bash
+npm run smoke:prod
+```
+
+기본 대상:
+- `https://csbotservice.com/api/chat/stream`
+
+평가 기준:
+- HTTP 200
+- `NO_MATCH` 등 오류 응답이 아닐 것
+- 답변 본문이 최소 길이 이상일 것
+- 대표 질문에는 유사 이력 링크가 붙을 것
+
+설정:
+- seed: `docs/eval/production_smoke.seed.json`
+- latest artifact: `docs/eval/production_smoke.latest.json`
+- base URL 변경: `npm run smoke:prod -- --base-url https://example.com/api`
+- 일부만 실행: `npm run smoke:prod -- --limit 2`
+
 ## 데이터 모델링 (핵심)
 
 ### 소스 View

@@ -19,7 +19,8 @@
     "db:fix:stable-chunk-view": "node scripts/fix-stable-chunk-view.mjs",
     "db:enable:pgvector": "node scripts/enable-pgvector-search.mjs",
     "db:check:vector": "node scripts/check-vector-readiness.mjs",
-    "ingest:sync:scc-embeddings": "node scripts/sync-scc-embeddings.mjs"
+    "ingest:sync:scc-embeddings": "node scripts/sync-scc-embeddings.mjs",
+    "smoke:prod": "node scripts/smoke-production-chat.mjs"
   },
   "dependencies": {
     "@types/pg": "^8.18.0",

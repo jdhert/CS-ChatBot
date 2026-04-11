@@ -1,0 +1,38 @@
+[
+  {
+    "id": "SMOKE-001",
+    "query": "휴가신청 상신이 불가능해",
+    "retrievalScope": "all",
+    "expectAnswer": true,
+    "requireLink": true,
+    "minAnswerLength": 20,
+    "tags": ["leave", "approval", "symptom"]
+  },
+  {
+    "id": "SMOKE-002",
+    "query": "야간근무 일정을 어떻게 생성해?",
+    "retrievalScope": "all",
+    "expectAnswer": true,
+    "requireLink": true,
+    "minAnswerLength": 20,
+    "tags": ["attendance", "schedule", "howto"]
+  },
+  {
+    "id": "SMOKE-003",
+    "query": "다국어 코드를 추가하는 방법이 궁금해",
+    "retrievalScope": "all",
+    "expectAnswer": true,
+    "requireLink": true,
+    "minAnswerLength": 20,
+    "tags": ["multilang", "howto"]
+  },
+  {
+    "id": "SMOKE-004",
+    "query": "브라우저 캐시 저장이 되지 않아",
+    "retrievalScope": "all",
+    "expectAnswer": true,
+    "requireLink": true,
+    "minAnswerLength": 20,
+    "tags": ["browser", "cache", "symptom"]
+  }
+]

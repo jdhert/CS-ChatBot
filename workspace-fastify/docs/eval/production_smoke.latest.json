@@ -1,0 +1,93 @@
+{
+  "generatedAt": "2026-04-11T14:20:49.851Z",
+  "baseUrl": "https://csbotservice.com/api",
+  "dataset": "C:\\Users\\shpark6\\Desktop\\AI작업\\coviAI\\workspace-fastify\\docs\\eval\\production_smoke.seed.json",
+  "total": 4,
+  "passed": 4,
+  "failed": 0,
+  "results": [
+    {
+      "id": "SMOKE-001",
+      "query": "휴가신청 상신이 불가능해",
+      "tags": [
+        "leave",
+        "approval",
+        "symptom"
+      ],
+      "passed": true,
+      "failures": [],
+      "status": 200,
+      "elapsedMs": 186,
+      "answerLength": 525,
+      "linkUrl": "https://cs.covision.co.kr/WebSite/Basic/ServiceManagement/Service_View.aspx?req_id=6af1f31c-c3aa-4534-8c5a-0d6a29fec1ac&system=Menu01&alias=Menu01.Service.List&mnid=705",
+      "bestRequireId": "6af1f31c-c3aa-4534-8c5a-0d6a29fec1ac",
+      "confidence": 0.8,
+      "retrievalMode": "hybrid",
+      "answerSource": "llm_stream",
+      "error": null,
+      "message": null
+    },
+    {
+      "id": "SMOKE-002",
+      "query": "야간근무 일정을 어떻게 생성해?",
+      "tags": [
+        "attendance",
+        "schedule",
+        "howto"
+      ],
+      "passed": true,
+      "failures": [],
+      "status": 200,
+      "elapsedMs": 23,
+      "answerLength": 622,
+      "linkUrl": "https://cs.covision.co.kr/WebSite/Basic/ServiceManagement/Service_View.aspx?req_id=f161b680-bd9f-46a0-a789-4a3641e14cf1&system=Menu01&alias=Menu01.Service.List&mnid=705",
+      "bestRequireId": "f161b680-bd9f-46a0-a789-4a3641e14cf1",
+      "confidence": 0.61,
+      "retrievalMode": "hybrid",
+      "answerSource": "llm_stream",
+      "error": null,
+      "message": null
+    },
+    {
+      "id": "SMOKE-003",
+      "query": "다국어 코드를 추가하는 방법이 궁금해",
+      "tags": [
+        "multilang",
+        "howto"
+      ],
+      "passed": true,
+      "failures": [],
+      "status": 200,
+      "elapsedMs": 22,
+      "answerLength": 613,
+      "linkUrl": "https://cs.covision.co.kr/WebSite/Basic/ServiceManagement/Service_View.aspx?req_id=e845e623-fe72-419e-8b00-08cf8fc05ca9&system=Menu01&alias=Menu01.Service.List&mnid=705",
+      "bestRequireId": "e845e623-fe72-419e-8b00-08cf8fc05ca9",
+      "confidence": 0.66,
+      "retrievalMode": "hybrid",
+      "answerSource": "llm_stream",
+      "error": null,
+      "message": null
+    },
+    {
+      "id": "SMOKE-004",
+      "query": "브라우저 캐시 저장이 되지 않아",
+      "tags": [
+        "browser",
+        "cache",
+        "symptom"
+      ],
+      "passed": true,
+      "failures": [],
+      "status": 200,
+      "elapsedMs": 22,
+      "answerLength": 687,
+      "linkUrl": "https://cs.covision.co.kr/WebSite/Basic/ServiceManagement/Service_View.aspx?req_id=8095a700-bbf4-441e-84d4-f19852f391d0&system=Menu01&alias=Menu01.Service.List&mnid=705",
+      "bestRequireId": "8095a700-bbf4-441e-84d4-f19852f391d0",
+      "confidence": 0.81,
+      "retrievalMode": "hybrid",
+      "answerSource": "llm_stream",
+      "error": null,
+      "message": null
+    }
+  ]
+}
