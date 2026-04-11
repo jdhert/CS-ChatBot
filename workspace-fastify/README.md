@@ -90,6 +90,31 @@ curl -X POST https://csbotservice.com/api/retrieval/search \
 { "status": "ok", "db": "connected", "uptime": 3600 }
 ```
 
+## 운영 API 라우팅 규칙
+
+현재 운영 환경은 `Nginx -> Backend` 직결 구조입니다.
+
+- 브라우저의 `/api/*` 요청은 Next `app/api/*`가 아니라 **Nginx를 통해 backend로 직접 전달**됩니다.
+- 따라서 프론트 코드는 운영 기준으로 아래 경로만 사용해야 합니다.
+
+| 프론트 호출 경로 | 실제 백엔드 경로 |
+| --- | --- |
+| `/api/chat/stream` | `/chat/stream` |
+| `/api/retrieval/search` | `/retrieval/search` |
+| `/api/admin/logs` | `/admin/logs` |
+| `/api/feedback` | `/feedback` |
+
+운영에서 사용하면 안 되는 경로:
+
+- `/api/chat`
+- `/api/logs`
+- `/api/search`
+
+이 경로들은 로컬 Next 프록시 관점에서는 동작할 수 있어도, 현재 운영 Nginx 라우팅 구조에서는 응답 계약이 달라질 수 있습니다.
+
+상세 정리:
+- [docs/architecture/api-routing.md](../docs/architecture/api-routing.md)
+
 ## 데이터 모델링 (핵심)
 
 ### 소스 View

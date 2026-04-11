@@ -291,7 +291,7 @@ export default function LogsPage() {
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`/api/logs?filter=${f}&limit=${limit}&offset=${o}`, {
+        const res = await fetch(`/api/admin/logs?filter=${f}&limit=${limit}&offset=${o}`, {
           signal: abortRef.current.signal,
         })
         const json = await res.json()

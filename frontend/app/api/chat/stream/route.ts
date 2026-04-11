@@ -2,12 +2,12 @@ import { NextRequest } from "next/server"
 
 const DEFAULT_AI_CORE_URL = "http://127.0.0.1:3101"
 
+// Dev proxy only. In production, nginx forwards /api/chat/stream directly to backend /chat/stream.
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const baseUrl = process.env.AI_CORE_BASE_URL ?? DEFAULT_AI_CORE_URL
 
-    // Use streaming endpoint
     const response = await fetch(`${baseUrl}/chat/stream`, {
       method: "POST",
       headers: {
@@ -27,10 +27,8 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Check if backend returned JSON (security blocked, no match, etc.)
     const contentType = response.headers.get("content-type")
     if (contentType?.includes("application/json")) {
-      // Pass through JSON response as-is
       return new Response(response.body, {
         headers: {
           "Content-Type": "application/json",
@@ -38,12 +36,11 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Stream the response
     return new Response(response.body, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
-        "Connection": "keep-alive",
+        Connection: "keep-alive",
       },
     })
   } catch (error) {
