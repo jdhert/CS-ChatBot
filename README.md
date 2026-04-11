@@ -556,7 +556,7 @@ sequenceDiagram
 
 #### 🟡 중간 우선순위
 - [x] **대화 이력 UI 복원** — `/conversations` API 연동, 사이드바에서 이전 대화 불러오기
-- [ ] **사용자 피드백 수집 강화** — 👍👎 누적 통계 대시보드 (`query_log.user_feedback` 활용)
+- [x] **사용자 피드백 수집 강화** — 👍👎 누적 통계 대시보드 (`query_log.user_feedback` 활용)
 - [x] **검색 결과 URL 공유** — `/search?q=` 쿼리스트링 반영
 - [x] **채팅 내보내기 토스트 알림** — 내보내기 완료/실패 피드백
 - [ ] **채팅 내보내기 포맷 개선** — PDF / markdown 형식 지원
