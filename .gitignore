@@ -48,6 +48,9 @@ nul
 test-payload.json
 exampleData/
 
+# Generated evaluation artifacts
+workspace-fastify/docs/eval/*.latest.json
+
 # Storage
 notebook_storage/
 public/uploads/
