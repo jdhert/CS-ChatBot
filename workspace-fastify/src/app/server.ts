@@ -1,4 +1,4 @@
-﻿import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import fastifyCors from "@fastify/cors";
 import { renderChatTestPage } from "../modules/chat/chatTestPage.js";
 import {
@@ -551,6 +551,136 @@ function parseEnvBoolean(raw: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
+function parseEnvInteger(raw: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(raw ?? "", 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) {
+    return value[0]?.trim() || null;
+  }
+  return value?.trim() || null;
+}
+
+function resolveRateLimitKey(request: FastifyRequest): string {
+  const realIp = firstHeaderValue(request.headers["x-real-ip"]);
+  if (realIp) {
+    return realIp;
+  }
+  const forwardedFor = firstHeaderValue(request.headers["x-forwarded-for"]);
+  if (forwardedFor) {
+    return forwardedFor.split(",")[0]?.trim() || request.ip;
+  }
+  return request.ip;
+}
+
+function parseRateLimitAllowList(raw: string | undefined): string[] {
+  return (raw ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function resolveRateLimitGroup(url: string): string {
+  const path = url.split("?")[0] ?? url;
+  if (path === "/health" || path === "/test/chat") return "unlimited";
+  if (path === "/chat/stream") return "chat-stream";
+  if (path === "/chat") return "chat-json";
+  if (path === "/retrieval/search") return "retrieval-search";
+  if (path === "/feedback") return "feedback";
+  if (path === "/admin/logs") return "admin-logs";
+  if (path.startsWith("/conversations")) return "conversations";
+  return "default";
+}
+
+function resolveRateLimitMax(url: string): number {
+  const group = resolveRateLimitGroup(url);
+  switch (group) {
+    case "chat-stream":
+      return parseEnvInteger(process.env.RATE_LIMIT_CHAT_STREAM_MAX, 20);
+    case "chat-json":
+      return parseEnvInteger(process.env.RATE_LIMIT_CHAT_MAX, 30);
+    case "retrieval-search":
+      return parseEnvInteger(process.env.RATE_LIMIT_RETRIEVAL_MAX, 60);
+    case "feedback":
+      return parseEnvInteger(process.env.RATE_LIMIT_FEEDBACK_MAX, 120);
+    case "admin-logs":
+      return parseEnvInteger(process.env.RATE_LIMIT_ADMIN_MAX, 120);
+    case "conversations":
+      return parseEnvInteger(process.env.RATE_LIMIT_CONVERSATION_MAX, 120);
+    case "unlimited":
+      return Number.MAX_SAFE_INTEGER;
+    default:
+      return parseEnvInteger(process.env.RATE_LIMIT_DEFAULT_MAX, 300);
+  }
+}
+
+interface RateLimitBucket {
+  count: number;
+  resetAt: number;
+}
+
+const rateLimitBuckets = new Map<string, RateLimitBucket>();
+
+function pruneRateLimitBuckets(now: number, maxEntries: number): void {
+  if (rateLimitBuckets.size <= maxEntries) {
+    return;
+  }
+  for (const [key, bucket] of rateLimitBuckets) {
+    if (bucket.resetAt <= now || rateLimitBuckets.size > maxEntries) {
+      rateLimitBuckets.delete(key);
+    }
+    if (rateLimitBuckets.size <= maxEntries) {
+      break;
+    }
+  }
+}
+
+function checkRateLimit(request: FastifyRequest): {
+  limited: boolean;
+  max: number;
+  remaining: number;
+  resetInSeconds: number;
+} | null {
+  if (!parseEnvBoolean(process.env.RATE_LIMIT_ENABLED, true)) {
+    return null;
+  }
+
+  const group = resolveRateLimitGroup(request.url);
+  if (group === "unlimited") {
+    return null;
+  }
+
+  const ip = resolveRateLimitKey(request);
+  if (parseRateLimitAllowList(process.env.RATE_LIMIT_ALLOW_LIST).includes(ip)) {
+    return null;
+  }
+
+  const max = resolveRateLimitMax(request.url);
+  const timeWindowMs = parseEnvInteger(process.env.RATE_LIMIT_TIME_WINDOW_MS, 60_000);
+  const now = Date.now();
+  const key = `${group}:${ip}`;
+  const cacheSize = parseEnvInteger(process.env.RATE_LIMIT_CACHE_SIZE, 10_000);
+  pruneRateLimitBuckets(now, cacheSize);
+
+  const current = rateLimitBuckets.get(key);
+  const bucket = !current || current.resetAt <= now
+    ? { count: 0, resetAt: now + timeWindowMs }
+    : current;
+
+  bucket.count += 1;
+  rateLimitBuckets.set(key, bucket);
+
+  const resetInSeconds = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+  return {
+    limited: bucket.count > max,
+    max,
+    remaining: Math.max(0, max - bucket.count),
+    resetInSeconds,
+  };
+}
+
 function requiresExplanatoryAnswer(query: string): boolean {
   const normalized = query.replace(/\s+/g, " ").trim();
   if (normalized.length === 0) {
@@ -583,6 +713,7 @@ function shouldSkipLlm(query: string, result: ChatResponseBody): boolean {
 
 export function buildServer(): FastifyInstance {
   const app = Fastify({
+    trustProxy: parseEnvBoolean(process.env.TRUST_PROXY, true),
     logger: {
       level: process.env.LOG_LEVEL ?? "info"
     }
@@ -628,6 +759,28 @@ export function buildServer(): FastifyInstance {
       "http://localhost:8080",
       "http://127.0.0.1:8080"
     ]
+  });
+
+  app.addHook("onRequest", async (request, reply) => {
+    const rateLimit = checkRateLimit(request);
+    if (!rateLimit) {
+      return;
+    }
+
+    reply
+      .header("x-ratelimit-limit", rateLimit.max)
+      .header("x-ratelimit-remaining", rateLimit.remaining)
+      .header("x-ratelimit-reset", rateLimit.resetInSeconds);
+
+    if (rateLimit.limited) {
+      reply.header("retry-after", rateLimit.resetInSeconds);
+      return reply.code(429).send({
+        statusCode: 429,
+        error: "TOO_MANY_REQUESTS",
+        message: `요청이 너무 많습니다. ${rateLimit.resetInSeconds}초 후 다시 시도해 주세요.`,
+        retryAfter: rateLimit.resetInSeconds,
+      });
+    }
   });
 
   app.get("/health", async () => {

@@ -141,6 +141,32 @@ npm run smoke:prod
 - base URL 변경: `npm run smoke:prod -- --base-url https://example.com/api`
 - 일부만 실행: `npm run smoke:prod -- --limit 2`
 
+## API Rate Limiting
+
+운영 노출 API는 Fastify `onRequest` 훅에서 경로 그룹별 인메모리 rate limit을 적용합니다.
+
+기본값:
+- `/chat/stream`: 20 req/min/IP
+- `/chat`: 30 req/min/IP
+- `/retrieval/search`: 60 req/min/IP
+- `/feedback`: 120 req/min/IP
+- `/admin/logs`: 120 req/min/IP
+- `/conversations*`: 120 req/min/IP
+- 기타 API: 300 req/min/IP
+- `/health`, `/test/chat`: 제한 제외
+
+주요 환경변수:
+- `RATE_LIMIT_ENABLED`
+- `RATE_LIMIT_TIME_WINDOW_MS`
+- `RATE_LIMIT_CHAT_STREAM_MAX`
+- `RATE_LIMIT_CHAT_MAX`
+- `RATE_LIMIT_RETRIEVAL_MAX`
+- `RATE_LIMIT_FEEDBACK_MAX`
+- `RATE_LIMIT_ADMIN_MAX`
+- `RATE_LIMIT_CONVERSATION_MAX`
+- `RATE_LIMIT_DEFAULT_MAX`
+- `RATE_LIMIT_ALLOW_LIST`
+
 ## JSP AJAX 연동 계약
 
 운영 JSP/WAS에서 AI Core를 직접 호출하는 경우에는 JSON 응답을 반환하는 `/chat` 엔드포인트와 `display` 객체를 기준으로 화면을 구성합니다.

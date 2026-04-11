@@ -183,6 +183,7 @@ graph TB
 - 인메모리 쿼리 캐시 (동일 질문 반복 시 즉시 응답)
 - 자동 인제스트 스케줄러 (미임베딩 청크 주기적 동기화)
 - 보안 차단 키워드 필터 (SQL Injection, 해킹, 개인정보 등)
+- API Rate Limiting (`/chat/stream`, `/retrieval/search`, `/feedback`, `/admin/logs`, `/conversations*`)
 
 ## 🚀 성능 최적화
 
@@ -538,6 +539,7 @@ sequenceDiagram
 - [x] `query_log` 운영 스키마 보정 (`log_uuid`, `is_failure`, `failure_reason`, `user_feedback`)
 - [x] 관리자 운영 로그 강화 (`/logs` 요약 카드, 검색어/기간/피드백/느린쿼리 필터)
 - [x] 사용자 피드백 분석 강화 (`/logs` 답변 경로별 피드백 분포, 싫어요 Top 질의)
+- [x] API Rate Limiting — 운영 노출 API 경로별 요청 제한 적용
 
 ### 완료 (2026-04-02 추가)
 - [x] nginx `depends_on` healthcheck 조건 추가 (502 재발 방지)
@@ -552,7 +554,7 @@ sequenceDiagram
 #### 🔴 높은 우선순위
 - [ ] **DB 뷰 정규식 근본 수정** — `s+` → `\s+` 수정 후 전체 재임베딩 (Google 쿼터 확보 시)
 - [ ] **pgvector ANN 인덱스** — 저차원 모델(768→256)로 전환 후 HNSW 인덱스 활성화
-- [ ] **API Rate Limiting** — `@fastify/rate-limit` 적용
+- [x] **API Rate Limiting** — 경로 그룹별 인메모리 요청 제한 적용
 
 #### 🟡 중간 우선순위
 - [x] **대화 이력 UI 복원** — `/conversations` API 연동, 사이드바에서 이전 대화 불러오기
@@ -566,6 +568,9 @@ sequenceDiagram
 - [ ] **임베딩 커버리지 모니터링** — 신규 SCC 적재 시 자동 알림
 
 ## 📝 변경 이력
+
+### 2026-04-12
+- ✅ **API Rate Limiting 적용** — `/chat/stream`, `/chat`, `/retrieval/search`, `/feedback`, `/admin/logs`, `/conversations*` 경로별 요청 제한과 429 응답 헤더 추가
 
 ### 2026-04-11
 - ✅ **운영 API 라우팅 규칙 고정** — nginx `/api/* → backend` 구조 기준으로 프론트 호출 경로 정리 (`/api/chat/stream`, `/api/retrieval/search`, `/api/admin/logs`)
