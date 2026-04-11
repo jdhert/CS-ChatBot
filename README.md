@@ -187,6 +187,7 @@ graph TB
 - Rate Limit 운영 모니터링 (`/logs`에서 429 차단 요약/최근 이벤트 확인)
 - 대화 이력 서버 저장 안정화 (DB hydrate 우선, 로컬 optimistic 대화 보존)
 - Query Embedding cooldown 모니터링 (`/logs`에서 429/cooldown 상태 확인)
+- Embedding 커버리지 모니터링 (`/logs`에서 모델별 적재율, 미임베딩 수, ingest 상태 확인)
 - 관리자 로그 상세 드릴다운 (`/logs`에서 후보 Top3, vector/LLM 진단, 응답 미리보기 확인)
 
 ## 🚀 성능 최적화
@@ -547,6 +548,7 @@ sequenceDiagram
 - [x] Rate Limit 운영 모니터링 — `/logs`에서 차단 수, 경로 그룹, 최근 이벤트 확인
 - [x] 대화 이력 서버 저장 안정화 — 서버 hydrate와 로컬 optimistic 대화 병합, 메시지 append 충돌 방지
 - [x] Query Embedding 429/cooldown 대응 강화 — `Retry-After` 반영, `/health`·`/logs` 런타임 상태 노출
+- [x] Embedding 커버리지 운영 모니터링 — `/admin/logs`와 `/logs`에서 모델별 coverage, pending chunk, ingest 상태 확인
 - [x] 관리자 로그 상세 드릴다운 — `/logs`에서 후보 Top3와 vector/LLM 진단 정보 표시
 
 ### 완료 (2026-04-02 추가)
@@ -573,7 +575,8 @@ sequenceDiagram
 
 #### 🟢 낮은 우선순위 (코드 품질)
 - [ ] **page.tsx 커스텀 훅 분리** — `useChat`, `useConversations` 분리
-- [ ] **임베딩 커버리지 모니터링** — 신규 SCC 적재 시 자동 알림
+- [x] **임베딩 커버리지 운영 모니터링** — `/logs`에서 모델별 적재율과 미임베딩 수 확인
+- [ ] **임베딩 커버리지 자동 알림** — 신규 SCC 적재/커버리지 하락 시 알림
 
 ## 📝 변경 이력
 
@@ -582,6 +585,7 @@ sequenceDiagram
 - ✅ **Rate Limit 운영 모니터링 추가** — `/admin/logs` 응답과 `/logs` 화면에 429 차단 요약/최근 이벤트 표시
 - ✅ **대화 이력 서버 저장 안정화** — 서버 대화 hydrate 시 로컬 전용 대화를 보존하고 DB 메시지 append를 세션 단위로 직렬화
 - ✅ **Query Embedding cooldown 대응 강화** — 429 발생 시 `Retry-After` 우선 반영, active cooldown과 캐시 통계를 운영 화면에 노출
+- ✅ **Embedding 커버리지 모니터링 추가** — `/admin/logs` 응답과 `/logs` 화면에 모델별 coverage, 미임베딩 수, 최근 ingest 상태 표시
 - ✅ **관리자 로그 상세 드릴다운 추가** — 대화 메시지 metadata 기반 Top 후보, 진단값, 응답 미리보기 표시
 
 ### 2026-04-11

@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import fastifyCors from "@fastify/cors";
+import type { PoolClient } from "pg";
 import { renderChatTestPage } from "../modules/chat/chatTestPage.js";
 import {
   runChatSearch,
@@ -778,6 +779,111 @@ function getRateLimitMonitoring(days: number) {
     byGroup,
     recent: filtered.slice(-20).reverse(),
   };
+}
+
+async function getEmbeddingCoverageMonitoring() {
+  const pool = getVectorPool();
+  let client: PoolClient | null = null;
+  try {
+    client = await pool.connect();
+    await client.query("begin");
+    await client.query("set local statement_timeout = '5000ms'");
+
+    const sourceObjectResult = await client.query<{ source_object: string | null }>(
+      `select to_regclass('ai_core.mv_scc_chunk_preview')::text as source_object`
+    );
+    const sourceObject = sourceObjectResult.rows[0]?.source_object === "ai_core.mv_scc_chunk_preview"
+      ? "ai_core.mv_scc_chunk_preview"
+      : "ai_core.v_scc_chunk_preview";
+    const sourceCountResult = await client.query<{ source_chunk_rows: number }>(
+      `select count(*)::int as source_chunk_rows
+         from ${sourceObject}`
+    );
+    const statusResult = await client.query<{
+      embedding_model: string;
+      embedding_rows: number;
+      embedded_chunks: number;
+      last_embedded_at: Date | null;
+      last_updated_at: Date | null;
+    }>(
+      `select
+          embedding_model,
+          count(*)::int as embedding_rows,
+          count(distinct chunk_id)::int as embedded_chunks,
+          max(embedded_at) as last_embedded_at,
+          max(updated_at) as last_updated_at
+         from ai_core.scc_chunk_embeddings
+        group by embedding_model
+        order by last_updated_at desc nulls last, embedding_model asc`
+    );
+    const ingestStateResult = await client.query(
+      `select
+          state_key,
+          last_source_ingested_at,
+          last_run_at,
+          last_status,
+          last_message,
+          updated_at
+         from ai_core.embedding_ingest_state
+        order by updated_at desc nulls last
+        limit 5`
+    );
+    await client.query("commit");
+
+    const sourceChunkRows = Number(sourceCountResult.rows[0]?.source_chunk_rows ?? 0);
+    const coverageRows = statusResult.rows.map((row) => {
+      const embeddedChunks = Number(row.embedded_chunks ?? 0);
+      const coveragePct = sourceChunkRows > 0
+        ? Math.round((embeddedChunks / sourceChunkRows) * 10_000) / 100
+        : null;
+      return {
+        embedding_model: row.embedding_model,
+        source_chunk_rows: sourceChunkRows,
+        embedded_chunks: embeddedChunks,
+        coverage_pct: coveragePct,
+      };
+    }).sort((a, b) => (a.coverage_pct ?? 0) - (b.coverage_pct ?? 0) || a.embedding_model.localeCompare(b.embedding_model));
+    const minCoveragePct = coverageRows.reduce((min, row) => {
+      const coveragePct = Number(row.coverage_pct ?? 0);
+      return Math.min(min, coveragePct);
+    }, coverageRows.length > 0 ? Number.POSITIVE_INFINITY : 0);
+    const pendingChunks = coverageRows.length === 0 ? sourceChunkRows : coverageRows.reduce((sum, row) => {
+      const sourceRows = Number(row.source_chunk_rows ?? 0);
+      const embeddedRows = Number(row.embedded_chunks ?? 0);
+      return sum + Math.max(0, sourceRows - embeddedRows);
+    }, 0);
+
+    return {
+      available: true,
+      sourceChunkRows,
+      minCoveragePct: Number.isFinite(minCoveragePct) ? minCoveragePct : null,
+      pendingChunks,
+      coverage: coverageRows,
+      status: statusResult.rows,
+      ingestState: ingestStateResult.rows,
+      error: null,
+    };
+  } catch (error) {
+    if (client) {
+      try {
+        await client.query("rollback");
+      } catch {
+        // Ignore rollback errors after a failed monitoring-only query.
+      }
+    }
+    return {
+      available: false,
+      sourceChunkRows: 0,
+      minCoveragePct: null,
+      pendingChunks: 0,
+      coverage: [],
+      status: [],
+      ingestState: [],
+      error: error instanceof Error ? error.message : "EMBEDDING_COVERAGE_QUERY_FAILED",
+    };
+  } finally {
+    client?.release();
+  }
 }
 
 function requiresExplanatoryAnswer(query: string): boolean {
@@ -1589,7 +1695,7 @@ export function buildServer(): FastifyInstance {
     const pool = getVectorPool();
     try {
       const rowParams = [...baseParams, limit, offset];
-      const [rowsResult, countResult, summaryResult, feedbackBreakdownResult, feedbackTopQueriesResult] = await Promise.all([
+      const [rowsResult, countResult, summaryResult, feedbackBreakdownResult, feedbackTopQueriesResult, embeddingCoverage] = await Promise.all([
         pool.query(
           `select q.log_uuid, q.query, q.retrieval_scope, q.confidence, q.best_require_id, q.best_scc_id,
                   q.chunk_type, q.vector_used, q.retrieval_mode, q.answer_source,
@@ -1686,6 +1792,7 @@ export function buildServer(): FastifyInstance {
             limit 8`,
           baseParams
         ),
+        getEmbeddingCoverageMonitoring(),
       ]);
 
       return reply.code(200).send({
@@ -1700,6 +1807,7 @@ export function buildServer(): FastifyInstance {
         feedbackTopQueries: feedbackTopQueriesResult.rows,
         rateLimit: getRateLimitMonitoring(days),
         queryEmbedding: getQueryEmbeddingRuntimeStatus(),
+        embeddingCoverage,
         rows: rowsResult.rows
       });
     } catch (error) {

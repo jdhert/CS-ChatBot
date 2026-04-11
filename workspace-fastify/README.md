@@ -185,6 +185,23 @@ npm run smoke:prod
 - `EMBEDDING_MODEL_RESOLVE_TTL_MS`
 - `GOOGLE_EMBEDDING_OUTPUT_DIM`
 
+## Embedding Coverage Monitoring
+
+`/admin/logs` 응답은 `embeddingCoverage` 블록을 함께 반환합니다. 이 값은 운영자가 신규 SCC 데이터 적재 후 임베딩 누락 여부를 빠르게 확인하기 위한 모니터링 지표입니다.
+
+조회 기준:
+- `ai_core.mv_scc_chunk_preview`: 운영 검색 기준 source chunk 수 (`mv`가 없으면 `v_scc_chunk_preview` fallback)
+- `ai_core.scc_chunk_embeddings`: 모델별 embedded chunk 수와 최근 갱신 시각
+- `ai_core.embedding_ingest_state`: 최근 ingest 실행 상태와 메시지
+
+프론트 `/logs` 화면의 `Embedding 커버리지` 패널에서 다음 정보를 확인할 수 있습니다.
+- 전체 source chunk 수
+- 모델별 coverage %
+- 미임베딩 chunk 추정 수
+- 최근 ingest 상태와 메시지
+
+커버리지 조회에 실패해도 `/admin/logs` 전체 응답은 실패하지 않고 `embeddingCoverage.available=false`와 `error`만 내려보냅니다.
+
 ## Admin Log Drilldown
 
 `/admin/logs`는 `query_log` 목록과 함께 같은 `log_uuid`를 가진 `conversation_message.metadata`를 조회합니다. 프론트 `/logs`의 개별 로그 펼침 영역에서 다음 정보를 확인할 수 있습니다.

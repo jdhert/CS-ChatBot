@@ -87,6 +87,7 @@ interface LogsResponse {
   feedbackTopQueries: FeedbackTopQuery[]
   rateLimit: RateLimitSnapshot | null
   queryEmbedding: QueryEmbeddingSnapshot | null
+  embeddingCoverage: EmbeddingCoverageSnapshot | null
   rows: LogRow[]
 }
 
@@ -181,6 +182,41 @@ interface QueryEmbeddingCooldown {
   modelTag: string
   cooldownUntil: string
   remainingMs: number
+}
+
+interface EmbeddingCoverageSnapshot {
+  available: boolean
+  sourceChunkRows: number
+  minCoveragePct: number | null
+  pendingChunks: number
+  coverage: EmbeddingCoverageRow[]
+  status: EmbeddingStatusRow[]
+  ingestState: EmbeddingIngestStateRow[]
+  error: string | null
+}
+
+interface EmbeddingCoverageRow {
+  embedding_model: string
+  source_chunk_rows: number
+  embedded_chunks: number
+  coverage_pct: number | null
+}
+
+interface EmbeddingStatusRow {
+  embedding_model: string
+  embedding_rows: number
+  embedded_chunks: number
+  last_embedded_at: string | null
+  last_updated_at: string | null
+}
+
+interface EmbeddingIngestStateRow {
+  state_key: string
+  last_source_ingested_at: string | null
+  last_run_at: string | null
+  last_status: string | null
+  last_message: string | null
+  updated_at: string | null
 }
 
 const SCC_VIEW_URL =
@@ -561,6 +597,116 @@ function QueryEmbeddingMonitoring({ snapshot }: { snapshot: QueryEmbeddingSnapsh
   )
 }
 
+function EmbeddingCoverageMonitoring({ snapshot }: { snapshot: EmbeddingCoverageSnapshot | null }) {
+  if (!snapshot) return null
+
+  if (!snapshot.available) {
+    return (
+      <section className="mb-5 rounded-2xl border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+        <div className="flex items-center gap-2 font-semibold">
+          <AlertTriangle className="h-4 w-4" />
+          Embedding 커버리지 조회 실패
+        </div>
+        <p className="mt-1 text-xs opacity-80">
+          `/admin/logs`는 정상 동작하지만, 임베딩 커버리지 뷰 조회에 실패했습니다.
+          {snapshot.error ? ` (${snapshot.error})` : ""}
+        </p>
+      </section>
+    )
+  }
+
+  const latestState = snapshot.ingestState[0]
+  const statusByModel = new Map(snapshot.status.map((row) => [row.embedding_model, row]))
+  const minCoverage = snapshot.minCoveragePct ?? 0
+  const coverageTone =
+    minCoverage >= 99 ? "text-emerald-600 dark:text-emerald-400" :
+    minCoverage >= 90 ? "text-amber-600 dark:text-amber-400" :
+    "text-red-600 dark:text-red-400"
+
+  return (
+    <section className="mb-5 rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Embedding 커버리지</h2>
+          <p className="text-xs text-muted-foreground">
+            SCC chunk 대비 임베딩 적재율과 최근 ingest 상태를 확인합니다.
+          </p>
+        </div>
+        <BarChart3 className={cn("h-4 w-4", minCoverage >= 99 ? "text-emerald-500" : "text-amber-500")} />
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="rounded-xl bg-muted/40 p-3">
+          <div className="text-[11px] text-muted-foreground">Source chunks</div>
+          <div className="mt-1 text-sm font-semibold text-foreground">{snapshot.sourceChunkRows.toLocaleString()}건</div>
+          <div className="mt-1 text-[11px] text-muted-foreground">v_scc_chunk_preview 기준</div>
+        </div>
+        <div className="rounded-xl bg-muted/40 p-3">
+          <div className="text-[11px] text-muted-foreground">최저 커버리지</div>
+          <div className={cn("mt-1 text-sm font-semibold", coverageTone)}>{formatPct(snapshot.minCoveragePct)}</div>
+          <div className="mt-1 text-[11px] text-muted-foreground">모델별 coverage 최솟값</div>
+        </div>
+        <div className="rounded-xl bg-muted/40 p-3">
+          <div className="text-[11px] text-muted-foreground">미임베딩 추정</div>
+          <div className={cn("mt-1 text-sm font-semibold", snapshot.pendingChunks > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground")}>
+            {snapshot.pendingChunks.toLocaleString()}건
+          </div>
+          <div className="mt-1 text-[11px] text-muted-foreground">source - embedded 합산</div>
+        </div>
+        <div className="rounded-xl bg-muted/40 p-3">
+          <div className="text-[11px] text-muted-foreground">최근 ingest</div>
+          <div className="mt-1 truncate text-sm font-semibold text-foreground">{latestState?.last_status ?? "-"}</div>
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            {latestState?.last_run_at ? formatDate(latestState.last_run_at) : "실행 이력 없음"}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {snapshot.coverage.length === 0 ? (
+          <div className="rounded-xl border border-border p-3 text-xs text-muted-foreground">
+            임베딩 커버리지 데이터가 없습니다.
+          </div>
+        ) : (
+          snapshot.coverage.map((row) => {
+            const coveragePct = row.coverage_pct ?? 0
+            const modelStatus = statusByModel.get(row.embedding_model)
+            return (
+              <div key={row.embedding_model} className="rounded-xl border border-border p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-foreground">{row.embedding_model}</div>
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      {row.embedded_chunks.toLocaleString()} / {row.source_chunk_rows.toLocaleString()} chunks
+                      {modelStatus?.last_updated_at ? ` · 최근 갱신 ${formatDate(modelStatus.last_updated_at)}` : ""}
+                    </div>
+                  </div>
+                  <div className={cn("text-sm font-semibold tabular-nums", coveragePct >= 99 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>
+                    {formatPct(row.coverage_pct)}
+                  </div>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn("h-full rounded-full", coveragePct >= 99 ? "bg-emerald-500" : coveragePct >= 90 ? "bg-amber-400" : "bg-red-500")}
+                    style={{ width: `${Math.min(Math.max(coveragePct, 0), 100)}%` }}
+                  />
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
+
+      {latestState?.last_message && (
+        <div className="mt-3 rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
+          <div className="font-semibold text-foreground">최근 ingest 메시지</div>
+          <div className="mt-1 break-words">{latestState.last_message}</div>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function formatMaybeScore(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value) ? `${Math.round(value * 100)}%` : "-"
 }
@@ -878,6 +1024,10 @@ export default function LogsPage() {
 
         {data && (
           <QueryEmbeddingMonitoring snapshot={data.queryEmbedding ?? null} />
+        )}
+
+        {data && (
+          <EmbeddingCoverageMonitoring snapshot={data.embeddingCoverage ?? null} />
         )}
 
         {data && (
