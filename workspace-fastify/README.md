@@ -165,7 +165,10 @@ npm run smoke:prod
 - `RATE_LIMIT_ADMIN_MAX`
 - `RATE_LIMIT_CONVERSATION_MAX`
 - `RATE_LIMIT_DEFAULT_MAX`
+- `RATE_LIMIT_EVENT_LOG_SIZE`
 - `RATE_LIMIT_ALLOW_LIST`
+
+차단된 요청은 프로세스 메모리에 최근 이벤트로 보관되며 `/admin/logs` 응답의 `rateLimit` 블록과 프론트 `/logs` 화면에서 확인할 수 있습니다. 이 값은 재배포/재기동 시 초기화되므로 장기 보관용 감사 로그가 아니라 운영 튜닝용 지표입니다.
 
 ## JSP AJAX 연동 계약
 

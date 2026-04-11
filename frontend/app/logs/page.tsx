@@ -57,6 +57,7 @@ interface LogsResponse {
   summary: LogSummary | null
   feedbackBreakdown: FeedbackBreakdownRow[]
   feedbackTopQueries: FeedbackTopQuery[]
+  rateLimit: RateLimitSnapshot | null
   rows: LogRow[]
 }
 
@@ -99,6 +100,33 @@ interface FeedbackTopQuery {
   sample_scc_id: string | null
   avg_confidence: number | null
   avg_total_ms: number | null
+}
+
+interface RateLimitSnapshot {
+  enabled: boolean
+  windowMs: number
+  bucketCount: number
+  eventBufferSize: number
+  blockedCount: number
+  latestBlockedAt: string | null
+  byGroup: RateLimitGroupRow[]
+  recent: RateLimitEventRow[]
+}
+
+interface RateLimitGroupRow {
+  group: string
+  blocked_count: number
+  latest_at: string
+}
+
+interface RateLimitEventRow {
+  blockedAt: string
+  group: string
+  path: string
+  method: string
+  ip: string
+  max: number
+  resetInSeconds: number
 }
 
 const SCC_VIEW_URL =
@@ -335,6 +363,86 @@ function FeedbackAnalysis({
           </div>
         )}
       </div>
+    </section>
+  )
+}
+
+function RateLimitMonitoring({ snapshot }: { snapshot: RateLimitSnapshot | null }) {
+  if (!snapshot) return null
+
+  const windowSeconds = Math.round(snapshot.windowMs / 1000)
+
+  return (
+    <section className="mb-5 rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Rate Limit 차단 현황</h2>
+          <p className="text-xs text-muted-foreground">
+            현재 프로세스 메모리 기준 최근 차단 이벤트입니다. 재배포/재기동 시 초기화됩니다.
+          </p>
+        </div>
+        <AlertTriangle className={cn("h-4 w-4", snapshot.blockedCount > 0 ? "text-amber-500" : "text-muted-foreground")} />
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="rounded-xl bg-muted/40 p-3">
+          <div className="text-[11px] text-muted-foreground">상태</div>
+          <div className="mt-1 text-sm font-semibold text-foreground">{snapshot.enabled ? "활성" : "비활성"}</div>
+          <div className="mt-1 text-[11px] text-muted-foreground">윈도우 {windowSeconds}초</div>
+        </div>
+        <div className="rounded-xl bg-muted/40 p-3">
+          <div className="text-[11px] text-muted-foreground">선택 기간 차단</div>
+          <div className={cn("mt-1 text-sm font-semibold", snapshot.blockedCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground")}>
+            {snapshot.blockedCount.toLocaleString()}건
+          </div>
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            최근 {snapshot.latestBlockedAt ? formatDate(snapshot.latestBlockedAt) : "없음"}
+          </div>
+        </div>
+        <div className="rounded-xl bg-muted/40 p-3">
+          <div className="text-[11px] text-muted-foreground">활성 버킷</div>
+          <div className="mt-1 text-sm font-semibold text-foreground">{snapshot.bucketCount.toLocaleString()}개</div>
+          <div className="mt-1 text-[11px] text-muted-foreground">IP/경로 그룹 기준</div>
+        </div>
+        <div className="rounded-xl bg-muted/40 p-3">
+          <div className="text-[11px] text-muted-foreground">이벤트 버퍼</div>
+          <div className="mt-1 text-sm font-semibold text-foreground">{snapshot.eventBufferSize.toLocaleString()}건</div>
+          <div className="mt-1 text-[11px] text-muted-foreground">기본 최대 500건</div>
+        </div>
+      </div>
+
+      {snapshot.byGroup.length > 0 && (
+        <div className="mt-4 grid gap-3 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="rounded-xl border border-border p-3">
+            <div className="mb-2 text-xs font-semibold text-foreground">경로 그룹별 차단</div>
+            <div className="space-y-2">
+              {snapshot.byGroup.map((row) => (
+                <div key={row.group} className="flex items-center justify-between gap-2 text-xs">
+                  <span className="font-medium text-foreground">{row.group}</span>
+                  <span className="text-muted-foreground">
+                    {row.blocked_count.toLocaleString()}건 · {formatDate(row.latest_at)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border p-3">
+            <div className="mb-2 text-xs font-semibold text-foreground">최근 차단 요청</div>
+            <div className="space-y-2">
+              {snapshot.recent.slice(0, 8).map((row) => (
+                <div key={`${row.blockedAt}:${row.group}:${row.ip}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">{row.group}</span>
+                  <span>{row.method} {row.path}</span>
+                  <span>IP {row.ip}</span>
+                  <span>limit {row.max}</span>
+                  <span>{formatDate(row.blockedAt)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   )
 }
@@ -576,6 +684,10 @@ export default function LogsPage() {
               tone={data.summary.slow_count > 0 ? "warning" : "neutral"}
             />
           </div>
+        )}
+
+        {data && (
+          <RateLimitMonitoring snapshot={data.rateLimit ?? null} />
         )}
 
         {data && (

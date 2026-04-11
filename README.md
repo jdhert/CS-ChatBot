@@ -184,6 +184,7 @@ graph TB
 - 자동 인제스트 스케줄러 (미임베딩 청크 주기적 동기화)
 - 보안 차단 키워드 필터 (SQL Injection, 해킹, 개인정보 등)
 - API Rate Limiting (`/chat/stream`, `/retrieval/search`, `/feedback`, `/admin/logs`, `/conversations*`)
+- Rate Limit 운영 모니터링 (`/logs`에서 429 차단 요약/최근 이벤트 확인)
 
 ## 🚀 성능 최적화
 
@@ -540,6 +541,7 @@ sequenceDiagram
 - [x] 관리자 운영 로그 강화 (`/logs` 요약 카드, 검색어/기간/피드백/느린쿼리 필터)
 - [x] 사용자 피드백 분석 강화 (`/logs` 답변 경로별 피드백 분포, 싫어요 Top 질의)
 - [x] API Rate Limiting — 운영 노출 API 경로별 요청 제한 적용
+- [x] Rate Limit 운영 모니터링 — `/logs`에서 차단 수, 경로 그룹, 최근 이벤트 확인
 
 ### 완료 (2026-04-02 추가)
 - [x] nginx `depends_on` healthcheck 조건 추가 (502 재발 방지)
@@ -571,6 +573,7 @@ sequenceDiagram
 
 ### 2026-04-12
 - ✅ **API Rate Limiting 적용** — `/chat/stream`, `/chat`, `/retrieval/search`, `/feedback`, `/admin/logs`, `/conversations*` 경로별 요청 제한과 429 응답 헤더 추가
+- ✅ **Rate Limit 운영 모니터링 추가** — `/admin/logs` 응답과 `/logs` 화면에 429 차단 요약/최근 이벤트 표시
 
 ### 2026-04-11
 - ✅ **운영 API 라우팅 규칙 고정** — nginx `/api/* → backend` 구조 기준으로 프론트 호출 경로 정리 (`/api/chat/stream`, `/api/retrieval/search`, `/api/admin/logs`)

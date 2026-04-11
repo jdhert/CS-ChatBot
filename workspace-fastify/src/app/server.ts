@@ -621,7 +621,18 @@ interface RateLimitBucket {
   resetAt: number;
 }
 
+interface RateLimitEvent {
+  blockedAt: string;
+  group: string;
+  path: string;
+  method: string;
+  ip: string;
+  max: number;
+  resetInSeconds: number;
+}
+
 const rateLimitBuckets = new Map<string, RateLimitBucket>();
+const rateLimitEvents: RateLimitEvent[] = [];
 
 function pruneRateLimitBuckets(now: number, maxEntries: number): void {
   if (rateLimitBuckets.size <= maxEntries) {
@@ -639,6 +650,8 @@ function pruneRateLimitBuckets(now: number, maxEntries: number): void {
 
 function checkRateLimit(request: FastifyRequest): {
   limited: boolean;
+  group: string;
+  ip: string;
   max: number;
   remaining: number;
   resetInSeconds: number;
@@ -675,9 +688,71 @@ function checkRateLimit(request: FastifyRequest): {
   const resetInSeconds = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
   return {
     limited: bucket.count > max,
+    group,
+    ip,
     max,
     remaining: Math.max(0, max - bucket.count),
     resetInSeconds,
+  };
+}
+
+function maskRateLimitIp(ip: string): string {
+  const normalized = ip.trim();
+  const ipv4Parts = normalized.split(".");
+  if (ipv4Parts.length === 4 && ipv4Parts.every((part) => /^\d{1,3}$/.test(part))) {
+    return `${ipv4Parts.slice(0, 3).join(".")}.*`;
+  }
+  if (normalized.includes(":")) {
+    return `${normalized.split(":").slice(0, 3).join(":")}:*`;
+  }
+  return normalized || "unknown";
+}
+
+function recordRateLimitEvent(request: FastifyRequest, rateLimit: NonNullable<ReturnType<typeof checkRateLimit>>): void {
+  const maxEvents = parseEnvInteger(process.env.RATE_LIMIT_EVENT_LOG_SIZE, 500);
+  rateLimitEvents.push({
+    blockedAt: new Date().toISOString(),
+    group: rateLimit.group,
+    path: request.url.split("?")[0] ?? request.url,
+    method: request.method,
+    ip: maskRateLimitIp(rateLimit.ip),
+    max: rateLimit.max,
+    resetInSeconds: rateLimit.resetInSeconds,
+  });
+  if (rateLimitEvents.length > maxEvents) {
+    rateLimitEvents.splice(0, rateLimitEvents.length - maxEvents);
+  }
+}
+
+function getRateLimitMonitoring(days: number) {
+  const since = Date.now() - (days * 24 * 60 * 60 * 1000);
+  const filtered = rateLimitEvents.filter((event) => new Date(event.blockedAt).getTime() >= since);
+  const byGroup = Array.from(
+    filtered.reduce((acc, event) => {
+      const current = acc.get(event.group) ?? {
+        group: event.group,
+        blocked_count: 0,
+        latest_at: event.blockedAt,
+      };
+      current.blocked_count += 1;
+      if (new Date(event.blockedAt).getTime() > new Date(current.latest_at).getTime()) {
+        current.latest_at = event.blockedAt;
+      }
+      acc.set(event.group, current);
+      return acc;
+    }, new Map<string, { group: string; blocked_count: number; latest_at: string }>())
+  ).map(([, value]) => value)
+    .sort((a, b) => b.blocked_count - a.blocked_count || b.latest_at.localeCompare(a.latest_at));
+
+  return {
+    enabled: parseEnvBoolean(process.env.RATE_LIMIT_ENABLED, true),
+    windowMs: parseEnvInteger(process.env.RATE_LIMIT_TIME_WINDOW_MS, 60_000),
+    bucketCount: rateLimitBuckets.size,
+    eventBufferSize: rateLimitEvents.length,
+    blockedCount: filtered.length,
+    latestBlockedAt: filtered.at(-1)?.blockedAt ?? null,
+    byGroup,
+    recent: filtered.slice(-20).reverse(),
   };
 }
 
@@ -773,6 +848,14 @@ export function buildServer(): FastifyInstance {
       .header("x-ratelimit-reset", rateLimit.resetInSeconds);
 
     if (rateLimit.limited) {
+      recordRateLimitEvent(request, rateLimit);
+      request.log.warn({
+        group: rateLimit.group,
+        path: request.url.split("?")[0] ?? request.url,
+        ip: maskRateLimitIp(rateLimit.ip),
+        max: rateLimit.max,
+        resetInSeconds: rateLimit.resetInSeconds,
+      }, "rate limit exceeded");
       reply.header("retry-after", rateLimit.resetInSeconds);
       return reply.code(429).send({
         statusCode: 429,
@@ -1559,6 +1642,7 @@ export function buildServer(): FastifyInstance {
         summary: summaryResult.rows[0],
         feedbackBreakdown: feedbackBreakdownResult.rows,
         feedbackTopQueries: feedbackTopQueriesResult.rows,
+        rateLimit: getRateLimitMonitoring(days),
         rows: rowsResult.rows
       });
     } catch (error) {
