@@ -170,6 +170,21 @@ npm run smoke:prod
 
 차단된 요청은 프로세스 메모리에 최근 이벤트로 보관되며 `/admin/logs` 응답의 `rateLimit` 블록과 프론트 `/logs` 화면에서 확인할 수 있습니다. 이 값은 재배포/재기동 시 초기화되므로 장기 보관용 감사 로그가 아니라 운영 튜닝용 지표입니다.
 
+## Query Embedding Cooldown
+
+쿼리 임베딩 API가 429를 반환하면 `Retry-After` 헤더를 우선 사용해 모델 단위 cooldown을 설정합니다. 헤더가 없으면 `EMBEDDING_FAILURE_COOLDOWN_MS` 값을 사용합니다.
+
+운영 확인 위치:
+- `GET /health`의 `queryEmbedding` 블록
+- `GET /admin/logs`의 `queryEmbedding` 블록
+- 프론트 `/logs` 화면의 `Query Embedding 상태` 패널
+
+주요 환경변수:
+- `QUERY_EMBEDDING_CACHE_TTL_MS`
+- `EMBEDDING_FAILURE_COOLDOWN_MS`
+- `EMBEDDING_MODEL_RESOLVE_TTL_MS`
+- `GOOGLE_EMBEDDING_OUTPUT_DIM`
+
 ## Conversation Persistence
 
 프론트는 초기 로딩 시 `/api/conversations?userKey=...&includeMessages=true`로 서버 저장 대화를 hydrate합니다. 서버 결과가 있더라도 로컬에만 남아 있는 optimistic 대화는 병합해서 보존합니다.

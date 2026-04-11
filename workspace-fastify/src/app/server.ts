@@ -4,6 +4,7 @@ import { renderChatTestPage } from "../modules/chat/chatTestPage.js";
 import {
   runChatSearch,
   runChatSearchDebug,
+  getQueryEmbeddingRuntimeStatus,
   startCacheCleanupInterval,
   stopCacheCleanupInterval,
 } from "../modules/chat/chat.service.js";
@@ -894,6 +895,7 @@ export function buildServer(): FastifyInstance {
       status: "ok",
       service: "workspace-fastify",
       cache: getCacheStats(),
+      queryEmbedding: getQueryEmbeddingRuntimeStatus(),
     };
   });
 
@@ -1666,6 +1668,7 @@ export function buildServer(): FastifyInstance {
         feedbackBreakdown: feedbackBreakdownResult.rows,
         feedbackTopQueries: feedbackTopQueriesResult.rows,
         rateLimit: getRateLimitMonitoring(days),
+        queryEmbedding: getQueryEmbeddingRuntimeStatus(),
         rows: rowsResult.rows
       });
     } catch (error) {

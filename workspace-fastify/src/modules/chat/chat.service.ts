@@ -435,6 +435,20 @@ const retrievalCache = new Map<string, CacheEntry<SearchComputationResult>>();
 const queryEmbeddingCooldowns = new Map<string, number>();
 const embeddingModelResolutionCache = new Map<string, CacheEntry<{ model: string; modelTag: string }>>();
 
+const queryEmbeddingStats = {
+  attempts: 0,
+  cacheHits: 0,
+  successes: 0,
+  failures: 0,
+  cooldownHits: 0,
+  cooldownActivations: 0,
+  lastModelTag: null as string | null,
+  lastError: null as string | null,
+  lastFailureAt: null as string | null,
+  lastSuccessAt: null as string | null,
+  lastCooldownActivatedAt: null as string | null
+};
+
 function clamp01(value: number): number {
   if (value < 0) {
     return 0;
@@ -483,6 +497,24 @@ function applySearchTimings(
 function parseEnvInt(raw: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(raw ?? "", 10);
   return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+function parseRetryAfterMs(raw: string | null): number | null {
+  if (!raw) {
+    return null;
+  }
+
+  const seconds = Number.parseInt(raw, 10);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return seconds * 1000;
+  }
+
+  const retryAt = Date.parse(raw);
+  if (Number.isFinite(retryAt)) {
+    return Math.max(0, retryAt - Date.now());
+  }
+
+  return null;
 }
 
 function getCachedValue<T>(cache: Map<string, CacheEntry<T>>, key: string): T | null {
@@ -598,6 +630,27 @@ export function stopCacheCleanupInterval(): void {
     cacheCleanupInterval = null;
     console.log("[Cache Cleanup] Interval stopped");
   }
+}
+
+export function getQueryEmbeddingRuntimeStatus() {
+  const now = Date.now();
+  const activeCooldowns = [...queryEmbeddingCooldowns.entries()]
+    .filter(([, cooldownUntil]) => cooldownUntil > now)
+    .map(([modelTag, cooldownUntil]) => ({
+      modelTag,
+      cooldownUntil: new Date(cooldownUntil).toISOString(),
+      remainingMs: Math.max(0, cooldownUntil - now)
+    }))
+    .sort((left, right) => right.remainingMs - left.remainingMs);
+
+  return {
+    ...queryEmbeddingStats,
+    cacheSize: queryEmbeddingCache.size,
+    retrievalCacheSize: retrievalCache.size,
+    modelCacheSize: embeddingModelResolutionCache.size,
+    activeCooldownCount: activeCooldowns.length,
+    activeCooldowns
+  };
 }
 
 function resolveEmbeddingProvider(raw: string | undefined): EmbeddingProvider {
@@ -1692,6 +1745,7 @@ interface QueryEmbeddingResult {
 interface QueryEmbeddingFetchResult {
   embedding: number[] | null;
   error: string | null;
+  retryAfterMs?: number | null;
 }
 
 interface QueryEmbeddingOutcome {
@@ -1744,7 +1798,8 @@ async function fetchOpenAiQueryEmbedding(
     if (!response.ok) {
       return {
         embedding: null,
-        error: `OPENAI_EMBEDDING_HTTP_${response.status}`
+        error: `OPENAI_EMBEDDING_HTTP_${response.status}`,
+        retryAfterMs: parseRetryAfterMs(response.headers.get("retry-after"))
       };
     }
 
@@ -1815,7 +1870,8 @@ async function fetchGoogleQueryEmbedding(
     if (!response.ok) {
       return {
         embedding: null,
-        error: `GOOGLE_EMBEDDING_HTTP_${response.status}`
+        error: `GOOGLE_EMBEDDING_HTTP_${response.status}`,
+        retryAfterMs: parseRetryAfterMs(response.headers.get("retry-after"))
       };
     }
 
@@ -1847,14 +1903,19 @@ async function fetchQueryEmbedding(query: string): Promise<QueryEmbeddingOutcome
   );
   const provider = resolveEmbeddingProvider(process.env.EMBEDDING_PROVIDER);
   const { model, modelTag } = await resolveActiveEmbeddingModel(provider);
+  queryEmbeddingStats.attempts += 1;
+  queryEmbeddingStats.lastModelTag = modelTag;
   const cacheKey = `${modelTag}::${normalizedQuery}`;
   const cached = getCachedValue(queryEmbeddingCache, cacheKey);
   if (cached) {
+    queryEmbeddingStats.cacheHits += 1;
     return cached;
   }
 
   const cooldownUntil = queryEmbeddingCooldowns.get(modelTag) ?? 0;
   if (cooldownUntil > Date.now()) {
+    queryEmbeddingStats.cooldownHits += 1;
+    queryEmbeddingStats.lastError = "QUERY_EMBEDDING_COOLDOWN_ACTIVE";
     return {
       result: null,
       error: "QUERY_EMBEDDING_COOLDOWN_ACTIVE",
@@ -1869,17 +1930,26 @@ async function fetchQueryEmbedding(query: string): Promise<QueryEmbeddingOutcome
       : await fetchOpenAiQueryEmbedding(query, model);
 
   if (!embeddingResult.embedding) {
+    const error = embeddingResult.error ?? "QUERY_EMBEDDING_UNAVAILABLE";
+    const isRateLimited = error.includes("HTTP_429");
     const failed = {
       result: null,
-      error: embeddingResult.error ?? "QUERY_EMBEDDING_UNAVAILABLE",
+      error,
       modelTag,
-      vectorStrategy: "query_embedding_unavailable" as const
+      vectorStrategy: isRateLimited ? "query_embedding_cooldown" as const : "query_embedding_unavailable" as const
     };
-    if ((failed.error ?? "").includes("HTTP_429")) {
-      queryEmbeddingCooldowns.set(
-        modelTag,
-        Date.now() + parseEnvInt(process.env.EMBEDDING_FAILURE_COOLDOWN_MS, DEFAULT_EMBEDDING_FAILURE_COOLDOWN_MS)
+    queryEmbeddingStats.failures += 1;
+    queryEmbeddingStats.lastError = error;
+    queryEmbeddingStats.lastFailureAt = new Date().toISOString();
+    if (isRateLimited) {
+      const defaultCooldownMs = parseEnvInt(
+        process.env.EMBEDDING_FAILURE_COOLDOWN_MS,
+        DEFAULT_EMBEDDING_FAILURE_COOLDOWN_MS
       );
+      const cooldownMs = Math.max(1_000, embeddingResult.retryAfterMs ?? defaultCooldownMs);
+      queryEmbeddingCooldowns.set(modelTag, Date.now() + cooldownMs);
+      queryEmbeddingStats.cooldownActivations += 1;
+      queryEmbeddingStats.lastCooldownActivatedAt = new Date().toISOString();
     }
     setCachedValue(queryEmbeddingCache, cacheKey, failed, Math.min(embeddingCacheTtlMs, 30_000));
     return failed;
@@ -1895,6 +1965,9 @@ async function fetchQueryEmbedding(query: string): Promise<QueryEmbeddingOutcome
     vectorStrategy: "none" as const
   };
   queryEmbeddingCooldowns.delete(modelTag);
+  queryEmbeddingStats.successes += 1;
+  queryEmbeddingStats.lastError = null;
+  queryEmbeddingStats.lastSuccessAt = new Date().toISOString();
   setCachedValue(queryEmbeddingCache, cacheKey, success, embeddingCacheTtlMs);
   return success;
 }

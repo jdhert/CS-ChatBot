@@ -58,6 +58,7 @@ interface LogsResponse {
   feedbackBreakdown: FeedbackBreakdownRow[]
   feedbackTopQueries: FeedbackTopQuery[]
   rateLimit: RateLimitSnapshot | null
+  queryEmbedding: QueryEmbeddingSnapshot | null
   rows: LogRow[]
 }
 
@@ -127,6 +128,31 @@ interface RateLimitEventRow {
   ip: string
   max: number
   resetInSeconds: number
+}
+
+interface QueryEmbeddingSnapshot {
+  attempts: number
+  cacheHits: number
+  successes: number
+  failures: number
+  cooldownHits: number
+  cooldownActivations: number
+  lastModelTag: string | null
+  lastError: string | null
+  lastFailureAt: string | null
+  lastSuccessAt: string | null
+  lastCooldownActivatedAt: string | null
+  cacheSize: number
+  retrievalCacheSize: number
+  modelCacheSize: number
+  activeCooldownCount: number
+  activeCooldowns: QueryEmbeddingCooldown[]
+}
+
+interface QueryEmbeddingCooldown {
+  modelTag: string
+  cooldownUntil: string
+  remainingMs: number
 }
 
 const SCC_VIEW_URL =
@@ -447,6 +473,66 @@ function RateLimitMonitoring({ snapshot }: { snapshot: RateLimitSnapshot | null 
   )
 }
 
+function QueryEmbeddingMonitoring({ snapshot }: { snapshot: QueryEmbeddingSnapshot | null }) {
+  if (!snapshot) return null
+
+  const activeCooldown = snapshot.activeCooldowns[0]
+  const cooldownMinutes = activeCooldown ? Math.ceil(activeCooldown.remainingMs / 60_000) : 0
+
+  return (
+    <section className="mb-5 rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Query Embedding 상태</h2>
+          <p className="text-xs text-muted-foreground">
+            Google/OpenAI 쿼리 임베딩 캐시와 429 cooldown 상태입니다. 프로세스 재기동 시 초기화됩니다.
+          </p>
+        </div>
+        <Zap className={cn("h-4 w-4", snapshot.activeCooldownCount > 0 ? "text-amber-500" : "text-blue-500")} />
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="rounded-xl bg-muted/40 p-3">
+          <div className="text-[11px] text-muted-foreground">현재 모델</div>
+          <div className="mt-1 truncate text-sm font-semibold text-foreground">{snapshot.lastModelTag ?? "-"}</div>
+          <div className="mt-1 text-[11px] text-muted-foreground">model auto-align 반영</div>
+        </div>
+        <div className="rounded-xl bg-muted/40 p-3">
+          <div className="text-[11px] text-muted-foreground">성공 / 실패</div>
+          <div className="mt-1 text-sm font-semibold text-foreground">
+            {snapshot.successes.toLocaleString()} / {snapshot.failures.toLocaleString()}
+          </div>
+          <div className="mt-1 text-[11px] text-muted-foreground">시도 {snapshot.attempts.toLocaleString()} · 캐시 {snapshot.cacheHits.toLocaleString()}</div>
+        </div>
+        <div className="rounded-xl bg-muted/40 p-3">
+          <div className="text-[11px] text-muted-foreground">Cooldown</div>
+          <div className={cn("mt-1 text-sm font-semibold", snapshot.activeCooldownCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground")}>
+            {snapshot.activeCooldownCount > 0 ? `${cooldownMinutes}분 남음` : "없음"}
+          </div>
+          <div className="mt-1 text-[11px] text-muted-foreground">활성 {snapshot.activeCooldownCount} · 발생 {snapshot.cooldownActivations}</div>
+        </div>
+        <div className="rounded-xl bg-muted/40 p-3">
+          <div className="text-[11px] text-muted-foreground">캐시 크기</div>
+          <div className="mt-1 text-sm font-semibold text-foreground">{snapshot.cacheSize.toLocaleString()}개</div>
+          <div className="mt-1 text-[11px] text-muted-foreground">retrieval {snapshot.retrievalCacheSize} · model {snapshot.modelCacheSize}</div>
+        </div>
+      </div>
+
+      {(snapshot.lastError || activeCooldown) && (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+          {snapshot.lastError && <div>최근 오류: <span className="font-semibold">{snapshot.lastError}</span></div>}
+          {snapshot.lastFailureAt && <div>최근 실패: {formatDate(snapshot.lastFailureAt)}</div>}
+          {activeCooldown && (
+            <div>
+              cooldown 모델: {activeCooldown.modelTag} · 해제 예정 {formatDate(activeCooldown.cooldownUntil)}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
 function LogRowCard({ row }: { row: LogRow }) {
   const [expanded, setExpanded] = useState(false)
   const sccUrl = row.best_require_id
@@ -688,6 +774,10 @@ export default function LogsPage() {
 
         {data && (
           <RateLimitMonitoring snapshot={data.rateLimit ?? null} />
+        )}
+
+        {data && (
+          <QueryEmbeddingMonitoring snapshot={data.queryEmbedding ?? null} />
         )}
 
         {data && (

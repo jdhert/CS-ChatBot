@@ -186,6 +186,7 @@ graph TB
 - API Rate Limiting (`/chat/stream`, `/retrieval/search`, `/feedback`, `/admin/logs`, `/conversations*`)
 - Rate Limit 운영 모니터링 (`/logs`에서 429 차단 요약/최근 이벤트 확인)
 - 대화 이력 서버 저장 안정화 (DB hydrate 우선, 로컬 optimistic 대화 보존)
+- Query Embedding cooldown 모니터링 (`/logs`에서 429/cooldown 상태 확인)
 
 ## 🚀 성능 최적화
 
@@ -544,6 +545,7 @@ sequenceDiagram
 - [x] API Rate Limiting — 운영 노출 API 경로별 요청 제한 적용
 - [x] Rate Limit 운영 모니터링 — `/logs`에서 차단 수, 경로 그룹, 최근 이벤트 확인
 - [x] 대화 이력 서버 저장 안정화 — 서버 hydrate와 로컬 optimistic 대화 병합, 메시지 append 충돌 방지
+- [x] Query Embedding 429/cooldown 대응 강화 — `Retry-After` 반영, `/health`·`/logs` 런타임 상태 노출
 
 ### 완료 (2026-04-02 추가)
 - [x] nginx `depends_on` healthcheck 조건 추가 (502 재발 방지)
@@ -577,6 +579,7 @@ sequenceDiagram
 - ✅ **API Rate Limiting 적용** — `/chat/stream`, `/chat`, `/retrieval/search`, `/feedback`, `/admin/logs`, `/conversations*` 경로별 요청 제한과 429 응답 헤더 추가
 - ✅ **Rate Limit 운영 모니터링 추가** — `/admin/logs` 응답과 `/logs` 화면에 429 차단 요약/최근 이벤트 표시
 - ✅ **대화 이력 서버 저장 안정화** — 서버 대화 hydrate 시 로컬 전용 대화를 보존하고 DB 메시지 append를 세션 단위로 직렬화
+- ✅ **Query Embedding cooldown 대응 강화** — 429 발생 시 `Retry-After` 우선 반영, active cooldown과 캐시 통계를 운영 화면에 노출
 
 ### 2026-04-11
 - ✅ **운영 API 라우팅 규칙 고정** — nginx `/api/* → backend` 구조 기준으로 프론트 호출 경로 정리 (`/api/chat/stream`, `/api/retrieval/search`, `/api/admin/logs`)
