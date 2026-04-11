@@ -170,6 +170,12 @@ npm run smoke:prod
 
 차단된 요청은 프로세스 메모리에 최근 이벤트로 보관되며 `/admin/logs` 응답의 `rateLimit` 블록과 프론트 `/logs` 화면에서 확인할 수 있습니다. 이 값은 재배포/재기동 시 초기화되므로 장기 보관용 감사 로그가 아니라 운영 튜닝용 지표입니다.
 
+## Conversation Persistence
+
+프론트는 초기 로딩 시 `/api/conversations?userKey=...&includeMessages=true`로 서버 저장 대화를 hydrate합니다. 서버 결과가 있더라도 로컬에만 남아 있는 optimistic 대화는 병합해서 보존합니다.
+
+백엔드는 같은 세션에 메시지를 append할 때 `conversation_session` row를 트랜잭션에서 `for update`로 잠근 뒤 `turn_index`를 계산합니다. 병렬 요청이 들어와도 `(session_id, turn_index)` 충돌 가능성을 줄이고 `message_count`는 실제 메시지 수 기준으로 재계산합니다.
+
 ## JSP AJAX 연동 계약
 
 운영 JSP/WAS에서 AI Core를 직접 호출하는 경우에는 JSON 응답을 반환하는 `/chat` 엔드포인트와 `display` 객체를 기준으로 화면을 구성합니다.

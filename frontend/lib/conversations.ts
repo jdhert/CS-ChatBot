@@ -148,6 +148,35 @@ export function updateConversation(conversations: Conversation[], updatedConvers
   return updated.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
 }
 
+export function mergeConversations(localConversations: Conversation[], serverConversations: Conversation[]): Conversation[] {
+  const mergedById = new Map<string, Conversation>()
+
+  for (const conv of localConversations) {
+    mergedById.set(conv.id, conv)
+  }
+
+  for (const serverConv of serverConversations) {
+    const localConv = mergedById.get(serverConv.id)
+    if (!localConv) {
+      mergedById.set(serverConv.id, serverConv)
+      continue
+    }
+
+    const serverUpdatedAt = new Date(serverConv.updatedAt).getTime()
+    const localUpdatedAt = new Date(localConv.updatedAt).getTime()
+    const serverIsAtLeastAsComplete = serverConv.messages.length >= localConv.messages.length
+
+    mergedById.set(
+      serverConv.id,
+      serverIsAtLeastAsComplete && serverUpdatedAt >= localUpdatedAt ? serverConv : localConv,
+    )
+  }
+
+  return Array.from(mergedById.values())
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, MAX_CONVERSATIONS)
+}
+
 export function deleteConversation(conversations: Conversation[], conversationId: string): Conversation[] {
   return conversations.filter((conv) => conv.id !== conversationId)
 }

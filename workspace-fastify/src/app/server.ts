@@ -137,44 +137,67 @@ async function ensureConversationSession(input: ConversationSessionInput): Promi
 async function appendConversationMessage(input: ConversationMessageInput): Promise<string> {
   const pool = getVectorPool();
   const metadataJson = JSON.stringify(input.metadata ?? {});
-  await pool.query(
-    `with next_turn as (
-       select coalesce(max(turn_index), 0) + 1 as turn_index
-         from ai_core.conversation_message
-        where session_id = $2
-     )
-     insert into ai_core.conversation_message
-       (message_id, session_id, turn_index, role, content, status, answer_source, retrieval_mode,
-        confidence, best_require_id, best_scc_id, similar_issue_url, log_uuid, metadata)
-     select
-       $1, $2, next_turn.turn_index, $3, $4, $5, $6, $7,
-       $8, $9, $10, $11, $12, $13::jsonb
-     from next_turn`,
-    [
-      input.messageId,
-      input.sessionId,
-      input.role,
-      input.content,
-      input.status ?? null,
-      input.answerSource ?? null,
-      input.retrievalMode ?? null,
-      input.confidence ?? null,
-      input.bestRequireId ?? null,
-      input.bestSccId ? BigInt(input.bestSccId) : null,
-      input.similarIssueUrl ?? null,
-      input.logUuid ?? null,
-      metadataJson
-    ]
-  );
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query(
+      `select session_id
+         from ai_core.conversation_session
+        where session_id = $1
+        for update`,
+      [input.sessionId]
+    );
 
-  await pool.query(
-    `update ai_core.conversation_session
-        set message_count = message_count + 1,
-            last_message_at = now(),
-            updated_at = now()
-      where session_id = $1`,
-    [input.sessionId]
-  );
+    await client.query(
+      `with next_turn as (
+         select coalesce(max(turn_index), 0) + 1 as turn_index
+           from ai_core.conversation_message
+          where session_id = $2
+       )
+       insert into ai_core.conversation_message
+         (message_id, session_id, turn_index, role, content, status, answer_source, retrieval_mode,
+          confidence, best_require_id, best_scc_id, similar_issue_url, log_uuid, metadata)
+       select
+         $1, $2, next_turn.turn_index, $3, $4, $5, $6, $7,
+         $8, $9, $10, $11, $12, $13::jsonb
+       from next_turn
+       on conflict (message_id) do nothing`,
+      [
+        input.messageId,
+        input.sessionId,
+        input.role,
+        input.content,
+        input.status ?? null,
+        input.answerSource ?? null,
+        input.retrievalMode ?? null,
+        input.confidence ?? null,
+        input.bestRequireId ?? null,
+        input.bestSccId ? BigInt(input.bestSccId) : null,
+        input.similarIssueUrl ?? null,
+        input.logUuid ?? null,
+        metadataJson
+      ]
+    );
+
+    await client.query(
+      `update ai_core.conversation_session
+          set message_count = (
+                select count(*)::int
+                  from ai_core.conversation_message
+                 where session_id = $1
+              ),
+              last_message_at = now(),
+              updated_at = now()
+        where session_id = $1`,
+      [input.sessionId]
+    );
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 
   return input.messageId;
 }

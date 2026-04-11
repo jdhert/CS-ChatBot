@@ -185,6 +185,7 @@ graph TB
 - 보안 차단 키워드 필터 (SQL Injection, 해킹, 개인정보 등)
 - API Rate Limiting (`/chat/stream`, `/retrieval/search`, `/feedback`, `/admin/logs`, `/conversations*`)
 - Rate Limit 운영 모니터링 (`/logs`에서 429 차단 요약/최근 이벤트 확인)
+- 대화 이력 서버 저장 안정화 (DB hydrate 우선, 로컬 optimistic 대화 보존)
 
 ## 🚀 성능 최적화
 
@@ -542,6 +543,7 @@ sequenceDiagram
 - [x] 사용자 피드백 분석 강화 (`/logs` 답변 경로별 피드백 분포, 싫어요 Top 질의)
 - [x] API Rate Limiting — 운영 노출 API 경로별 요청 제한 적용
 - [x] Rate Limit 운영 모니터링 — `/logs`에서 차단 수, 경로 그룹, 최근 이벤트 확인
+- [x] 대화 이력 서버 저장 안정화 — 서버 hydrate와 로컬 optimistic 대화 병합, 메시지 append 충돌 방지
 
 ### 완료 (2026-04-02 추가)
 - [x] nginx `depends_on` healthcheck 조건 추가 (502 재발 방지)
@@ -574,6 +576,7 @@ sequenceDiagram
 ### 2026-04-12
 - ✅ **API Rate Limiting 적용** — `/chat/stream`, `/chat`, `/retrieval/search`, `/feedback`, `/admin/logs`, `/conversations*` 경로별 요청 제한과 429 응답 헤더 추가
 - ✅ **Rate Limit 운영 모니터링 추가** — `/admin/logs` 응답과 `/logs` 화면에 429 차단 요약/최근 이벤트 표시
+- ✅ **대화 이력 서버 저장 안정화** — 서버 대화 hydrate 시 로컬 전용 대화를 보존하고 DB 메시지 append를 세션 단위로 직렬화
 
 ### 2026-04-11
 - ✅ **운영 API 라우팅 규칙 고정** — nginx `/api/* → backend` 구조 기준으로 프론트 호출 경로 정리 (`/api/chat/stream`, `/api/retrieval/search`, `/api/admin/logs`)

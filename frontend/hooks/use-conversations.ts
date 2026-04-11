@@ -12,6 +12,7 @@ import {
   getBrowserUserKey,
   loadActiveSessionId,
   loadConversations,
+  mergeConversations,
   saveActiveSessionId,
   saveConversations,
   updateConversation,
@@ -66,9 +67,10 @@ export function useConversations() {
         if (cancelled) return
 
         if (serverConversations.length > 0) {
-          setConversations(serverConversations)
-          saveConversations(serverConversations)
-          applyConversationSelection(serverConversations, savedActiveId)
+          const mergedConversations = mergeConversations(localConversations, serverConversations)
+          setConversations(mergedConversations)
+          saveConversations(mergedConversations)
+          applyConversationSelection(mergedConversations, savedActiveId)
           return
         }
       } catch (error) {
