@@ -44,7 +44,35 @@ interface LogRow {
   llm_ms: number | null
   total_ms: number | null
   user_feedback: string | null
+  conversation_metadata: LogConversationMetadata | null
+  assistant_status: string | null
+  assistant_content: string | null
   created_at: string
+}
+
+interface LogCandidate {
+  requireId?: string | null
+  sccId?: string | null
+  score?: number | null
+  chunkType?: string | null
+  previewText?: string | null
+  linkUrl?: string | null
+}
+
+interface LogConversationMetadata {
+  top3Candidates?: LogCandidate[] | null
+  queryRewritten?: boolean | null
+  rewrittenQuery?: string | null
+  answerSourceReason?: string | null
+  vectorError?: string | null
+  vectorStrategy?: string | null
+  vectorModelTag?: string | null
+  vectorCandidateCount?: number | null
+  llmError?: string | null
+  llmSkipReason?: string | null
+  cacheHit?: boolean | null
+  hasCandidates?: boolean | null
+  topScore?: number | null
 }
 
 interface LogsResponse {
@@ -533,11 +561,29 @@ function QueryEmbeddingMonitoring({ snapshot }: { snapshot: QueryEmbeddingSnapsh
   )
 }
 
+function formatMaybeScore(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? `${Math.round(value * 100)}%` : "-"
+}
+
 function LogRowCard({ row }: { row: LogRow }) {
   const [expanded, setExpanded] = useState(false)
   const sccUrl = row.best_require_id
     ? `${SCC_VIEW_URL}?req_id=${row.best_require_id}&system=Menu01&alias=Menu01.Service.List&mnid=705`
     : null
+  const metadata = row.conversation_metadata ?? {}
+  const topCandidates = Array.isArray(metadata.top3Candidates) ? metadata.top3Candidates : []
+  const diagnostics = [
+    ["vectorError", metadata.vectorError],
+    ["vectorStrategy", metadata.vectorStrategy],
+    ["vectorModelTag", metadata.vectorModelTag],
+    ["vectorCandidateCount", metadata.vectorCandidateCount],
+    ["llmError", metadata.llmError],
+    ["llmSkipReason", metadata.llmSkipReason ?? row.llm_skip_reason],
+    ["answerSourceReason", metadata.answerSourceReason],
+    ["queryRewritten", metadata.queryRewritten],
+    ["rewrittenQuery", metadata.rewrittenQuery],
+    ["assistantStatus", row.assistant_status],
+  ].filter(([, value]) => value !== null && value !== undefined && value !== "")
 
   return (
     <div
@@ -628,6 +674,60 @@ function LogRowCard({ row }: { row: LogRow }) {
               </>
             )}
           </dl>
+
+          {diagnostics.length > 0 && (
+            <div className="rounded-xl bg-muted/40 p-3">
+              <div className="mb-2 text-xs font-semibold text-foreground">진단 정보</div>
+              <dl className="grid gap-1.5 text-xs sm:grid-cols-2">
+                {diagnostics.map(([label, value]) => (
+                  <div key={String(label)} className="min-w-0">
+                    <dt className="text-muted-foreground">{label}</dt>
+                    <dd className="truncate font-medium text-foreground">{String(value)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
+
+          {topCandidates.length > 0 && (
+            <div className="rounded-xl border border-border p-3">
+              <div className="mb-2 text-xs font-semibold text-foreground">Top 후보</div>
+              <div className="space-y-2">
+                {topCandidates.map((candidate, index) => {
+                  const candidateUrl =
+                    candidate.linkUrl ??
+                    (candidate.requireId
+                      ? `${SCC_VIEW_URL}?req_id=${candidate.requireId}&system=Menu01&alias=Menu01.Service.List&mnid=705`
+                      : null)
+                  return (
+                    <div key={`${candidate.requireId ?? index}:${candidate.chunkType ?? "unknown"}`} className="rounded-lg bg-muted/40 p-2 text-xs">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-foreground">#{index + 1}</span>
+                        {candidate.sccId && <span className="text-muted-foreground">SCC {candidate.sccId}</span>}
+                        {candidate.chunkType && <span className="text-muted-foreground">{candidate.chunkType}</span>}
+                        <span className="text-muted-foreground">score {formatMaybeScore(candidate.score)}</span>
+                        {candidateUrl && (
+                          <a href={candidateUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                            이력 보기
+                          </a>
+                        )}
+                      </div>
+                      {candidate.previewText && (
+                        <p className="mt-1 line-clamp-2 text-muted-foreground">{candidate.previewText}</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {row.assistant_content && (
+            <div className="rounded-xl border border-border p-3">
+              <div className="mb-2 text-xs font-semibold text-foreground">응답 미리보기</div>
+              <p className="whitespace-pre-wrap text-xs leading-5 text-muted-foreground">{row.assistant_content}</p>
+            </div>
+          )}
 
           {sccUrl && (
             <a

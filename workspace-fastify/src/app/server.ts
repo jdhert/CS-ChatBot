@@ -1102,7 +1102,14 @@ export function buildServer(): FastifyInstance {
             metadata: {
               top3Candidates,
               queryRewritten: rewrite.rewriteUsed,
-              rewrittenQuery: rewrite.rewriteUsed ? effectiveQuery : null
+              rewrittenQuery: rewrite.rewriteUsed ? effectiveQuery : null,
+              answerSourceReason,
+              vectorError: result.vectorError ?? null,
+              vectorStrategy: result.vectorStrategy ?? null,
+              vectorModelTag: result.vectorModelTag ?? null,
+              vectorCandidateCount: result.vectorCandidateCount ?? null,
+              llmError: llmResult.llmError ?? null,
+              llmSkipReason
             }
           });
         } catch (error) {
@@ -1308,7 +1315,12 @@ export function buildServer(): FastifyInstance {
               logUuid,
               metadata: {
                 hasCandidates,
-                topScore
+                topScore,
+                top3Candidates: (result.candidates ?? []).slice(0, 3),
+                vectorError: result.vectorError ?? null,
+                vectorStrategy: result.vectorStrategy ?? null,
+                vectorModelTag: result.vectorModelTag ?? null,
+                vectorCandidateCount: result.vectorCandidateCount ?? null
               }
             });
           } catch (error) {
@@ -1364,6 +1376,10 @@ export function buildServer(): FastifyInstance {
         top3Candidates,
         queryRewritten: rewrite.rewriteUsed,
         rewrittenQuery: rewrite.rewriteUsed ? effectiveQuery : null,
+        vectorError: result.vectorError ?? null,
+        vectorStrategy: result.vectorStrategy ?? null,
+        vectorModelTag: result.vectorModelTag ?? null,
+        vectorCandidateCount: result.vectorCandidateCount ?? null,
       };
       reply.raw.write(`data: ${JSON.stringify({ type: "metadata", data: metadata })}\n\n`);
 
@@ -1425,7 +1441,7 @@ export function buildServer(): FastifyInstance {
             bestSccId: result.bestSccId,
             similarIssueUrl,
             logUuid,
-            metadata: { top3Candidates, queryRewritten: rewrite.rewriteUsed }
+            metadata
           });
         } catch (error) {
           request.log.warn(error, "failed to persist conversation assistant turn before /chat/stream done");
@@ -1575,16 +1591,31 @@ export function buildServer(): FastifyInstance {
       const rowParams = [...baseParams, limit, offset];
       const [rowsResult, countResult, summaryResult, feedbackBreakdownResult, feedbackTopQueriesResult] = await Promise.all([
         pool.query(
-          `select log_uuid, query, retrieval_scope, confidence, best_require_id, best_scc_id,
-                  chunk_type, vector_used, retrieval_mode, answer_source,
-                  llm_used, llm_skipped, llm_skip_reason,
-                  is_no_match, is_failure, failure_reason,
-                  rule_ms, embedding_ms, vector_ms, rerank_ms, retrieval_ms, llm_ms, total_ms,
-                  user_feedback, created_at
-           from ai_core.query_log
-           ${rowWhereClause}
-           order by created_at desc
-           limit $${baseParams.length + 1} offset $${baseParams.length + 2}`,
+          `select q.log_uuid, q.query, q.retrieval_scope, q.confidence, q.best_require_id, q.best_scc_id,
+                  q.chunk_type, q.vector_used, q.retrieval_mode, q.answer_source,
+                  q.llm_used, q.llm_skipped, q.llm_skip_reason,
+                  q.is_no_match, q.is_failure, q.failure_reason,
+                  q.rule_ms, q.embedding_ms, q.vector_ms, q.rerank_ms, q.retrieval_ms, q.llm_ms, q.total_ms,
+                  q.user_feedback, q.created_at,
+                  cm.metadata as conversation_metadata,
+                  cm.assistant_status,
+                  left(cm.assistant_content, 2000) as assistant_content
+           from (
+             select *
+             from ai_core.query_log
+             ${rowWhereClause}
+             order by created_at desc
+             limit $${baseParams.length + 1} offset $${baseParams.length + 2}
+           ) q
+           left join lateral (
+             select metadata, status as assistant_status, content as assistant_content
+               from ai_core.conversation_message
+              where log_uuid = q.log_uuid
+                and role = 'assistant'
+              order by created_at desc
+              limit 1
+           ) cm on true
+           order by q.created_at desc`,
           rowParams
         ),
         pool.query(`select count(*) as total from ai_core.query_log ${rowWhereClause}`, baseParams),

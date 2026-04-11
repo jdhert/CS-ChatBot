@@ -185,6 +185,18 @@ npm run smoke:prod
 - `EMBEDDING_MODEL_RESOLVE_TTL_MS`
 - `GOOGLE_EMBEDDING_OUTPUT_DIM`
 
+## Admin Log Drilldown
+
+`/admin/logs`는 `query_log` 목록과 함께 같은 `log_uuid`를 가진 `conversation_message.metadata`를 조회합니다. 프론트 `/logs`의 개별 로그 펼침 영역에서 다음 정보를 확인할 수 있습니다.
+
+- 후보 Top3 (`top3Candidates`)
+- `vectorError`, `vectorStrategy`, `vectorModelTag`, `vectorCandidateCount`
+- `llmError`, `llmSkipReason`, `answerSourceReason`
+- rewrite 여부와 rewrite query
+- assistant 응답 미리보기
+
+별도 DB 스키마 변경 없이 기존 `conversation_message.metadata`를 사용합니다.
+
 ## Conversation Persistence
 
 프론트는 초기 로딩 시 `/api/conversations?userKey=...&includeMessages=true`로 서버 저장 대화를 hydrate합니다. 서버 결과가 있더라도 로컬에만 남아 있는 optimistic 대화는 병합해서 보존합니다.
