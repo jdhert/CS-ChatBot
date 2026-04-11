@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "check:api-routes": "node scripts/check-api-routes.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
