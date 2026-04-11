@@ -15,6 +15,7 @@
     "db:init:query-log": "node scripts/init-query-log.mjs",
     "db:init:fts-index": "node scripts/init-fts-index.mjs",
     "db:migrate:feedback": "node scripts/migrate-query-log-feedback.mjs",
+    "db:migrate:query-log": "node scripts/migrate-query-log-feedback.mjs",
     "log:analyze": "node scripts/analyze-query-log.mjs",
     "db:fix:stable-chunk-view": "node scripts/fix-stable-chunk-view.mjs",
     "db:enable:pgvector": "node scripts/enable-pgvector-search.mjs",

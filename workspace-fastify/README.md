@@ -1,4 +1,4 @@
-﻿# 코비전 CS Bot (workspace-fastify)
+# 코비전 CS Bot (workspace-fastify)
 
 Covision CS Bot — Fastify + TypeScript 기반 RAG AI Core 서비스.
 
@@ -140,6 +140,20 @@ npm run smoke:prod
 - latest artifact: `docs/eval/production_smoke.latest.json`
 - base URL 변경: `npm run smoke:prod -- --base-url https://example.com/api`
 - 일부만 실행: `npm run smoke:prod -- --limit 2`
+
+## JSP AJAX 연동 계약
+
+운영 JSP/WAS에서 AI Core를 직접 호출하는 경우에는 JSON 응답을 반환하는 `/chat` 엔드포인트와 `display` 객체를 기준으로 화면을 구성합니다.
+
+- 계약 문서: [docs/integration/jsp-chat-contract.md](docs/integration/jsp-chat-contract.md)
+- 샘플 JSP: [docs/integration/chat_widget.sample.jsp](docs/integration/chat_widget.sample.jsp)
+- 운영 Next/nginx 프론트 경로 규칙: [docs/architecture/api-routing.md](../docs/architecture/api-routing.md)
+
+관련 운영 로그 스키마를 보정해야 하는 경우:
+
+```bash
+npm run db:migrate:query-log
+```
 
 ## 데이터 모델링 (핵심)
 

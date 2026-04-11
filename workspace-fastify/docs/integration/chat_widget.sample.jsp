@@ -123,6 +123,10 @@
       cursor: pointer;
       font-weight: 700;
     }
+    .composer button:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
     .composer button.primary {
       background: #1d4ed8;
       color: #ffffff;
@@ -150,13 +154,13 @@
   <div class="chat-shell">
     <div class="chat-header">
       <h1>AI Core Chat Widget Sample</h1>
-      <p>`/chat.display` 기준 JSP 렌더링 예시입니다. raw JSON 대신 display 필드만 사용합니다.</p>
+      <p>JSP AJAX 연동은 `/chat` JSON 응답의 `display` 필드만 렌더링하는 방식을 권장합니다.</p>
     </div>
 
     <div id="chatLog" class="chat-log"></div>
 
     <div class="composer">
-      <textarea id="queryInput" placeholder="예: 휴가신청서 상신이 불가해"></textarea>
+      <textarea id="queryInput" placeholder="예: 휴가신청서 상신이 불가능해"></textarea>
       <select id="scopeSelect">
         <option value="scc">scc</option>
         <option value="all">all</option>
@@ -166,7 +170,7 @@
       <button id="clearBtn" class="secondary" type="button">초기화</button>
     </div>
 
-    <div id="statusText" class="status">Idle</div>
+    <div id="statusText" class="status">대기 중</div>
   </div>
 
   <script>
@@ -233,18 +237,33 @@
       chatLogEl.scrollTop = chatLogEl.scrollHeight;
     }
 
+    function appendErrorBubble(title, message) {
+      appendAssistantBubble({
+        status: "needs_more_info",
+        title: title,
+        answerText: message,
+        linkLabel: null,
+        linkUrl: null,
+        requireId: null,
+        sccId: null,
+        confidence: 0,
+        answerSource: null,
+        retrievalMode: "rule_only"
+      });
+    }
+
     async function sendChat() {
       const query = queryInputEl.value.trim();
       const retrievalScope = scopeSelectEl.value;
 
       if (!query) {
-        statusTextEl.textContent = "query를 입력하세요.";
+        statusTextEl.textContent = "질문을 입력해 주세요.";
         return;
       }
 
       appendUserBubble(query);
       sendBtnEl.disabled = true;
-      statusTextEl.textContent = "Requesting...";
+      statusTextEl.textContent = "요청 중...";
 
       try {
         const response = await fetch(AI_CORE_BASE_URL + "/chat", {
@@ -260,38 +279,22 @@
 
         const payload = await response.json();
         if (!response.ok) {
-          appendAssistantBubble({
-            status: "needs_more_info",
-            title: "요청 실패",
-            answerText: payload.message || "AI Core 요청에 실패했습니다.",
-            linkLabel: null,
-            linkUrl: null,
-            requireId: null,
-            sccId: null,
-            confidence: 0,
-            answerSource: null,
-            retrievalMode: "rule_only"
-          });
-          statusTextEl.textContent = "Failed (" + response.status + ")";
+          appendErrorBubble("요청 실패", payload.message || "AI Core 요청에 실패했습니다.");
+          statusTextEl.textContent = "실패 (" + response.status + ")";
+          return;
+        }
+
+        if (!payload.display) {
+          appendErrorBubble("응답 형식 오류", "display 필드가 없습니다.");
+          statusTextEl.textContent = "실패 (display 없음)";
           return;
         }
 
         appendAssistantBubble(payload.display);
-        statusTextEl.textContent = "Success";
+        statusTextEl.textContent = "성공";
       } catch (error) {
-        appendAssistantBubble({
-          status: "needs_more_info",
-          title: "요청 실패",
-          answerText: error && error.message ? error.message : "unknown error",
-          linkLabel: null,
-          linkUrl: null,
-          requireId: null,
-          sccId: null,
-          confidence: 0,
-          answerSource: null,
-          retrievalMode: "rule_only"
-        });
-        statusTextEl.textContent = "Request failed";
+        appendErrorBubble("요청 실패", error && error.message ? error.message : "unknown error");
+        statusTextEl.textContent = "요청 실패";
       } finally {
         sendBtnEl.disabled = false;
       }
@@ -304,7 +307,7 @@
     clearBtnEl.addEventListener("click", function() {
       chatLogEl.innerHTML = "";
       queryInputEl.value = "";
-      statusTextEl.textContent = "Idle";
+      statusTextEl.textContent = "대기 중";
     });
   </script>
 </body>

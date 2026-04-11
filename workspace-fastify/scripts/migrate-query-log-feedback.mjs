@@ -27,10 +27,31 @@ const sqlStatements = [
             add column if not exists log_uuid uuid default gen_random_uuid();`,
   },
   {
+    label: "backfill log_uuid",
+    sql: `update ai_core.query_log
+             set log_uuid = gen_random_uuid()
+           where log_uuid is null;`,
+  },
+  {
+    label: "make log_uuid not null",
+    sql: `alter table ai_core.query_log
+            alter column log_uuid set not null;`,
+  },
+  {
     label: "add user_feedback column",
     sql: `alter table ai_core.query_log
             add column if not exists user_feedback text
             check (user_feedback in ('up', 'down'));`,
+  },
+  {
+    label: "add is_failure column",
+    sql: `alter table ai_core.query_log
+            add column if not exists is_failure boolean not null default false;`,
+  },
+  {
+    label: "add failure_reason column",
+    sql: `alter table ai_core.query_log
+            add column if not exists failure_reason text;`,
   },
   {
     label: "unique index on log_uuid",
@@ -42,6 +63,12 @@ const sqlStatements = [
     sql: `create index if not exists idx_query_log_feedback
             on ai_core.query_log(user_feedback)
             where user_feedback is not null;`,
+  },
+  {
+    label: "index on is_failure",
+    sql: `create index if not exists idx_query_log_is_failure
+            on ai_core.query_log(is_failure)
+            where is_failure = true;`,
   },
 ];
 
