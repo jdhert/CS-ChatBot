@@ -1302,13 +1302,17 @@ export function buildServer(): FastifyInstance {
 
     const rowConditions = [...baseConditions];
     if (filterCondition) rowConditions.push(filterCondition);
+    const feedbackConditions = [...baseConditions, "user_feedback is not null"];
+    const downFeedbackConditions = [...baseConditions, "user_feedback = 'down'"];
     const baseWhereClause = baseConditions.length > 0 ? `where ${baseConditions.join(" and ")}` : "";
     const rowWhereClause = rowConditions.length > 0 ? `where ${rowConditions.join(" and ")}` : "";
+    const feedbackWhereClause = `where ${feedbackConditions.join(" and ")}`;
+    const downFeedbackWhereClause = `where ${downFeedbackConditions.join(" and ")}`;
 
     const pool = getVectorPool();
     try {
       const rowParams = [...baseParams, limit, offset];
-      const [rowsResult, countResult] = await Promise.all([
+      const [rowsResult, countResult, summaryResult, feedbackBreakdownResult, feedbackTopQueriesResult] = await Promise.all([
         pool.query(
           `select log_uuid, query, retrieval_scope, confidence, best_require_id, best_scc_id,
                   chunk_type, vector_used, retrieval_mode, answer_source,
@@ -1323,15 +1327,25 @@ export function buildServer(): FastifyInstance {
           rowParams
         ),
         pool.query(`select count(*) as total from ai_core.query_log ${rowWhereClause}`, baseParams),
-      ]);
-      const summaryResult = await pool.query(
-        `select
+        pool.query(
+          `select
             count(*)::int as total,
             count(*) filter (where is_failure = true)::int as failure_count,
             count(*) filter (where is_no_match = true)::int as no_match_count,
             count(*) filter (where confidence < 0.45 and is_no_match = false)::int as low_confidence_count,
             count(*) filter (where user_feedback = 'up')::int as feedback_up_count,
             count(*) filter (where user_feedback = 'down')::int as feedback_down_count,
+            count(*) filter (where user_feedback is not null)::int as feedback_total_count,
+            round(
+              100.0 * count(*) filter (where user_feedback = 'up')
+              / nullif(count(*) filter (where user_feedback is not null), 0),
+              1
+            )::float as feedback_positive_rate_pct,
+            round(
+              100.0 * count(*) filter (where user_feedback = 'down')
+              / nullif(count(*) filter (where user_feedback is not null), 0),
+              1
+            )::float as feedback_negative_rate_pct,
             count(*) filter (where retrieval_mode = 'hybrid')::int as hybrid_count,
             count(*) filter (where retrieval_mode = 'rule_only')::int as rule_only_count,
             count(*) filter (where coalesce(total_ms, retrieval_ms, 0) >= 5000)::int as slow_count,
@@ -1341,8 +1355,46 @@ export function buildServer(): FastifyInstance {
             max(created_at) as latest_at
            from ai_core.query_log
            ${baseWhereClause}`,
-        baseParams
-      );
+          baseParams
+        ),
+        pool.query(
+          `select
+              coalesce(answer_source, 'unknown') as answer_source,
+              coalesce(retrieval_mode, 'unknown') as retrieval_mode,
+              count(*)::int as feedback_count,
+              count(*) filter (where user_feedback = 'up')::int as up_count,
+              count(*) filter (where user_feedback = 'down')::int as down_count,
+              round(
+                100.0 * count(*) filter (where user_feedback = 'down') / nullif(count(*), 0),
+                1
+              )::float as down_rate_pct,
+              round(avg(confidence)::numeric, 4)::float as avg_confidence,
+              round(avg(total_ms)::numeric, 0)::int as avg_total_ms
+             from ai_core.query_log
+             ${feedbackWhereClause}
+            group by coalesce(answer_source, 'unknown'), coalesce(retrieval_mode, 'unknown')
+            order by down_count desc, feedback_count desc, answer_source asc
+            limit 10`,
+          baseParams
+        ),
+        pool.query(
+          `select
+              query,
+              count(*)::int as down_count,
+              max(created_at) as latest_at,
+              max(log_uuid::text) as sample_log_uuid,
+              max(best_require_id::text) as sample_require_id,
+              max(best_scc_id)::text as sample_scc_id,
+              round(avg(confidence)::numeric, 4)::float as avg_confidence,
+              round(avg(total_ms)::numeric, 0)::int as avg_total_ms
+             from ai_core.query_log
+             ${downFeedbackWhereClause}
+            group by query
+            order by down_count desc, latest_at desc
+            limit 8`,
+          baseParams
+        ),
+      ]);
 
       return reply.code(200).send({
         total: parseInt(countResult.rows[0].total, 10),
@@ -1352,6 +1404,8 @@ export function buildServer(): FastifyInstance {
         q,
         days,
         summary: summaryResult.rows[0],
+        feedbackBreakdown: feedbackBreakdownResult.rows,
+        feedbackTopQueries: feedbackTopQueriesResult.rows,
         rows: rowsResult.rows
       });
     } catch (error) {

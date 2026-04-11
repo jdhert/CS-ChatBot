@@ -55,6 +55,8 @@ interface LogsResponse {
   q: string
   days: number
   summary: LogSummary | null
+  feedbackBreakdown: FeedbackBreakdownRow[]
+  feedbackTopQueries: FeedbackTopQuery[]
   rows: LogRow[]
 }
 
@@ -65,6 +67,9 @@ interface LogSummary {
   low_confidence_count: number
   feedback_up_count: number
   feedback_down_count: number
+  feedback_total_count: number
+  feedback_positive_rate_pct: number | null
+  feedback_negative_rate_pct: number | null
   hybrid_count: number
   rule_only_count: number
   slow_count: number
@@ -72,6 +77,28 @@ interface LogSummary {
   avg_total_ms: number | null
   avg_retrieval_ms: number | null
   latest_at: string | null
+}
+
+interface FeedbackBreakdownRow {
+  answer_source: string
+  retrieval_mode: string
+  feedback_count: number
+  up_count: number
+  down_count: number
+  down_rate_pct: number | null
+  avg_confidence: number | null
+  avg_total_ms: number | null
+}
+
+interface FeedbackTopQuery {
+  query: string
+  down_count: number
+  latest_at: string
+  sample_log_uuid: string | null
+  sample_require_id: string | null
+  sample_scc_id: string | null
+  avg_confidence: number | null
+  avg_total_ms: number | null
 }
 
 const SCC_VIEW_URL =
@@ -119,6 +146,10 @@ function confidenceColor(v: number | null) {
   if (v >= 0.7) return "text-emerald-600 dark:text-emerald-400"
   if (v >= 0.45) return "text-amber-600 dark:text-amber-400"
   return "text-red-600 dark:text-red-400"
+}
+
+function formatPct(value: number | null) {
+  return value === null ? "-" : `${value}%`
 }
 
 function ConfidenceBar({ value }: { value: number | null }) {
@@ -206,6 +237,105 @@ function SummaryCard({
       <div className="mt-2 text-xl font-semibold tabular-nums text-foreground">{value}</div>
       {sub && <div className="mt-1 text-[11px] opacity-80">{sub}</div>}
     </div>
+  )
+}
+
+function FeedbackAnalysis({
+  breakdown,
+  topQueries,
+}: {
+  breakdown: FeedbackBreakdownRow[]
+  topQueries: FeedbackTopQuery[]
+}) {
+  if (breakdown.length === 0 && topQueries.length === 0) {
+    return (
+      <section className="mb-5 rounded-2xl border border-dashed border-border bg-card p-5 text-sm text-muted-foreground">
+        선택한 기간에 수집된 사용자 피드백이 아직 없습니다.
+      </section>
+    )
+  }
+
+  return (
+    <section className="mb-5 grid gap-4 lg:grid-cols-[1fr_1.1fr]">
+      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">답변 경로별 피드백</h2>
+            <p className="text-xs text-muted-foreground">싫어요 비율이 높은 경로부터 점검합니다.</p>
+          </div>
+          <ThumbsDown className="h-4 w-4 text-muted-foreground" />
+        </div>
+
+        {breakdown.length === 0 ? (
+          <div className="rounded-xl bg-muted/40 p-4 text-sm text-muted-foreground">피드백 데이터가 없습니다.</div>
+        ) : (
+          <div className="space-y-2">
+            {breakdown.map((row) => {
+              const source = ANSWER_SOURCE_LABEL[row.answer_source] ?? row.answer_source
+              const mode = row.retrieval_mode === "hybrid" ? "하이브리드" : row.retrieval_mode === "rule_only" ? "룰 전용" : row.retrieval_mode
+              const downRate = row.down_rate_pct ?? 0
+              return (
+                <div key={`${row.answer_source}:${row.retrieval_mode}`} className="rounded-xl border border-border p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-foreground">{source}</div>
+                      <div className="text-xs text-muted-foreground">{mode}</div>
+                    </div>
+                    <div className={cn("text-right text-sm font-semibold", downRate >= 50 ? "text-red-600 dark:text-red-400" : "text-muted-foreground")}>
+                      {formatPct(row.down_rate_pct)}
+                    </div>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-red-500" style={{ width: `${Math.min(downRate, 100)}%` }} />
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                    <span>피드백 {row.feedback_count.toLocaleString()}건</span>
+                    <span>좋아요 {row.up_count.toLocaleString()}</span>
+                    <span>싫어요 {row.down_count.toLocaleString()}</span>
+                    {row.avg_total_ms !== null && <span>평균 {row.avg_total_ms.toLocaleString()}ms</span>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">싫어요 Top 질의</h2>
+            <p className="text-xs text-muted-foreground">평가셋 편입이나 검색 튜닝 후보로 봅니다.</p>
+          </div>
+          <MessageCircleWarning className="h-4 w-4 text-muted-foreground" />
+        </div>
+
+        {topQueries.length === 0 ? (
+          <div className="rounded-xl bg-muted/40 p-4 text-sm text-muted-foreground">싫어요 피드백 질의가 없습니다.</div>
+        ) : (
+          <div className="space-y-2">
+            {topQueries.map((row) => (
+              <button
+                key={`${row.query}:${row.sample_log_uuid ?? row.latest_at}`}
+                type="button"
+                onClick={() => void navigator.clipboard?.writeText(row.query)}
+                className="w-full rounded-xl border border-border p-3 text-left transition-colors hover:border-primary/50 hover:bg-accent/40"
+                title="질문 복사"
+              >
+                <div className="line-clamp-2 text-sm font-medium text-foreground">{row.query}</div>
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                  <span>싫어요 {row.down_count.toLocaleString()}건</span>
+                  {row.avg_confidence !== null && <span>평균 신뢰도 {Math.round(row.avg_confidence * 100)}%</span>}
+                  {row.avg_total_ms !== null && <span>평균 {row.avg_total_ms.toLocaleString()}ms</span>}
+                  {row.sample_scc_id && <span>SCC {row.sample_scc_id}</span>}
+                  <span>최근 {formatDate(row.latest_at)}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -429,7 +559,7 @@ export default function LogsPage() {
             <SummaryCard
               label="사용자 피드백"
               value={`${data.summary.feedback_up_count.toLocaleString()} / ${data.summary.feedback_down_count.toLocaleString()}`}
-              sub="좋아요 / 싫어요"
+              sub={`좋아요율 ${formatPct(data.summary.feedback_positive_rate_pct)} · 싫어요율 ${formatPct(data.summary.feedback_negative_rate_pct)}`}
               icon={
                 <span className="flex items-center gap-1">
                   <ThumbsUp className="h-3.5 w-3.5" />
@@ -446,6 +576,13 @@ export default function LogsPage() {
               tone={data.summary.slow_count > 0 ? "warning" : "neutral"}
             />
           </div>
+        )}
+
+        {data && (
+          <FeedbackAnalysis
+            breakdown={data.feedbackBreakdown ?? []}
+            topQueries={data.feedbackTopQueries ?? []}
+          />
         )}
 
         <form
