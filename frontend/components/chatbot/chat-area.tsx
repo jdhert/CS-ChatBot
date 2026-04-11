@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useRef } from "react"
 import { ChatHeader } from "./chat-header"
@@ -62,21 +62,22 @@ export function ChatArea({
               </div>
               <h2 className="mb-2 text-xl font-semibold text-foreground">코비전 CS Bot</h2>
               <p className="mb-6 max-w-md text-sm leading-relaxed text-muted-foreground">
-                증상이나 오류 메시지를 입력하면 유사 처리 이력과 안내 답변을 찾아드립니다.
+                증상이나 오류 메시지를 입력하면 유사 처리 이력과 안내 답변을 함께 찾아드립니다.
               </p>
             </div>
           )}
 
           {messages.length === 0 && <QuickActions onSelect={onSendMessage} />}
 
-          {messages.map((message, idx) => {
+          {messages.map((message, index) => {
             const isLastBotMessage =
               message.sender === "bot" &&
-              messages.slice(idx + 1).every((m) => m.sender !== "bot")
+              messages.slice(index + 1).every((nextMessage) => nextMessage.sender !== "bot")
             const precedingUserQuery =
               message.sender === "bot"
-                ? [...messages.slice(0, idx)].reverse().find((m) => m.sender === "user")?.content
+                ? [...messages.slice(0, index)].reverse().find((candidate) => candidate.sender === "user")?.content
                 : undefined
+
             return (
               <ChatMessage
                 key={message.id}
