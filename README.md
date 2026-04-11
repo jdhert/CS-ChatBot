@@ -38,13 +38,23 @@ CoviAI는 사내 매뉴얼, 이력 데이터, FAQ 등을 기반으로 사용자 
 - **청크 타입**: issue, action, resolution, qa_pair
 - **검색 방식**: Hybrid (Rule-based + Vector Similarity)
 
-### 평가 결과 (2026-03-31 기준, 50건 운영성 질의셋)
+### 평가 결과 (2026-04-11 기준)
+
+#### 50건 운영성 질의셋
 | 지표 | 결과 |
 |---|---|
 | Top1 정확도 | 37/37 (100%) |
 | Top3 정확도 | 37/37 (100%) |
 | 청크 타입 정확도 | 37/37 (100%) |
 | 부정 질의 차단 | 13/13 (100%) |
+
+#### 운영 Smoke 평가 (`csbotservice.com`)
+| 지표 | 결과 |
+|---|---|
+| 대표 질문 | 4건 |
+| 통과 | 4/4 |
+| 실패 | 0 |
+| 확인 항목 | HTTP 200, 답변 본문, 유사 이력 링크, `hybrid` 검색 |
 
 ## 🏗️ 시스템 아키텍처
 
@@ -105,7 +115,8 @@ graph TB
 - **UI**: React 19, Tailwind CSS
 - **마크다운**: react-markdown + remark-gfm
 - **상태 관리**: React Hooks
-- **저장소**: localStorage (대화 이력 · 다크모드 영구 보관)
+- **저장소**: 서버 DB 대화 이력 hydrate + localStorage optimistic 보조 저장
+- **운영 API 호출 규칙**: `/api/chat/stream`, `/api/retrieval/search`, `/api/admin/logs` 등 백엔드 실경로 호환 기준
 
 #### Backend
 - **Framework**: Fastify (Node.js)
@@ -128,6 +139,7 @@ graph TB
 #### CI/CD
 - **파이프라인**: GitHub Actions (`main` 브랜치 push 시 자동 트리거)
 - **빌드 환경**: GitHub Actions runner (ubuntu-latest, 7GB RAM) — VM에서 빌드하지 않음
+- **회귀 검사**: 프론트 API 경로 검사 (`npm run check:api-routes`)로 운영 nginx 라우팅과 맞지 않는 `/api/chat`, `/api/search`, `/api/logs` 사용 방지
 - **레이어 캐시**: Registry cache (`ghcr.io` cache manifest) 활용으로 반복 빌드 가속
 - **배포 방식**: SSH → `docker pull` + `docker compose up -d` (이미지 교체만)
 - **단절 시간**: ~10초 (빌드 시간 VM 부담 없음)
@@ -145,8 +157,10 @@ graph TB
 - **Reranking**: LLM 기반 최종 후보 재정렬
 
 ### 3. 대화 이력 관리
-- localStorage 기반 영구 보관 (최대 50개 대화)
+- 서버 DB 기반 대화 이력 저장/복원 (`conversation_session`, `conversation_message`)
+- localStorage는 optimistic UI 및 임시 보조 저장으로만 사용
 - 대화 제목 자동 생성 / 삭제 / 전환
+- 사이드바 삭제 UX 안정화 (중복 삭제 방지, 삭제 중 상태 표시, 빈 대화 강제 생성 방지)
 - 멀티턴 컨텍스트 (최근 6개 메시지 LLM에 전달)
 
 ### 4. 유사 이력 참조
@@ -162,6 +176,8 @@ graph TB
 
 ### 6. 운영 기능
 - 쿼리 로그 자동 기록 (`ai_core.query_log`)
+- 운영 smoke 평가 (`npm run smoke:prod`)
+- JSP AJAX 연동용 `display` 응답 계약 문서화
 - 인메모리 쿼리 캐시 (동일 질문 반복 시 즉시 응답)
 - 자동 인제스트 스케줄러 (미임베딩 청크 주기적 동기화)
 - 보안 차단 키워드 필터 (SQL Injection, 해킹, 개인정보 등)
@@ -218,16 +234,22 @@ coviAI/                             # Monorepo 루트
 │   │   ├── page.tsx               # 메인 챗봇 페이지
 │   │   ├── search/                # SCC 이력 검색 페이지
 │   │   └── api/
-│   │       ├── chat/              # API 라우트 (SSE stream proxy)
-│   │       └── search/            # API 라우트 (/retrieval/search proxy)
+│   │       ├── chat/stream/       # 로컬 dev 보조 프록시 (/chat/stream)
+│   │       ├── retrieval/search/  # 로컬 dev 보조 프록시 (/retrieval/search)
+│   │       ├── admin/logs/        # 로컬 dev 보조 프록시 (/admin/logs)
+│   │       ├── feedback/          # 피드백 API 프록시
+│   │       └── conversations/     # 대화 이력 API 프록시
 │   ├── components/
 │   │   └── chatbot/               # 챗봇 UI 컴포넌트
 │   │       ├── chat-message.tsx   # 메시지 + Top3 카드 + 재전송/질문수정
 │   │       ├── chat-area.tsx      # 채팅 영역
 │   │       ├── chat-header.tsx    # 헤더 (검색·내보내기 버튼)
 │   │       └── chat-input.tsx     # 입력창 (prefill 지원)
+│   ├── hooks/
+│   │   ├── use-chat.ts            # 채팅 스트리밍/상태 관리
+│   │   └── use-conversations.ts   # 서버 대화 이력 hydrate/삭제 UX
 │   ├── lib/
-│   │   └── conversations.ts       # 대화 이력 관리
+│   │   └── conversations.ts       # 대화 이력 변환/보조 유틸
 │   └── package.json
 │
 ├── workspace-fastify/              # Fastify 백엔드
@@ -246,9 +268,14 @@ coviAI/                             # Monorepo 루트
 │   │       └── db/
 │   │           └── vectorClient.ts     # PostgreSQL 연결 풀
 │   ├── scripts/                   # DB 초기화 · 임베딩 적재 스크립트
-│   └── docs/eval/                 # 평가셋 및 결과 산출물
+│   └── docs/
+│       ├── eval/                  # 평가셋 및 smoke seed
+│       └── integration/           # JSP 연동 계약/샘플
 │
 ├── nginx/                         # Nginx 리버스 프록시 설정 (SSL 포함)
+├── docs/
+│   └── architecture/
+│       └── api-routing.md         # 운영 API 라우팅 규칙
 ├── .github/workflows/
 │   └── deploy.yml                 # CI/CD: 빌드 → ghcr.io 푸시 → VM 배포
 ├── docker-compose.yml             # Docker Compose 오케스트레이션
@@ -265,6 +292,7 @@ git push origin main
         │
         ▼
 [GitHub Actions] build job
+  ├─ 프론트 API 경로 회귀 검사 (check:api-routes)
   ├─ frontend Dockerfile 빌드 (Next.js)
   ├─ backend Dockerfile 빌드 (Fastify + TypeScript)
   ├─ 레이어 캐시 적용 (ghcr.io cache manifest)
@@ -306,6 +334,23 @@ https://csbotservice.com 자동 반영 ✅
 
 ---
 
+## 🔀 운영 API 라우팅 규칙
+
+운영에서는 nginx가 `/api/*` 요청을 Next.js API Route가 아니라 Fastify 백엔드로 직접 전달합니다.
+
+| 브라우저 경로 | 백엔드 실제 경로 |
+|---|---|
+| `/api/chat/stream` | `/chat/stream` |
+| `/api/retrieval/search` | `/retrieval/search` |
+| `/api/admin/logs` | `/admin/logs` |
+| `/api/feedback` | `/feedback` |
+| `/api/conversations*` | `/conversations*` |
+
+주의:
+- 운영 프론트에서 `/api/chat`, `/api/search`, `/api/logs`는 사용하지 않습니다.
+- 로컬 `frontend/app/api/*`는 개발 편의용 프록시이며 운영 nginx 규칙과 같은 의미를 유지해야 합니다.
+- 관련 문서: [docs/architecture/api-routing.md](docs/architecture/api-routing.md)
+
 ## 🔧 설치 및 실행
 
 ### 방법 1: Docker Compose (권장) 🐳
@@ -324,6 +369,28 @@ docker compose --env-file .env up -d --build
 ```
 
 **📖 상세 가이드**: [docs/docker.md](docs/docker.md)
+
+---
+
+### 운영 Smoke 평가
+
+배포 후 `csbotservice.com`에서 대표 질문이 정상 답변과 유사 이력 링크를 반환하는지 확인합니다.
+
+```bash
+cd workspace-fastify
+npm run smoke:prod -- --delay-ms 500
+```
+
+기본 대상:
+- `https://csbotservice.com/api/chat/stream`
+
+평가 기준:
+- HTTP 200
+- `NO_MATCH` 등 오류 응답이 아닐 것
+- 답변 본문이 최소 길이 이상일 것
+- 대표 질문에는 유사 이력 링크가 붙을 것
+
+`production_smoke.latest.json` 같은 실행 결과 산출물은 Git 추적 대상에서 제외하고, `production_smoke.seed.json`만 기준 데이터로 관리합니다.
 
 ---
 
@@ -381,12 +448,14 @@ erDiagram
         float confidence
         text retrieval_mode
         text answer_source
+        boolean is_failure
+        text failure_reason
         text user_feedback
         timestamp created_at
     }
 ```
 
-**📖 상세 문서**: [docs/DATABASE.md](docs/DATABASE.md)
+**📖 상세 문서**: [docs/database.md](docs/database.md)
 
 ## 🔄 RAG 검색 흐름
 
@@ -431,8 +500,11 @@ sequenceDiagram
 |------|------|
 | [docs/docker.md](docs/docker.md) | 🐳 Docker 배포 가이드 |
 | [docs/API.md](docs/API.md) | API 엔드포인트 명세서 |
-| [docs/DATABASE.md](docs/DATABASE.md) | 데이터베이스 스키마 및 ERD |
+| [docs/database.md](docs/database.md) | 데이터베이스 스키마 및 ERD |
+| [docs/architecture/api-routing.md](docs/architecture/api-routing.md) | 운영 nginx/API 라우팅 규칙 |
 | [workspace-fastify/README.md](workspace-fastify/README.md) | 백엔드 상세 운영 가이드 |
+| [workspace-fastify/docs/integration/jsp-chat-contract.md](workspace-fastify/docs/integration/jsp-chat-contract.md) | JSP AJAX 연동 계약 |
+| [workspace-fastify/docs/integration/chat_widget.sample.jsp](workspace-fastify/docs/integration/chat_widget.sample.jsp) | JSP 샘플 위젯 |
 | [CLAUDE.md](CLAUDE.md) | AI 에이전트 인수인계 문서 |
 
 ## 📈 향후 개선 계획
@@ -457,6 +529,11 @@ sequenceDiagram
 - [x] Oracle Cloud VM 이관 (PostgreSQL + Docker 전체 스택)
 - [x] SSL/HTTPS 적용 (Let's Encrypt, csbotservice.com)
 - [x] Rule 검색 FTS 필터링 최적화 (ruleMs 5000ms → ~300ms)
+- [x] 운영 API 라우팅 규칙 문서화 및 CI 회귀 검사 (`check:api-routes`)
+- [x] 운영 smoke 평가 스크립트 (`npm run smoke:prod`)
+- [x] 대화 이력 DB hydrate 및 삭제 UX 안정화
+- [x] JSP AJAX `display` 응답 계약 문서화
+- [x] `query_log` 운영 스키마 보정 (`log_uuid`, `is_failure`, `failure_reason`, `user_feedback`)
 
 ### 완료 (2026-04-02 추가)
 - [x] nginx `depends_on` healthcheck 조건 추가 (502 재발 방지)
@@ -474,9 +551,10 @@ sequenceDiagram
 - [ ] **API Rate Limiting** — `@fastify/rate-limit` 적용
 
 #### 🟡 중간 우선순위
-- [ ] **대화 이력 UI 복원** — `/conversations` API 연동, 사이드바에서 이전 대화 불러오기
+- [x] **대화 이력 UI 복원** — `/conversations` API 연동, 사이드바에서 이전 대화 불러오기
 - [ ] **사용자 피드백 수집 강화** — 👍👎 누적 통계 대시보드 (`query_log.user_feedback` 활용)
-- [ ] **검색 결과 URL 공유** — `/search?q=` 쿼리스트링 반영
+- [x] **검색 결과 URL 공유** — `/search?q=` 쿼리스트링 반영
+- [x] **채팅 내보내기 토스트 알림** — 내보내기 완료/실패 피드백
 - [ ] **채팅 내보내기 포맷 개선** — PDF / markdown 형식 지원
 
 #### 🟢 낮은 우선순위 (코드 품질)
@@ -485,7 +563,17 @@ sequenceDiagram
 
 ## 📝 변경 이력
 
-### 2026-04-07 (최신)
+### 2026-04-11
+- ✅ **운영 API 라우팅 규칙 고정** — nginx `/api/* → backend` 구조 기준으로 프론트 호출 경로 정리 (`/api/chat/stream`, `/api/retrieval/search`, `/api/admin/logs`)
+- ✅ **프론트 API 경로 CI 회귀 검사 추가** — 운영에서 깨지는 `/api/chat`, `/api/search`, `/api/logs` 사용을 배포 전 차단
+- ✅ **대화 이력 DB hydrate 안정화** — 사이드바 UI는 유지하면서 초기 복원은 DB에서 수행, localStorage는 optimistic 보조 용도로 축소
+- ✅ **대화 삭제 UX 안정화** — 삭제 중 상태 표시, 중복 삭제 방지, 빈 새 대화 강제 생성 방지
+- ✅ **운영 smoke 평가 추가** — `npm run smoke:prod`로 `csbotservice.com` 대표 질문 4건 검증, 현재 4/4 통과
+- ✅ **JSP AJAX 연동 계약 문서화** — `/chat` JSON 응답의 `display` 객체 기준으로 렌더링 계약 고정
+- ✅ **query_log 운영 스키마 보정** — `log_uuid`, `is_failure`, `failure_reason`, `user_feedback` 보장 및 `db:migrate:query-log` 추가
+- ✅ **평가 산출물 관리 정리** — `*.latest.json`은 실행 결과로 보고 Git 추적 제외, seed 파일만 기준 데이터로 관리
+
+### 2026-04-07
 - ✅ **Oracle Cloud VM 이관 완료** — PostgreSQL 16 + pgvector 0.8.2 + Docker 전체 스택 이관
 - ✅ **SSL/HTTPS 적용** — Let's Encrypt 인증서, HTTP→HTTPS 자동 리다이렉트, HSTS 헤더
 - ✅ **도메인 오픈** — https://csbotservice.com 에서 서비스 접속 가능
