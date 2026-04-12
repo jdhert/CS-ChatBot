@@ -406,6 +406,7 @@ npm run db:check:vector
 npm run db:init:manual
 npm run ingest:sync:user-manual -- --dry-run
 npm run ingest:sync:user-manual -- --provider google --batch-size 50 --max-batches 4
+npm run manual:preview:generate -- --source-dir ../manuals/user --pdf-dir ../manuals/pdf --preview-dir ../manuals/preview
 ```
 
 운영 메모:
@@ -414,7 +415,12 @@ npm run ingest:sync:user-manual -- --provider google --batch-size 50 --max-batch
 - Oracle VM에서도 같은 경로에 원본 `.docx`가 있어야 `/manual/documents/:documentId` 다운로드가 동작합니다.
 - 프리뷰 이미지는 repo 루트의 `./manuals/preview`를 컨테이너 내부 `/app/manuals/preview`로 읽기 전용 마운트합니다.
 - 프리뷰를 운영에서 노출하려면 `.env`에 `MANUAL_PREVIEW_ENABLED=true`, `MANUAL_PREVIEW_DIR=/app/manuals/preview`를 설정하고 해당 경로에 이미지 파일을 배치해야 합니다.
-- `--dry-run`은 DB에 쓰지 않고 `.docx` 추출과 청크 분할 가능 여부만 확인합니다.
+- `manual:preview:generate`는 `.docx -> PDF -> page PNG`를 만든 뒤 DB의 `manual_chunks`와 PDF page text를 유사도 매칭해 `manuals/preview/{documentId}/{chunkId}.png`를 생성합니다.
+- 프리뷰 생성에는 VM 호스트에 `libreoffice`, `poppler-utils(pdftotext/pdftoppm)`, 한글 폰트가 필요합니다. Ubuntu 예: `sudo apt-get install -y libreoffice poppler-utils fonts-noto-cjk`
+- 이미 변환된 PDF가 `../manuals/pdf`에 있으면 그 파일을 우선 사용하고, 없을 때만 LibreOffice 변환을 시도합니다.
+- 현재 이미지 보유율만 확인하려면 `npm run manual:preview:generate -- --coverage-only --preview-dir ../manuals/preview`를 실행합니다.
+- `ingest:sync:user-manual -- --dry-run`은 DB에 쓰지 않고 `.docx` 추출과 청크 분할 가능 여부만 확인합니다.
+- `manual:preview:generate -- --dry-run`은 PDF/page 매칭까지 수행하되 `manuals/preview`에는 이미지를 복사하지 않습니다.
 
 ## 환경 변수
 
@@ -431,7 +437,7 @@ npm run ingest:sync:user-manual -- --provider google --batch-size 50 --max-batch
 - 벡터 검색 모드: `PGVECTOR_SEARCH_ENABLED` (`true` 권장)
 - Google 임베딩 속도/재시도: `GOOGLE_EMBEDDING_MIN_INTERVAL_MS`, `GOOGLE_EMBEDDING_MAX_RETRIES`
 - 사용자 매뉴얼 우선순위: `MANUAL_PRIORITY_MIN_SCORE`, `MANUAL_FALLBACK_MIN_SCORE`, `MANUAL_PRIORITY_MIN_LEXICAL_COVERAGE`
-- 사용자 매뉴얼 프리뷰: `MANUAL_PREVIEW_ENABLED`, `MANUAL_PREVIEW_DIR`
+- 사용자 매뉴얼 프리뷰: `MANUAL_PREVIEW_ENABLED`, `MANUAL_PREVIEW_DIR`, `MANUAL_PDF_DIR`, `MANUAL_PREVIEW_TMP_DIR`, `MANUAL_PREVIEW_REPORT_PATH`, `MANUAL_PREVIEW_MIN_SCORE`, `MANUAL_PREVIEW_DPI`
 - 자동 인제스트 스케줄러:
   - `INGEST_AUTO_ENABLED` — `true` 시 서버 기동 시 자동 임베딩 동기화 활성 (기본: `false`)
   - `INGEST_INTERVAL_HOURS` — 실행 주기 (기본: `6`)

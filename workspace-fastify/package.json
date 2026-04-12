@@ -25,6 +25,7 @@
     "db:check:vector": "node scripts/check-vector-readiness.mjs",
     "ingest:sync:scc-embeddings": "node scripts/sync-scc-embeddings.mjs",
     "ingest:sync:user-manual": "node scripts/sync-user-manual-embeddings.mjs",
+    "manual:preview:generate": "node scripts/generate-manual-previews.mjs",
     "smoke:prod": "node scripts/smoke-production-chat.mjs"
   },
   "dependencies": {

@@ -185,6 +185,7 @@ graph TB
 - 원본 다운로드를 명시적으로 켜면 매뉴얼 링크는 브라우저 기준 `/api/manual/documents/:documentId`로 연결되며, nginx가 백엔드 `/manual/documents/:documentId`로 전달
 - Docker Compose 기준 `./manuals/user`를 backend 컨테이너의 `/app/manuals/user`에 읽기 전용으로 마운트
 - Docker Compose 기준 프리뷰 이미지는 `./manuals/preview`를 backend 컨테이너의 `/app/manuals/preview`에 읽기 전용으로 마운트
+- 프리뷰 이미지는 운영 VM 호스트에서 `npm run manual:preview:generate -- --source-dir ../manuals/user --pdf-dir ../manuals/pdf --preview-dir ../manuals/preview`로 생성하고, coverage 리포트는 `workspace-fastify/docs/eval/manual_preview_coverage.latest.json`에 기록
 
 ### 5. 사용자 편의 기능
 - 답변 복사 버튼 (클립보드)
@@ -213,6 +214,7 @@ graph TB
 - 관리자 로그 상세 드릴다운 (`/logs`에서 후보 Top3, vector/LLM 진단, 응답 미리보기 확인)
 - 배포 버전 확인 (`/health`, `/logs`에서 현재 commit SHA/build time/GitHub Actions run 확인)
 - 사용자 매뉴얼 DB 초기화/동기화 (`npm run db:init:manual`, `npm run ingest:sync:user-manual`)
+- 사용자 매뉴얼 프리뷰 생성/coverage 리포트 (`npm run manual:preview:generate`)
 
 ## 🚀 성능 최적화
 

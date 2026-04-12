@@ -51,6 +51,11 @@ exampleData/
 # Generated evaluation artifacts
 workspace-fastify/docs/eval/*.latest.json
 
+# Generated manual preview artifacts
+manuals/pdf/
+manuals/preview/
+workspace-fastify/tmp/manual-preview/
+
 # Storage
 notebook_storage/
 public/uploads/
