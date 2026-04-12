@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # AI Core Backend (Fastify)
   backend:
