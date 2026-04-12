@@ -2,6 +2,7 @@
 import { flushSync } from "react-dom"
 import type { CandidateCard, Message } from "@/components/chatbot/chat-message"
 import { toast } from "@/hooks/use-toast"
+import { exportChatMessages, getChatExportFormatLabel, type ChatExportFormat } from "@/lib/chat-export"
 
 function generateUUID(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -95,7 +96,7 @@ export function useChat(args: {
     void submitMessage(lastUserMessage.content)
   }, [currentMessages, setCurrentMessages])
 
-  const handleExportChat = useCallback(() => {
+  const handleExportChat = useCallback((format: ChatExportFormat = "txt") => {
     if (currentMessages.length === 0) {
       toast({
         title: "내보낼 대화가 없습니다",
@@ -105,34 +106,20 @@ export function useChat(args: {
       return
     }
 
-    const lines: string[] = [
-      "=== 코비전 CS AI Core 대화 내보내기 ===",
-      `내보낸 시각: ${new Date().toLocaleString("ko-KR")}`,
-      "",
-    ]
-
-    for (const msg of currentMessages) {
-      const ts = new Date(msg.timestamp)
-      const time = ts.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
-      const sender = msg.sender === "user" ? "사용자" : (msg.title ?? "AI Core")
-      lines.push(`[${time}] ${sender}`)
-      lines.push(msg.content)
-      if (msg.linkUrl) lines.push(`  링크: ${msg.linkUrl}`)
-      lines.push("")
+    try {
+      const result = exportChatMessages(currentMessages, format)
+      const label = getChatExportFormatLabel(format)
+      toast({
+        title: format === "pdf" ? "PDF 저장 화면을 열었습니다" : "대화를 내보냈습니다",
+        description: format === "pdf" ? "인쇄 대화상자에서 PDF로 저장을 선택해 주세요." : `${label}: ${result}`,
+      })
+    } catch (error) {
+      toast({
+        title: "대화를 내보내지 못했습니다",
+        description: error instanceof Error ? error.message : "잠시 후 다시 시도해 주세요.",
+        variant: "destructive",
+      })
     }
-
-    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    const fileName = `chat_export_${new Date().toISOString().slice(0, 10)}.txt`
-    a.download = fileName
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-
-    toast({ title: "대화를 내보냈습니다", description: fileName })
   }, [currentMessages])
 
   async function submitMessage(content: string) {

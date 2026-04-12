@@ -173,7 +173,7 @@ graph TB
 ### 5. 사용자 편의 기능
 - 답변 복사 버튼 (클립보드)
 - 피드백 버튼 (👍👎 → query_log 업데이트)
-- 채팅 내보내기 (.txt 파일 다운로드)
+- 채팅 내보내기 (`.txt`, `.md`, PDF 저장용 인쇄 화면)
 - 다크모드 (localStorage 영속화)
 
 ### 6. 운영 기능
@@ -577,7 +577,7 @@ sequenceDiagram
 - [x] **사용자 피드백 수집 강화** — 👍👎 누적 통계 대시보드 (`query_log.user_feedback` 활용)
 - [x] **검색 결과 URL 공유** — `/search?q=` 쿼리스트링 반영
 - [x] **채팅 내보내기 토스트 알림** — 내보내기 완료/실패 피드백
-- [ ] **채팅 내보내기 포맷 개선** — PDF / markdown 형식 지원
+- [x] **채팅 내보내기 포맷 개선** — `.txt`, Markdown, PDF 저장용 인쇄 화면 지원
 
 #### 🟢 낮은 우선순위 (코드 품질)
 - [ ] **page.tsx 커스텀 훅 분리** — `useChat`, `useConversations` 분리
@@ -595,6 +595,7 @@ sequenceDiagram
 - ✅ **스트리밍 응답 타이밍 세분화** — `/chat/stream` 응답의 rewrite, TTFT, LLM stream, persistence 시간을 `/logs` 드릴다운에서 확인
 - ✅ **관리자 로그 상세 드릴다운 추가** — 대화 메시지 metadata 기반 Top 후보, 진단값, 응답 미리보기 표시
 - ✅ **대화 이력 UX 개선** — 사이드바 제목/내용 검색, 날짜 그룹핑, 서버 hydrate/삭제 동기화 상태 표시
+- ✅ **채팅 내보내기 포맷 개선** — 헤더 다운로드 메뉴에서 `.txt`, Markdown, PDF 저장용 인쇄 화면 선택 지원
 
 ### 2026-04-11
 - ✅ **운영 API 라우팅 규칙 고정** — nginx `/api/* → backend` 구조 기준으로 프론트 호출 경로 정리 (`/api/chat/stream`, `/api/retrieval/search`, `/api/admin/logs`)

@@ -1,16 +1,27 @@
-﻿"use client"
+"use client"
 
 import Link from "next/link"
+import { useState } from "react"
 import { Bot, Download, Menu, Moon, ScrollText, Search, Sun } from "lucide-react"
+import { getChatExportFormatLabel, type ChatExportFormat } from "@/lib/chat-export"
 
 interface ChatHeaderProps {
   isDarkMode: boolean
   onToggleDarkMode: () => void
-  onExportChat?: () => void
+  onExportChat?: (format: ChatExportFormat) => void
   onOpenSidebar?: () => void
 }
 
+const exportFormats: ChatExportFormat[] = ["txt", "md", "pdf"]
+
 export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenSidebar }: ChatHeaderProps) {
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false)
+
+  const handleExport = (format: ChatExportFormat) => {
+    setIsExportMenuOpen(false)
+    onExportChat?.(format)
+  }
+
   return (
     <header className="flex items-center justify-between border-b border-border bg-card px-4 py-4 md:px-6">
       <div className="flex items-center gap-3">
@@ -61,15 +72,35 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
         </Link>
 
         {onExportChat && (
-          <button
-            onClick={onExportChat}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            aria-label="대화 내보내기"
-            title="대화 내보내기 (.txt)"
-            type="button"
-          >
-            <Download className="h-5 w-5" />
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setIsExportMenuOpen((open) => !open)}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+              aria-label="대화 내보내기"
+              aria-expanded={isExportMenuOpen}
+              title="대화 내보내기"
+              type="button"
+            >
+              <Download className="h-5 w-5" />
+            </button>
+            {isExportMenuOpen && (
+              <div className="absolute right-0 top-11 z-50 w-44 overflow-hidden rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg">
+                {exportFormats.map((format) => (
+                  <button
+                    key={format}
+                    onClick={() => handleExport(format)}
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors hover:bg-accent hover:text-accent-foreground"
+                    type="button"
+                  >
+                    <span>{getChatExportFormatLabel(format)}</span>
+                    <span className="text-[10px] uppercase text-muted-foreground">
+                      {format === "pdf" ? "print" : format}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         <button

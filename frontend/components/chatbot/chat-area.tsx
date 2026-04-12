@@ -5,6 +5,7 @@ import { ChatHeader } from "./chat-header"
 import { ChatInput } from "./chat-input"
 import { ChatMessage, TypingIndicator, type Message } from "./chat-message"
 import { QuickActions } from "./quick-actions"
+import type { ChatExportFormat } from "@/lib/chat-export"
 
 interface ChatAreaProps {
   messages: Message[]
@@ -12,7 +13,7 @@ interface ChatAreaProps {
   isDarkMode: boolean
   onToggleDarkMode: () => void
   onSendMessage: (message: string) => void
-  onExportChat?: () => void
+  onExportChat?: (format: ChatExportFormat) => void
   onRetry?: () => void
   onOpenSidebar?: () => void
   onEditQuestion?: (query: string) => void
