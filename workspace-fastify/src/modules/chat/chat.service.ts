@@ -3389,6 +3389,18 @@ async function computeChatSearch(
   const confidence = best ? round2(best.score) : 0;
   const hasCooldownRelaxedBest = shouldPromoteCooldownBest(best, runnerUp, vectorResult);
   const hasConfidentBest = best ? round2(best.score) >= DEFAULT_SCORE_THRESHOLD || hasCooldownRelaxedBest : false;
+  const bestManual = manualCandidates[0] ?? null;
+  const hasManualFallback = !hasConfidentBest && bestManual !== null && bestManual.score >= DEFAULT_SCORE_THRESHOLD;
+  const responseConfidence = hasManualFallback ? bestManual.score : confidence;
+  const responseVectorUsed = vectorResult.vectorUsed || manualResult.manualUsed;
+  const responseRetrievalMode = responseVectorUsed ? "hybrid" : "rule_only";
+  const responseVectorError = vectorResult.vectorError ?? manualResult.manualError;
+  const responseVectorStrategy = vectorResult.vectorStrategy !== "none"
+    ? vectorResult.vectorStrategy
+    : manualResult.manualUsed
+      ? "pgvector"
+      : vectorResult.vectorStrategy;
+  const responseVectorModelTag = vectorResult.vectorModelTag ?? manualResult.vectorModelTag;
   const rerankMs = Date.now() - rerankStartedAt;
   const timingBase = {
     ruleMs,
@@ -3403,10 +3415,12 @@ async function computeChatSearch(
     response: {
       bestRequireId: hasConfidentBest ? best.requireId : null,
       bestSccId: hasConfidentBest ? best.sccId : null,
-      confidence,
-      bestChunkType: hasConfidentBest ? best.chunkType : null,
+      confidence: responseConfidence,
+      bestChunkType: hasManualFallback ? "manual" : hasConfidentBest ? best.chunkType : null,
       bestAnswerText: hasConfidentBest
         ? truncate(best.answerText, MAX_ANSWER_TEXT_LENGTH)
+        : hasManualFallback
+          ? bestManual.previewText
         : null,
       bestIssueText: hasConfidentBest && best.issueText ? truncate(best.issueText, MAX_ANSWER_TEXT_LENGTH) : null,
       bestActionText:
@@ -3415,20 +3429,22 @@ async function computeChatSearch(
         hasConfidentBest && best.resolutionText ? truncate(best.resolutionText, MAX_ANSWER_TEXT_LENGTH) : null,
       bestQaPairText:
         hasConfidentBest && best.qaPairText ? truncate(best.qaPairText, MAX_ANSWER_TEXT_LENGTH) : null,
-      message: topRequireId
+      message: hasManualFallback
+        ? "사용자 매뉴얼에서 관련 내용을 찾았습니다."
+        : topRequireId
         ? "해당 이슈와 비슷한 처리이력 공유해드립니다."
         : "유사 처리이력을 찾지 못했습니다.",
-      similarIssueUrl: topRequireId ? buildSimilarIssueUrl(topRequireId) : null,
+      similarIssueUrl: hasManualFallback ? bestManual.linkUrl : topRequireId ? buildSimilarIssueUrl(topRequireId) : null,
       candidates: candidates.map(toChatCandidate),
       manualCandidates,
       manualCandidateCount: manualCandidates.length,
       manualUsed: manualResult.manualUsed,
       manualError: manualResult.manualError,
-      vectorUsed: vectorResult.vectorUsed,
-      retrievalMode: vectorResult.retrievalMode,
-      vectorError: vectorResult.vectorError,
-      vectorStrategy: vectorResult.vectorStrategy,
-      vectorModelTag: vectorResult.vectorModelTag,
+      vectorUsed: responseVectorUsed,
+      retrievalMode: responseRetrievalMode,
+      vectorError: responseVectorError,
+      vectorStrategy: responseVectorStrategy,
+      vectorModelTag: responseVectorModelTag,
       vectorCandidateCount: vectorResult.rows.length,
       timings: {
         ...timingBase,
@@ -3452,13 +3468,13 @@ async function computeChatSearch(
       requireCount: byRequire.size,
       bestRequireId: hasConfidentBest ? best.requireId : null,
       bestSccId: hasConfidentBest ? best.sccId : null,
-      bestChunkType: hasConfidentBest ? best.chunkType : null,
-      confidence,
-      vectorUsed: vectorResult.vectorUsed,
-      retrievalMode: vectorResult.retrievalMode,
-      vectorError: vectorResult.vectorError,
-      vectorStrategy: vectorResult.vectorStrategy,
-      vectorModelTag: vectorResult.vectorModelTag,
+      bestChunkType: hasManualFallback ? "manual" : hasConfidentBest ? best.chunkType : null,
+      confidence: responseConfidence,
+      vectorUsed: responseVectorUsed,
+      retrievalMode: responseRetrievalMode,
+      vectorError: responseVectorError,
+      vectorStrategy: responseVectorStrategy,
+      vectorModelTag: responseVectorModelTag,
       vectorCandidateCount: vectorResult.rows.length,
       manualCandidates,
       manualCandidateCount: manualCandidates.length,
