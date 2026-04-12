@@ -636,17 +636,46 @@ function isManualNoiseLine(line: string, candidateTitle: string): boolean {
   if (/\uC81C\.?\uAC1C\uC815\s*\uC774\uB825\uC11C|revision history|version\s*:/i.test(line)) {
     return true;
   }
+  if (/storage\/emulated|android\/data|content:\/\/|\.png|\.jpe?g|\.gif|\.wav|\.mp4|sample_\w+|permission/i.test(line)) {
+    return true;
+  }
+
+  const koreanChars = line.match(/[가-힣]/gu)?.length ?? 0;
+  const noisySymbols = line.match(/[\\/_<>{}[\]|]/g)?.length ?? 0;
+  if (line.length >= 40 && koreanChars === 0 && noisySymbols >= 4) {
+    return true;
+  }
   return false;
 }
 
-function buildManualEvidenceLines(candidate: ManualCandidate): string[] {
+function normalizeManualEvidenceLine(line: string): string {
+  return repairStrippedS(line)
+    .replace(/^[\u2460-\u2473]\s*/u, "")
+    .replace(/^\d+[.)]\s*/u, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isManualPathLine(line: string): boolean {
+  return /경로\s*[:：]/u.test(line) || /메뉴\s*[:：]/u.test(line);
+}
+
+function isManualActionLine(line: string): boolean {
+  return /클릭|선택|입력|저장|추가|조회|신청|설정|지정|확인|표시|이동|등록|생성|수정|삭제|활성|비활성|변경|작성/u.test(line);
+}
+
+function getManualEvidenceScope(candidate: ManualCandidate): string[] {
   const rawLines = candidate.previewText
     .split(/\r?\n/)
-    .map((line) => line.replace(/\s+/g, " ").trim())
+    .map(normalizeManualEvidenceLine)
     .filter((line) => !isManualNoiseLine(line, candidate.title));
 
-  const pathIndex = rawLines.findIndex((line) => line.includes("\uACBD\uB85C"));
-  const scopedLines = pathIndex >= 0 ? rawLines.slice(pathIndex, pathIndex + 24) : rawLines;
+  const pathIndex = rawLines.findIndex(isManualPathLine);
+  return pathIndex >= 0 ? rawLines.slice(pathIndex, pathIndex + 24) : rawLines;
+}
+
+function buildManualEvidenceLines(candidate: ManualCandidate): string[] {
+  const scopedLines = getManualEvidenceScope(candidate);
   const result: string[] = [];
   const seen = new Set<string>();
 
@@ -684,30 +713,60 @@ function extractManualScreenLabel(text: string): string | null {
   return match?.[1]?.replace(/\s+/g, " ").trim() || null;
 }
 
+function buildManualProcedureLines(candidate: ManualCandidate, pathLine: string | undefined): string[] {
+  const scopedLines = getManualEvidenceScope(candidate)
+    .filter((line) => line !== pathLine)
+    .filter((line) => line.length >= 6 && line.length <= 180);
+  const seen = new Set<string>();
+  const actionLines: string[] = [];
+  const contextLines: string[] = [];
+
+  for (const line of scopedLines) {
+    if (seen.has(line)) {
+      continue;
+    }
+    seen.add(line);
+
+    if (isManualActionLine(line)) {
+      actionLines.push(line);
+    } else if (!/^\d+$/u.test(line)) {
+      contextLines.push(line);
+    }
+  }
+
+  const selected = actionLines.length > 0 ? actionLines : contextLines;
+  return selected.slice(0, 4).map((line) => (line.length > 150 ? `${line.slice(0, 150)}...` : line));
+}
+
 function buildManualAnswer(candidate: ManualCandidate | null): string | null {
   if (!candidate) {
     return null;
   }
 
   const displaySection = extractManualScreenLabel(candidate.previewText) ?? candidate.sectionTitle;
-  const section = displaySection ? ` (${displaySection})` : "";
   const evidenceLines = buildManualEvidenceLines(candidate);
-  const pathLine = evidenceLines.find((line) => line.includes("\uACBD\uB85C"));
-  const detailLines = evidenceLines.filter((line) => line !== pathLine).slice(0, 6);
+  const pathLine = evidenceLines.find(isManualPathLine);
+  const procedureLines = buildManualProcedureLines(candidate, pathLine);
   const parts = [
     "1) \uD575\uC2EC \uC548\uB0B4",
-    `\uC0AC\uC6A9\uC790 \uB9E4\uB274\uC5BC "${candidate.title}"${section}\uC5D0\uC11C \uC9C8\uBB38\uACFC \uAD00\uB828\uB41C \uC808\uCC28\uB97C \uCC3E\uC558\uC2B5\uB2C8\uB2E4.`,
+    `사용자 매뉴얼 "${candidate.title}" 기준으로 확인한 절차입니다.`,
     "",
-    "2) \uD655\uC778 \uACBD\uB85C",
-    pathLine ? `- ${pathLine}` : `- ${candidate.sectionTitle ?? candidate.title}`,
+    "2) 확인 위치",
+    pathLine ? `- ${pathLine}` : `- 관련 화면: ${displaySection ?? candidate.sectionTitle ?? candidate.title}`,
     "",
-    "3) \uC8FC\uC694 \uB0B4\uC6A9",
-    ...(detailLines.length > 0 ? detailLines.map((line) => `- ${line}`) : ["- \uB9E4\uB274\uC5BC \uBCF8\uBB38\uC5D0\uC11C \uAD00\uB828 \uD56D\uBAA9\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694."]),
+    "3) 진행 순서",
+    ...(procedureLines.length > 0
+      ? procedureLines.map((line) => `- ${line}`)
+      : ["- 매뉴얼 본문에서 관련 화면의 버튼명과 입력 항목을 확인해 주세요."]),
     "",
-    "4) \uD655\uC778 \uBC29\uBC95",
+    "4) 확인 포인트",
+    "- 실제 화면에서는 사용자 권한과 사용 중인 제품 버전에 따라 메뉴명이나 버튼 위치가 일부 다를 수 있습니다.",
+    candidate.previewImageUrl
+      ? "- 답변 카드의 화면 미리보기를 함께 확인하면 절차를 더 빠르게 따라갈 수 있습니다."
+      : "- 화면 이미지가 필요한 경우 원본 매뉴얼을 열어 해당 화면 기준으로 확인해 주세요.",
     candidate.linkUrl
-      ? "- \uC544\uB798 \uC0AC\uC6A9\uC790 \uB9E4\uB274\uC5BC \uB9C1\uD06C\uB97C \uC5F4\uC5B4 \uC2E4\uC81C \uD654\uBA74 \uAE30\uC900 \uC808\uCC28\uB97C \uD655\uC778\uD574 \uC8FC\uC138\uC694."
-      : "- \uBCF4\uC548 \uC815\uCC45\uC0C1 \uC6D0\uBCF8 \uB9E4\uB274\uC5BC \uB2E4\uC6B4\uB85C\uB4DC\uB294 \uD604\uC7AC \uBE44\uD65C\uC131\uD654\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4. \uD544\uC694\uD55C \uACBD\uC6B0 \uBB38\uC11C\uBA85 \uAE30\uC900\uC73C\uB85C \uB0B4\uBD80 \uBB38\uC11C \uC800\uC7A5\uC18C\uC5D0\uC11C \uD655\uC778\uD574 \uC8FC\uC138\uC694."
+      ? "- 아래 사용자 매뉴얼 링크에서 원문을 확인할 수 있습니다."
+      : "- 보안 정책상 원본 매뉴얼 다운로드는 현재 비활성화되어 있습니다. 필요한 경우 문서명 기준으로 내부 문서 저장소에서 확인해 주세요."
   ];
 
   if (candidate.linkUrl) {
