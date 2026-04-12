@@ -179,6 +179,7 @@ graph TB
 ### 6. 운영 기능
 - 쿼리 로그 자동 기록 (`ai_core.query_log`)
 - 운영 smoke 평가 (`npm run smoke:prod`)
+- 배포 후 운영 smoke 자동화 (GitHub Actions에서 `csbotservice.com` 공개 도메인 검증)
 - 관리자 운영 로그 대시보드 (`/logs`) 요약/필터/검색
 - 사용자 피드백 분석 (`/logs`) 답변 경로별 분포와 싫어요 Top 질의
 - JSP AJAX 연동용 `display` 응답 계약 문서화
@@ -393,7 +394,10 @@ cd workspace-fastify
 npm run smoke:prod -- --delay-ms 500
 ```
 
+GitHub Actions 배포 workflow는 VM 재배포 후 `Production Smoke` job에서 공개 도메인 기준 smoke를 자동 실행하고 결과 JSON을 artifact로 남깁니다.
+
 기본 대상:
+- `https://csbotservice.com/health`
 - `https://csbotservice.com/api/chat/stream`
 
 평가 기준:
@@ -543,6 +547,7 @@ sequenceDiagram
 - [x] Rule 검색 FTS 필터링 최적화 (ruleMs 5000ms → ~300ms)
 - [x] 운영 API 라우팅 규칙 문서화 및 CI 회귀 검사 (`check:api-routes`)
 - [x] 운영 smoke 평가 스크립트 (`npm run smoke:prod`)
+- [x] 배포 후 운영 smoke 자동화 — GitHub Actions에서 `/health`와 대표 질문 smoke 검증
 - [x] 대화 이력 DB hydrate 및 삭제 UX 안정화
 - [x] JSP AJAX `display` 응답 계약 문서화
 - [x] `query_log` 운영 스키마 보정 (`log_uuid`, `is_failure`, `failure_reason`, `user_feedback`)
@@ -599,6 +604,7 @@ sequenceDiagram
 - ✅ **관리자 로그 상세 드릴다운 추가** — 대화 메시지 metadata 기반 Top 후보, 진단값, 응답 미리보기 표시
 - ✅ **대화 이력 UX 개선** — 사이드바 제목/내용 검색, 날짜 그룹핑, 서버 hydrate/삭제 동기화 상태 표시
 - ✅ **채팅 내보내기 포맷 개선** — 헤더 다운로드 메뉴에서 `.txt`, Markdown, PDF 저장용 인쇄 화면 선택 지원
+- ✅ **배포 후 운영 smoke 자동화** — GitHub Actions 배포 완료 후 공개 `/health`와 `production_smoke.seed.json` 대표 질문 자동 검증
 
 ### 2026-04-11
 - ✅ **운영 API 라우팅 규칙 고정** — nginx `/api/* → backend` 구조 기준으로 프론트 호출 경로 정리 (`/api/chat/stream`, `/api/retrieval/search`, `/api/admin/logs`)

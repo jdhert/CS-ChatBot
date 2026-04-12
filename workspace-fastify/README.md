@@ -138,7 +138,10 @@ curl -X POST https://csbotservice.com/api/retrieval/search \
 npm run smoke:prod
 ```
 
+GitHub Actions 배포 workflow는 VM 재배포 후 별도 `Production Smoke` job에서 공개 도메인 기준 smoke를 자동 실행합니다.
+
 기본 대상:
+- `https://csbotservice.com/health`
 - `https://csbotservice.com/api/chat/stream`
 
 평가 기준:
@@ -150,6 +153,7 @@ npm run smoke:prod
 설정:
 - seed: `docs/eval/production_smoke.seed.json`
 - latest artifact: `docs/eval/production_smoke.latest.json`
+- GitHub Actions artifact: `health.json`, `production_smoke.latest.json`
 - base URL 변경: `npm run smoke:prod -- --base-url https://example.com/api`
 - 일부만 실행: `npm run smoke:prod -- --limit 2`
 

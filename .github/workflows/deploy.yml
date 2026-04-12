@@ -96,3 +96,55 @@ jobs:
             echo "[3/3] Health check..."
             sleep 10
             curl -sf http://localhost/health && echo "[ok] Deploy completed" || echo "[warn] Health check failed"
+
+  production-smoke:
+    name: Production Smoke
+    runs-on: ubuntu-latest
+    needs: deploy
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Wait for public health
+        run: |
+          set -e
+          for attempt in {1..12}; do
+            if curl -fsS https://csbotservice.com/health > "$RUNNER_TEMP/health.json"; then
+              echo "[ok] Public health is reachable"
+              cat "$RUNNER_TEMP/health.json"
+              exit 0
+            fi
+
+            echo "[wait] Public health not ready yet (${attempt}/12)"
+            sleep 10
+          done
+
+          echo "[error] Public health check failed after retries"
+          exit 1
+
+      - name: Run production smoke
+        working-directory: ./workspace-fastify
+        env:
+          SMOKE_BASE_URL: https://csbotservice.com/api
+          SMOKE_QUERY_DELAY_MS: "700"
+        run: |
+          npm run smoke:prod -- --output "$RUNNER_TEMP/production_smoke.latest.json"
+
+      - name: Upload smoke artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-smoke-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/health.json
+            ${{ runner.temp }}/production_smoke.latest.json
+          if-no-files-found: ignore
