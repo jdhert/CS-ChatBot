@@ -359,6 +359,51 @@ function ManualCandidateCards({ candidates }: { candidates: ManualCandidateCard[
   )
 }
 
+function ManualPreviewCallout({ candidate }: { candidate: ManualCandidateCard }) {
+  const [isHidden, setIsHidden] = useState(false)
+
+  if (!candidate.previewImageUrl || isHidden) return null
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-xl border border-sky-500/25 bg-sky-500/5">
+      <div className="flex items-center justify-between gap-3 border-b border-sky-500/15 px-3 py-2">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold text-sky-600 dark:text-sky-300">화면 미리보기</p>
+          <p className="truncate text-[10px] text-muted-foreground">
+            {candidate.sourceLabel ?? candidate.sectionTitle ?? candidate.title}
+          </p>
+        </div>
+        {candidate.linkUrl ? (
+          <a
+            href={candidate.linkUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-sky-500/10 px-2 py-1 text-[10px] font-medium text-sky-600 transition-colors hover:bg-sky-500/20 dark:text-sky-300"
+          >
+            원문 열기
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        ) : null}
+      </div>
+      <a
+        href={candidate.previewImageUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="block bg-background/70 p-2 transition-colors hover:bg-background"
+        title="미리보기 이미지를 새 창으로 열기"
+      >
+        <img
+          src={candidate.previewImageUrl}
+          alt={`${candidate.title} 매뉴얼 화면 미리보기`}
+          className="max-h-72 w-full rounded-lg object-contain"
+          loading="lazy"
+          onError={() => setIsHidden(true)}
+        />
+      </a>
+    </div>
+  )
+}
+
 export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuestion, originalQuery }: ChatMessageProps) {
   const isUser = message.sender === "user"
   const isNoMatch = !isUser && message.answerSource === "no_match"
@@ -374,6 +419,9 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
   const showCandidates = showActions && Array.isArray(message.top3Candidates) && message.top3Candidates.length > 1
   const showManualCandidates =
     showActions && Array.isArray(message.manualCandidates) && message.manualCandidates.length > 0
+  const primaryManualPreviewCandidate = showManualCandidates
+    ? message.manualCandidates!.find((candidate) => Boolean(candidate.previewImageUrl)) ?? null
+    : null
   const showSuggestions = showCandidates && onSuggestedQuestion != null
 
   return (
@@ -461,6 +509,7 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
             </a>
           ) : null}
 
+          {primaryManualPreviewCandidate ? <ManualPreviewCallout candidate={primaryManualPreviewCandidate} /> : null}
           {showCandidates && <CandidateCards candidates={message.top3Candidates!} />}
           {showManualCandidates && <ManualCandidateCards candidates={message.manualCandidates!} />}
           {showSuggestions && <SuggestedQuestions candidates={message.top3Candidates!} onSelect={onSuggestedQuestion!} />}

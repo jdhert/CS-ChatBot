@@ -77,7 +77,9 @@ services:
       # User Manual MVP
       - MANUAL_RETRIEVAL_ENABLED=${MANUAL_RETRIEVAL_ENABLED:-true}
       - MANUAL_DOWNLOAD_ENABLED=${MANUAL_DOWNLOAD_ENABLED:-false}
+      - MANUAL_PREVIEW_ENABLED=${MANUAL_PREVIEW_ENABLED:-false}
       - MANUAL_SOURCE_DIR=${MANUAL_SOURCE_DIR:-/app/manuals/user}
+      - MANUAL_PREVIEW_DIR=${MANUAL_PREVIEW_DIR:-/app/manuals/preview}
       - MANUAL_CANDIDATE_TOP_K=${MANUAL_CANDIDATE_TOP_K:-5}
       - MANUAL_HOWTO_PRIORITY_ENABLED=${MANUAL_HOWTO_PRIORITY_ENABLED:-true}
       - MANUAL_PRIORITY_MIN_SCORE=${MANUAL_PRIORITY_MIN_SCORE:-0.75}
@@ -89,6 +91,7 @@ services:
       - QUERY_REWRITE_ENABLED=${QUERY_REWRITE_ENABLED:-true}
     volumes:
       - ./manuals/user:/app/manuals/user:ro
+      - ./manuals/preview:/app/manuals/preview:ro
     expose:
       - "3101"
     restart: unless-stopped

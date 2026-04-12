@@ -59,6 +59,7 @@ Backend RAG Pipeline:
 - 적재 테이블: `ai_core.manual_documents`, `ai_core.manual_chunks`, `ai_core.manual_chunk_embeddings`
 - `/chat` 응답에 `manualCandidates`를 추가하고, SCC 매칭이 없을 때 매뉴얼 후보 점수가 충분하면(`MANUAL_FALLBACK_MIN_SCORE`, 기본 0.75) `answerSource=manual`로 매뉴얼 답변 폴백
 - SCC 후보가 이미 충분한 경우 매뉴얼은 점수 우위와 focus coverage가 강할 때만 우선 적용
+- 매뉴얼 프리뷰 활성화 시(`MANUAL_PREVIEW_ENABLED=true`) `manualCandidates[].previewImageUrl`을 내려주고 프론트 답변 카드에서 대표 화면 미리보기를 즉시 표시
 - 보안 기본값: 원본 매뉴얼 다운로드 비활성화(`MANUAL_DOWNLOAD_ENABLED=false`)
 - 원본 다운로드를 명시적으로 켜면 브라우저 기준 `GET /api/manual/documents/:documentId` → 백엔드 `GET /manual/documents/:documentId`
 
@@ -80,7 +81,7 @@ SSE 이벤트 순서: `metadata` → `chunk` × N → `done`
 - `top3Candidates[]`, `confidence`, `retrievalMode`
 - `timings` (`ruleMs`, `embeddingMs`, `vectorMs`, `rerankMs`, `retrievalMs`, `llmMs`, `totalMs`)
 - `answerSource` (`llm` / `deterministic_fallback` / `rule_only`)
-- `manualCandidates[]` (사용자 매뉴얼 후보. SCC 후보와 별도)
+- `manualCandidates[]` (사용자 매뉴얼 후보. SCC 후보와 별도. 프리뷰 활성화 시 `previewImageUrl` 포함)
 
 ### GET `/api/manual/documents/:documentId`
 사용자 매뉴얼 원본 `.docx`를 다운로드합니다. 단, 기본값은 보안상 비활성화입니다.
@@ -411,6 +412,8 @@ npm run ingest:sync:user-manual -- --provider google --batch-size 50 --max-batch
 - Docker Compose 기준 기본 대상 경로는 컨테이너 내부 `/app/manuals/user`입니다.
 - Oracle VM에서는 repo 루트의 `./manuals/user`에 원본 `.docx`를 올리면 됩니다.
 - Oracle VM에서도 같은 경로에 원본 `.docx`가 있어야 `/manual/documents/:documentId` 다운로드가 동작합니다.
+- 프리뷰 이미지는 repo 루트의 `./manuals/preview`를 컨테이너 내부 `/app/manuals/preview`로 읽기 전용 마운트합니다.
+- 프리뷰를 운영에서 노출하려면 `.env`에 `MANUAL_PREVIEW_ENABLED=true`, `MANUAL_PREVIEW_DIR=/app/manuals/preview`를 설정하고 해당 경로에 이미지 파일을 배치해야 합니다.
 - `--dry-run`은 DB에 쓰지 않고 `.docx` 추출과 청크 분할 가능 여부만 확인합니다.
 
 ## 환경 변수
@@ -428,6 +431,7 @@ npm run ingest:sync:user-manual -- --provider google --batch-size 50 --max-batch
 - 벡터 검색 모드: `PGVECTOR_SEARCH_ENABLED` (`true` 권장)
 - Google 임베딩 속도/재시도: `GOOGLE_EMBEDDING_MIN_INTERVAL_MS`, `GOOGLE_EMBEDDING_MAX_RETRIES`
 - 사용자 매뉴얼 우선순위: `MANUAL_PRIORITY_MIN_SCORE`, `MANUAL_FALLBACK_MIN_SCORE`, `MANUAL_PRIORITY_MIN_LEXICAL_COVERAGE`
+- 사용자 매뉴얼 프리뷰: `MANUAL_PREVIEW_ENABLED`, `MANUAL_PREVIEW_DIR`
 - 자동 인제스트 스케줄러:
   - `INGEST_AUTO_ENABLED` — `true` 시 서버 기동 시 자동 임베딩 동기화 활성 (기본: `false`)
   - `INGEST_INTERVAL_HOURS` — 실행 주기 (기본: `6`)

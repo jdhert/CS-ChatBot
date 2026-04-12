@@ -180,9 +180,11 @@ graph TB
 - `/chat`은 기존 SCC 검색 결과를 유지하면서 `manualCandidates`를 함께 반환
 - SCC 유사 이력이 없고 매뉴얼 후보 점수가 충분하면(`MANUAL_FALLBACK_MIN_SCORE`, 기본 0.75) `answerSource=manual`로 사용자 매뉴얼 답변을 반환
 - SCC 후보가 이미 충분한 경우 매뉴얼은 점수 우위와 focus coverage가 강할 때만 우선 적용하여 운영 이력 답변을 불필요하게 덮지 않음
+- 매뉴얼 프리뷰를 켜면(`MANUAL_PREVIEW_ENABLED=true`) `manualCandidates[].previewImageUrl`을 통해 답변 카드에 화면 미리보기를 노출
 - 보안 기본값은 원본 매뉴얼 다운로드 비활성화(`MANUAL_DOWNLOAD_ENABLED=false`)이며, 챗봇 답변에는 매뉴얼 발췌/문서명만 제공합니다.
 - 원본 다운로드를 명시적으로 켜면 매뉴얼 링크는 브라우저 기준 `/api/manual/documents/:documentId`로 연결되며, nginx가 백엔드 `/manual/documents/:documentId`로 전달
 - Docker Compose 기준 `./manuals/user`를 backend 컨테이너의 `/app/manuals/user`에 읽기 전용으로 마운트
+- Docker Compose 기준 프리뷰 이미지는 `./manuals/preview`를 backend 컨테이너의 `/app/manuals/preview`에 읽기 전용으로 마운트
 
 ### 5. 사용자 편의 기능
 - 답변 복사 버튼 (클립보드)
