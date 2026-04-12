@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "eval:retrieval": "npm run build && node scripts/eval-scc-retrieval.mjs",
     "eval:chat": "npm run build && node scripts/eval-scc-chat-quality.mjs",
+    "eval:manual": "npm run build && node scripts/eval-manual-retrieval.mjs",
     "eval:candidates": "node scripts/export-eval-candidates.mjs",
     "db:init:vector": "node scripts/init-vector-schema.mjs",
     "db:init:conversations": "node scripts/init-conversation-schema.mjs",

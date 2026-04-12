@@ -23,6 +23,8 @@ const CANDIDATE_PREVIEW_TEXT_LENGTH = 120;
 const CANDIDATE_SUPPORT_PREVIEW_TEXT_LENGTH = 100;
 const MANUAL_PREVIEW_TEXT_LENGTH = 800;
 const DEFAULT_MANUAL_SEARCH_LIMIT = 5;
+const DEFAULT_MANUAL_RERANK_POOL_MULTIPLIER = 4;
+const DEFAULT_MANUAL_LEXICAL_SCAN_LIMIT = 240;
 const DEFAULT_MANUAL_PRIORITY_MIN_SCORE = 0.75;
 const DEFAULT_MANUAL_PRIORITY_MIN_LEXICAL_COVERAGE = 0.12;
 const DEFAULT_VECTOR_SEARCH_LIMIT = 30;
@@ -312,6 +314,16 @@ interface ManualVectorCandidateRow {
   sectionTitle: string | null;
   chunkText: string;
   vectorSimilarity: number;
+}
+
+interface ManualLexicalCandidateRow {
+  documentId: string;
+  chunkId: string;
+  product: string;
+  title: string;
+  version: string | null;
+  sectionTitle: string | null;
+  chunkText: string;
 }
 
 interface RawVectorRow {
@@ -1479,6 +1491,7 @@ function detectQueryIntent(query: string): QueryIntent {
   const resolutionKeywords = [
     "어떻게",
     "방법",
+    "사용법",
     "해결",
     "조치",
     "원인",
@@ -2389,6 +2402,139 @@ function toManualCandidate(row: ManualVectorCandidateRow): ManualCandidate {
   };
 }
 
+function getManualProductBoost(query: string, candidate: ManualCandidate): number {
+  const normalizedQuery = normalizeText(query);
+  const product = candidate.product.toLowerCase();
+  const haystack = normalizeText(`${candidate.product} ${candidate.title} ${candidate.sectionTitle ?? ""} ${candidate.previewText}`);
+  let boost = 0;
+
+  if (normalizedQuery.includes("협업스페이스")) {
+    if (product === "workspace" || haystack.includes("협업스페이스")) {
+      boost += 0.24;
+    } else if (product === "coviworks") {
+      boost -= 0.08;
+    } else {
+      boost -= 0.18;
+    }
+  }
+
+  if (normalizedQuery.includes("근무일정") || normalizedQuery.includes("근태")) {
+    if (product === "to") {
+      boost += 0.12;
+    } else if (product === "work" && haystack.includes("포탈")) {
+      boost += 0.06;
+    } else if (product === "teams_addin") {
+      boost -= 0.08;
+    }
+  }
+
+  if (normalizedQuery.includes("자원") && normalizedQuery.includes("예약")) {
+    if (candidate.title.includes("자원예약")) {
+      boost += 0.08;
+    } else if (product === "mobile" && haystack.includes("자원예약")) {
+      boost += 0.03;
+    }
+  }
+
+  return boost;
+}
+
+function toManualLexicalCandidate(row: ManualLexicalCandidateRow, query: string): ManualCandidate {
+  const haystack = `${row.product} ${row.title} ${row.sectionTitle ?? ""} ${row.chunkText}`;
+  const lexicalCoverage = computeLexicalCoverage(query, haystack);
+  const titleCoverage = computeLexicalCoverage(query, `${row.product} ${row.title} ${row.sectionTitle ?? ""}`);
+  const focusCoverage = computeFocusCoverage(query, haystack);
+  const baseScore = clamp01(0.58 * lexicalCoverage + 0.24 * titleCoverage + 0.18 * focusCoverage);
+
+  return {
+    documentId: row.documentId,
+    chunkId: row.chunkId,
+    score: round2(baseScore),
+    product: row.product,
+    title: row.title,
+    version: row.version,
+    sectionTitle: row.sectionTitle,
+    previewText: truncate(row.chunkText, MANUAL_PREVIEW_TEXT_LENGTH),
+    linkUrl: toManualLinkUrl(row.documentId)
+  };
+}
+
+function rerankManualCandidates(candidates: ManualCandidate[], query: string, limit: number): ManualCandidate[] {
+  return candidates
+    .map((candidate) => {
+      const lexicalCoverage = computeLexicalCoverage(query, candidate.previewText);
+      const titleCoverage = computeLexicalCoverage(query, `${candidate.title} ${candidate.sectionTitle ?? ""}`);
+      const productBoost = getManualProductBoost(query, candidate);
+      const adjustedScore = clamp01(candidate.score + 0.08 * lexicalCoverage + 0.04 * titleCoverage + productBoost);
+
+      return {
+        candidate: {
+          ...candidate,
+          score: round2(adjustedScore)
+        },
+        adjustedScore
+      };
+    })
+    .sort((left, right) => {
+      if (right.adjustedScore !== left.adjustedScore) {
+        return right.adjustedScore - left.adjustedScore;
+      }
+      return left.candidate.title.localeCompare(right.candidate.title);
+    })
+    .slice(0, limit)
+    .map((item) => item.candidate);
+}
+
+function toLikePattern(token: string): string {
+  return `%${token}%`;
+}
+
+async function fetchManualCandidatesByLexical(query: string, candidateLimit: number): Promise<ManualCandidate[]> {
+  const patterns = getFocusTokens(query)
+    .filter((token) => token.length >= 2)
+    .slice(0, 8)
+    .map(toLikePattern);
+
+  if (patterns.length === 0) {
+    return [];
+  }
+
+  const pool = getVectorPool();
+  const scanLimit = Math.max(
+    candidateLimit * 12,
+    parseEnvInt(process.env.MANUAL_LEXICAL_SCAN_LIMIT, DEFAULT_MANUAL_LEXICAL_SCAN_LIMIT)
+  );
+  const sql = `
+    select
+      d.document_id::text as "documentId",
+      c.chunk_id::text as "chunkId",
+      d.product as "product",
+      d.title as "title",
+      d.version as "version",
+      c.section_title as "sectionTitle",
+      c.chunk_text as "chunkText"
+    from ai_core.manual_chunks c
+    join ai_core.manual_documents d
+      on d.document_id = c.document_id
+    where d.audience = 'user'
+      and (
+        d.product ilike any($1::text[])
+        or d.title ilike any($1::text[])
+        or coalesce(c.section_title, '') ilike any($1::text[])
+        or c.chunk_text ilike any($1::text[])
+      )
+    order by d.product, d.title, c.chunk_seq
+    limit $2
+  `;
+
+  const result = await pool.query<ManualLexicalCandidateRow>(sql, [patterns, scanLimit]);
+  const candidates = result.rows
+    .map((row) => toManualLexicalCandidate(row, query))
+    .filter((candidate) => candidate.score >= 0.25);
+
+  return rerankManualCandidates(candidates, query, candidateLimit);
+}
+
 async function fetchManualCandidatesWithPgVector(
   queryEmbedding: QueryEmbeddingResult,
   candidateLimit: number
@@ -2508,7 +2654,7 @@ async function fetchManualCandidatesByArrayScan(
     .slice(0, candidateLimit);
 }
 
-function mergeManualCandidates(candidateGroups: ManualCandidate[][], limit: number): ManualCandidate[] {
+function mergeManualCandidates(candidateGroups: ManualCandidate[][], limit: number, query?: string): ManualCandidate[] {
   const merged = new Map<string, ManualCandidate>();
   for (const rows of candidateGroups) {
     for (const row of rows) {
@@ -2518,36 +2664,74 @@ function mergeManualCandidates(candidateGroups: ManualCandidate[][], limit: numb
       }
     }
   }
-  return [...merged.values()].sort((left, right) => right.score - left.score).slice(0, limit);
+  return [...merged.values()]
+    .sort((left, right) => {
+      const scoreDiff = right.score - left.score;
+      if (Math.abs(scoreDiff) > 0.001) {
+        return scoreDiff;
+      }
+      if (query) {
+        const productDiff = getManualProductBoost(query, right) - getManualProductBoost(query, left);
+        if (Math.abs(productDiff) > 0.001) {
+          return productDiff;
+        }
+      }
+      return left.title.localeCompare(right.title);
+    })
+    .slice(0, limit);
 }
 
 async function fetchManualCandidatesForSingleQuery(query: string): Promise<ManualCandidateFetchResult> {
+  const candidateLimit = parseEnvInt(process.env.MANUAL_CANDIDATE_TOP_K, DEFAULT_MANUAL_SEARCH_LIMIT);
+  let vectorQueryMs = 0;
   const embeddingStartedAt = Date.now();
   const queryEmbedding = await fetchQueryEmbedding(query);
   const embeddingMs = Date.now() - embeddingStartedAt;
   if (!queryEmbedding.result) {
+    const lexicalStartedAt = Date.now();
+    const lexicalRows = await fetchManualCandidatesByLexical(query, candidateLimit);
+    vectorQueryMs += Date.now() - lexicalStartedAt;
     return {
-      rows: [],
+      rows: lexicalRows,
       manualUsed: false,
-      manualError: queryEmbedding.error ?? "QUERY_EMBEDDING_UNAVAILABLE",
+      manualError: lexicalRows.length > 0
+        ? `${queryEmbedding.error ?? "QUERY_EMBEDDING_UNAVAILABLE"}_MANUAL_LEXICAL_FALLBACK`
+        : queryEmbedding.error ?? "QUERY_EMBEDDING_UNAVAILABLE",
       vectorModelTag: queryEmbedding.modelTag,
       embeddingMs,
-      vectorQueryMs: 0
+      vectorQueryMs
     };
   }
 
-  const candidateLimit = parseEnvInt(process.env.MANUAL_CANDIDATE_TOP_K, DEFAULT_MANUAL_SEARCH_LIMIT);
-  let vectorQueryMs = 0;
+  const rerankPoolMultiplier = parseEnvInt(
+    process.env.MANUAL_RERANK_POOL_MULTIPLIER,
+    DEFAULT_MANUAL_RERANK_POOL_MULTIPLIER
+  );
+  const searchLimit = Math.max(candidateLimit, candidateLimit * Math.max(1, rerankPoolMultiplier));
 
   try {
     const startedAt = Date.now();
-    const rows = await fetchManualCandidatesWithPgVector(queryEmbedding.result, candidateLimit);
+    const rows = await fetchManualCandidatesWithPgVector(queryEmbedding.result, searchLimit);
     vectorQueryMs += Date.now() - startedAt;
+    const lexicalStartedAt = Date.now();
+    const lexicalRows = await fetchManualCandidatesByLexical(query, candidateLimit);
+    vectorQueryMs += Date.now() - lexicalStartedAt;
     if (rows.length > 0) {
+      const vectorRows = rerankManualCandidates(rows.map(toManualCandidate), query, candidateLimit);
       return {
-        rows: rows.map(toManualCandidate),
+        rows: mergeManualCandidates([vectorRows, lexicalRows], candidateLimit, query),
         manualUsed: true,
         manualError: null,
+        vectorModelTag: queryEmbedding.result.modelTag,
+        embeddingMs,
+        vectorQueryMs
+      };
+    }
+    if (lexicalRows.length > 0) {
+      return {
+        rows: lexicalRows,
+        manualUsed: false,
+        manualError: "MANUAL_VECTOR_EMPTY_LEXICAL_FALLBACK",
         vectorModelTag: queryEmbedding.result.modelTag,
         embeddingMs,
         vectorQueryMs
@@ -2556,11 +2740,15 @@ async function fetchManualCandidatesForSingleQuery(query: string): Promise<Manua
   } catch {
     try {
       const startedAt = Date.now();
-      const rows = await fetchManualCandidatesByArrayScan(queryEmbedding.result, candidateLimit);
+      const rows = await fetchManualCandidatesByArrayScan(queryEmbedding.result, searchLimit);
       vectorQueryMs += Date.now() - startedAt;
+      const lexicalStartedAt = Date.now();
+      const lexicalRows = await fetchManualCandidatesByLexical(query, candidateLimit);
+      vectorQueryMs += Date.now() - lexicalStartedAt;
       if (rows.length > 0) {
+        const vectorRows = rerankManualCandidates(rows.map(toManualCandidate), query, candidateLimit);
         return {
-          rows: rows.map(toManualCandidate),
+          rows: mergeManualCandidates([vectorRows, lexicalRows], candidateLimit, query),
           manualUsed: true,
           manualError: "MANUAL_PGVECTOR_QUERY_FAILED_FALLBACK_ARRAY_SCAN",
           vectorModelTag: queryEmbedding.result.modelTag,
@@ -2568,7 +2756,30 @@ async function fetchManualCandidatesForSingleQuery(query: string): Promise<Manua
           vectorQueryMs
         };
       }
+      if (lexicalRows.length > 0) {
+        return {
+          rows: lexicalRows,
+          manualUsed: false,
+          manualError: "MANUAL_VECTOR_QUERY_FAILED_LEXICAL_FALLBACK",
+          vectorModelTag: queryEmbedding.result.modelTag,
+          embeddingMs,
+          vectorQueryMs
+        };
+      }
     } catch {
+      const lexicalStartedAt = Date.now();
+      const lexicalRows = await fetchManualCandidatesByLexical(query, candidateLimit);
+      vectorQueryMs += Date.now() - lexicalStartedAt;
+      if (lexicalRows.length > 0) {
+        return {
+          rows: lexicalRows,
+          manualUsed: false,
+          manualError: "MANUAL_VECTOR_QUERY_FAILED_LEXICAL_FALLBACK",
+          vectorModelTag: queryEmbedding.result.modelTag,
+          embeddingMs,
+          vectorQueryMs
+        };
+      }
       return {
         rows: [],
         manualUsed: false,
