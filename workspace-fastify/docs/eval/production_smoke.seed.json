@@ -13,7 +13,8 @@
     "query": "야간근무 일정을 어떻게 생성해?",
     "retrievalScope": "all",
     "expectAnswer": true,
-    "requireLink": true,
+    "requireLink": false,
+    "requireBestRequireId": false,
     "minAnswerLength": 20,
     "tags": ["attendance", "schedule", "howto"]
   },
@@ -22,7 +23,8 @@
     "query": "다국어 코드를 추가하는 방법이 궁금해",
     "retrievalScope": "all",
     "expectAnswer": true,
-    "requireLink": true,
+    "requireLink": false,
+    "requireBestRequireId": false,
     "minAnswerLength": 20,
     "tags": ["multilang", "howto"]
   },

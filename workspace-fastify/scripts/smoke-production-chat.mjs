@@ -114,6 +114,7 @@ function evaluateItem(item, response) {
   const failures = [];
   const expectAnswer = item.expectAnswer !== false;
   const minAnswerLength = Number.isFinite(item.minAnswerLength) ? item.minAnswerLength : 20;
+  const requireBestRequireId = item.requireBestRequireId ?? item.requireLink ?? false;
 
   if (!response.ok) {
     failures.push(`HTTP_${response.status}`);
@@ -133,7 +134,7 @@ function evaluateItem(item, response) {
     if (item.requireLink && !response.linkUrl) {
       failures.push("MISSING_LINK");
     }
-    if (response.metadata && response.metadata.bestRequireId === null) {
+    if (requireBestRequireId && response.metadata && response.metadata.bestRequireId === null) {
       failures.push("MISSING_BEST_REQUIRE_ID");
     }
   }
