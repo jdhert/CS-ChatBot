@@ -33,6 +33,7 @@ RUN adduser --system --uid 1001 fastify
 
 # Copy built application
 COPY --from=builder --chown=fastify:nodejs /app/dist ./dist
+COPY --from=builder --chown=fastify:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=fastify:nodejs /app/package*.json ./
 COPY --from=deps --chown=fastify:nodejs /app/node_modules ./node_modules
 

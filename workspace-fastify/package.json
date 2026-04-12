@@ -15,6 +15,7 @@
     "db:init:conversations": "node scripts/init-conversation-schema.mjs",
     "db:init:query-log": "node scripts/init-query-log.mjs",
     "db:init:fts-index": "node scripts/init-fts-index.mjs",
+    "db:init:manual": "node scripts/init-manual-schema.mjs",
     "db:migrate:feedback": "node scripts/migrate-query-log-feedback.mjs",
     "db:migrate:query-log": "node scripts/migrate-query-log-feedback.mjs",
     "log:analyze": "node scripts/analyze-query-log.mjs",
@@ -22,14 +23,16 @@
     "db:enable:pgvector": "node scripts/enable-pgvector-search.mjs",
     "db:check:vector": "node scripts/check-vector-readiness.mjs",
     "ingest:sync:scc-embeddings": "node scripts/sync-scc-embeddings.mjs",
+    "ingest:sync:user-manual": "node scripts/sync-user-manual-embeddings.mjs",
     "smoke:prod": "node scripts/smoke-production-chat.mjs"
   },
   "dependencies": {
+    "@fastify/cors": "^10.0.0",
     "@types/pg": "^8.18.0",
     "dotenv": "^17.3.1",
     "fastify": "^5.6.0",
-    "pg": "^8.20.0",
-    "@fastify/cors": "^10.0.0"
+    "mammoth": "^1.12.0",
+    "pg": "^8.20.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

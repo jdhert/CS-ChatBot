@@ -37,6 +37,7 @@ CoviAI는 사내 매뉴얼, 이력 데이터, FAQ 등을 기반으로 사용자 
 - **임베딩 커버리지**: 100%
 - **청크 타입**: issue, action, resolution, qa_pair
 - **검색 방식**: Hybrid (Rule-based + Vector Similarity)
+- **사용자 매뉴얼 MVP**: 로컬 `stor/stor/manual/user` 기준 `.docx` 30개 / 287개 청크 추출 확인. 운영 VM 권장 경로는 repo 루트 `manuals/user`
 
 ### 평가 결과 (2026-04-11 기준)
 
@@ -172,6 +173,16 @@ graph TB
 - Top3 유사 이력 카드: 접기/펼치기 토글로 추가 후보 확인
 - 관련 질문 추천 chips: 클릭 시 즉시 질문 전송
 
+### 4-1. 사용자 매뉴얼 연결 MVP
+- 대상 범위: 사용자 매뉴얼 `.docx`만 연결. 운영 VM에서는 repo 루트 `manuals/user/**/*.docx` 사용
+- 관리자 매뉴얼은 권한/역할 필터가 정리될 때까지 MVP 범위에서 제외
+- 매뉴얼 문서는 `ai_core.manual_documents`, `ai_core.manual_chunks`, `ai_core.manual_chunk_embeddings`에 별도 적재
+- `/chat`은 기존 SCC 검색 결과를 유지하면서 `manualCandidates`를 함께 반환
+- SCC 유사 이력이 없고 매뉴얼 후보가 충분하면 `answerSource=manual`로 사용자 매뉴얼 답변을 반환
+- 보안 기본값은 원본 매뉴얼 다운로드 비활성화(`MANUAL_DOWNLOAD_ENABLED=false`)이며, 챗봇 답변에는 매뉴얼 발췌/문서명만 제공합니다.
+- 원본 다운로드를 명시적으로 켜면 매뉴얼 링크는 브라우저 기준 `/api/manual/documents/:documentId`로 연결되며, nginx가 백엔드 `/manual/documents/:documentId`로 전달
+- Docker Compose 기준 `./manuals/user`를 backend 컨테이너의 `/app/manuals/user`에 읽기 전용으로 마운트
+
 ### 5. 사용자 편의 기능
 - 답변 복사 버튼 (클립보드)
 - 피드백 버튼 (👍👎 → query_log 업데이트)
@@ -198,6 +209,7 @@ graph TB
 - 스트리밍 응답 타이밍 분석 (`/logs`에서 rewrite/TTFT/LLM stream/persistence 확인)
 - 관리자 로그 상세 드릴다운 (`/logs`에서 후보 Top3, vector/LLM 진단, 응답 미리보기 확인)
 - 배포 버전 확인 (`/health`, `/logs`에서 현재 commit SHA/build time/GitHub Actions run 확인)
+- 사용자 매뉴얼 DB 초기화/동기화 (`npm run db:init:manual`, `npm run ingest:sync:user-manual`)
 
 ## 🚀 성능 최적화
 

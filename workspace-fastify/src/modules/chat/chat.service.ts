@@ -4,6 +4,7 @@ import type {
   ChatResponseBody,
   ChunkRow,
   ConversationTurn,
+  ManualCandidate,
   RetrievalDebugCandidate,
   RetrievalDebugResponseBody,
   RetrievalTimings,
@@ -20,6 +21,8 @@ const MAX_CANDIDATES = 5;
 const MAX_ANSWER_TEXT_LENGTH = 2000;
 const CANDIDATE_PREVIEW_TEXT_LENGTH = 120;
 const CANDIDATE_SUPPORT_PREVIEW_TEXT_LENGTH = 100;
+const MANUAL_PREVIEW_TEXT_LENGTH = 800;
+const DEFAULT_MANUAL_SEARCH_LIMIT = 5;
 const DEFAULT_VECTOR_SEARCH_LIMIT = 30;
 const DEFAULT_EMBEDDING_TIMEOUT_MS = 8000;
 const COVISION_SERVICE_VIEW_BASE_URL =
@@ -298,6 +301,17 @@ interface VectorCandidateRow {
   vectorSimilarity: number;
 }
 
+interface ManualVectorCandidateRow {
+  documentId: string;
+  chunkId: string;
+  product: string;
+  title: string;
+  version: string | null;
+  sectionTitle: string | null;
+  chunkText: string;
+  vectorSimilarity: number;
+}
+
 interface RawVectorRow {
   sccId: string;
   requireId: string;
@@ -497,6 +511,18 @@ function applySearchTimings(
 function parseEnvInt(raw: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(raw ?? "", 10);
   return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+interface RawManualVectorRow {
+  documentId: string;
+  chunkId: string;
+  product: string;
+  title: string;
+  version: string | null;
+  sectionTitle: string | null;
+  chunkText: string;
+  embeddingValues: unknown;
+  embeddingNorm: number;
 }
 
 function parseRetryAfterMs(raw: string | null): number | null {
@@ -1766,6 +1792,15 @@ interface VectorCandidateFetchResult {
   vectorQueryMs: number;
 }
 
+interface ManualCandidateFetchResult {
+  rows: ManualCandidate[];
+  manualUsed: boolean;
+  manualError: string | null;
+  vectorModelTag: string | null;
+  embeddingMs: number;
+  vectorQueryMs: number;
+}
+
 async function fetchOpenAiQueryEmbedding(
   query: string,
   model: string
@@ -2296,6 +2331,304 @@ async function fetchVectorCandidates(queries: string[]): Promise<VectorCandidate
   };
 }
 
+function isManualRetrievalEnabled(): boolean {
+  const raw = process.env.MANUAL_RETRIEVAL_ENABLED?.trim().toLowerCase();
+  if (!raw) {
+    return true;
+  }
+  return !["0", "false", "off", "no"].includes(raw);
+}
+
+function isManualDownloadEnabled(): boolean {
+  const raw = process.env.MANUAL_DOWNLOAD_ENABLED?.trim().toLowerCase();
+  if (!raw) {
+    return false;
+  }
+  return ["1", "true", "on", "yes"].includes(raw);
+}
+
+function toManualLinkUrl(documentId: string): string | null {
+  return isManualDownloadEnabled() ? `/api/manual/documents/${encodeURIComponent(documentId)}` : null;
+}
+
+function toManualCandidate(row: ManualVectorCandidateRow): ManualCandidate {
+  return {
+    documentId: row.documentId,
+    chunkId: row.chunkId,
+    score: round2(normalizeCosineSimilarity(row.vectorSimilarity)),
+    product: row.product,
+    title: row.title,
+    version: row.version,
+    sectionTitle: row.sectionTitle,
+    previewText: truncate(row.chunkText, MANUAL_PREVIEW_TEXT_LENGTH),
+    linkUrl: toManualLinkUrl(row.documentId)
+  };
+}
+
+async function fetchManualCandidatesWithPgVector(
+  queryEmbedding: QueryEmbeddingResult,
+  candidateLimit: number
+): Promise<ManualVectorCandidateRow[]> {
+  const pool = getVectorPool();
+  const dim = queryEmbedding.embedding.length;
+  const sql = `
+    select
+      d.document_id::text as "documentId",
+      c.chunk_id::text as "chunkId",
+      d.product as "product",
+      d.title as "title",
+      d.version as "version",
+      c.section_title as "sectionTitle",
+      c.chunk_text as "chunkText",
+      (1 - ((e.embedding_vec::vector(${dim})) <=> $1::vector(${dim})))::float8 as "vectorSimilarity"
+    from ai_core.manual_chunk_embeddings e
+    join ai_core.manual_chunks c
+      on c.chunk_id = e.chunk_id
+    join ai_core.manual_documents d
+      on d.document_id = e.document_id
+    where e.embedding_model = $2
+      and e.embedding_dim = $3
+      and e.embedding_vec is not null
+      and d.audience = 'user'
+    order by (e.embedding_vec::vector(${dim})) <=> $1::vector(${dim})
+    limit $4
+  `;
+
+  const result = await pool.query<ManualVectorCandidateRow>(sql, [
+    toPgVectorLiteral(queryEmbedding.embedding),
+    queryEmbedding.modelTag,
+    queryEmbedding.embedding.length,
+    candidateLimit
+  ]);
+
+  return result.rows
+    .filter((row) => Number.isFinite(Number(row.vectorSimilarity)))
+    .map((row) => ({
+      documentId: row.documentId,
+      chunkId: row.chunkId,
+      product: row.product,
+      title: row.title,
+      version: row.version,
+      sectionTitle: row.sectionTitle,
+      chunkText: row.chunkText,
+      vectorSimilarity: Number(row.vectorSimilarity)
+    }));
+}
+
+async function fetchManualCandidatesByArrayScan(
+  queryEmbedding: QueryEmbeddingResult,
+  candidateLimit: number
+): Promise<ManualVectorCandidateRow[]> {
+  const embedding = queryEmbedding.embedding;
+  const queryNorm = vectorNorm(embedding);
+  if (queryNorm <= 0) {
+    return [];
+  }
+
+  const pool = getVectorPool();
+  const scanLimit = Math.max(candidateLimit * 3, 120);
+  const sql = `
+    select
+      d.document_id::text as "documentId",
+      c.chunk_id::text as "chunkId",
+      d.product as "product",
+      d.title as "title",
+      d.version as "version",
+      c.section_title as "sectionTitle",
+      c.chunk_text as "chunkText",
+      e.embedding_values as "embeddingValues",
+      e.embedding_norm::float8 as "embeddingNorm"
+    from ai_core.manual_chunk_embeddings e
+    join ai_core.manual_chunks c
+      on c.chunk_id = e.chunk_id
+    join ai_core.manual_documents d
+      on d.document_id = e.document_id
+    where e.embedding_model = $1
+      and e.embedding_dim = $2
+      and d.audience = 'user'
+    order by e.updated_at desc
+    limit $3
+  `;
+
+  const result = await pool.query<RawManualVectorRow>(sql, [
+    queryEmbedding.modelTag,
+    embedding.length,
+    scanLimit
+  ]);
+
+  return result.rows
+    .map((row) => {
+      const targetVector = parseEmbeddingArray(row.embeddingValues);
+      if (targetVector.length !== embedding.length) {
+        return null;
+      }
+
+      const similarity = cosineSimilarity(embedding, queryNorm, targetVector, Number(row.embeddingNorm));
+      if (!Number.isFinite(similarity)) {
+        return null;
+      }
+
+      return {
+        documentId: row.documentId,
+        chunkId: row.chunkId,
+        product: row.product,
+        title: row.title,
+        version: row.version,
+        sectionTitle: row.sectionTitle,
+        chunkText: row.chunkText,
+        vectorSimilarity: similarity
+      } as ManualVectorCandidateRow;
+    })
+    .filter((row): row is ManualVectorCandidateRow => row !== null)
+    .sort((left, right) => right.vectorSimilarity - left.vectorSimilarity)
+    .slice(0, candidateLimit);
+}
+
+function mergeManualCandidates(candidateGroups: ManualCandidate[][], limit: number): ManualCandidate[] {
+  const merged = new Map<string, ManualCandidate>();
+  for (const rows of candidateGroups) {
+    for (const row of rows) {
+      const current = merged.get(row.chunkId);
+      if (!current || row.score > current.score) {
+        merged.set(row.chunkId, row);
+      }
+    }
+  }
+  return [...merged.values()].sort((left, right) => right.score - left.score).slice(0, limit);
+}
+
+async function fetchManualCandidatesForSingleQuery(query: string): Promise<ManualCandidateFetchResult> {
+  const embeddingStartedAt = Date.now();
+  const queryEmbedding = await fetchQueryEmbedding(query);
+  const embeddingMs = Date.now() - embeddingStartedAt;
+  if (!queryEmbedding.result) {
+    return {
+      rows: [],
+      manualUsed: false,
+      manualError: queryEmbedding.error ?? "QUERY_EMBEDDING_UNAVAILABLE",
+      vectorModelTag: queryEmbedding.modelTag,
+      embeddingMs,
+      vectorQueryMs: 0
+    };
+  }
+
+  const candidateLimit = parseEnvInt(process.env.MANUAL_CANDIDATE_TOP_K, DEFAULT_MANUAL_SEARCH_LIMIT);
+  let vectorQueryMs = 0;
+
+  try {
+    const startedAt = Date.now();
+    const rows = await fetchManualCandidatesWithPgVector(queryEmbedding.result, candidateLimit);
+    vectorQueryMs += Date.now() - startedAt;
+    if (rows.length > 0) {
+      return {
+        rows: rows.map(toManualCandidate),
+        manualUsed: true,
+        manualError: null,
+        vectorModelTag: queryEmbedding.result.modelTag,
+        embeddingMs,
+        vectorQueryMs
+      };
+    }
+  } catch {
+    try {
+      const startedAt = Date.now();
+      const rows = await fetchManualCandidatesByArrayScan(queryEmbedding.result, candidateLimit);
+      vectorQueryMs += Date.now() - startedAt;
+      if (rows.length > 0) {
+        return {
+          rows: rows.map(toManualCandidate),
+          manualUsed: true,
+          manualError: "MANUAL_PGVECTOR_QUERY_FAILED_FALLBACK_ARRAY_SCAN",
+          vectorModelTag: queryEmbedding.result.modelTag,
+          embeddingMs,
+          vectorQueryMs
+        };
+      }
+    } catch {
+      return {
+        rows: [],
+        manualUsed: false,
+        manualError: "MANUAL_VECTOR_QUERY_FAILED",
+        vectorModelTag: queryEmbedding.result.modelTag,
+        embeddingMs,
+        vectorQueryMs
+      };
+    }
+
+    return {
+      rows: [],
+      manualUsed: false,
+      manualError: "MANUAL_PGVECTOR_QUERY_FAILED",
+      vectorModelTag: queryEmbedding.result.modelTag,
+      embeddingMs,
+      vectorQueryMs
+    };
+  }
+
+  return {
+    rows: [],
+    manualUsed: false,
+    manualError: null,
+    vectorModelTag: queryEmbedding.result.modelTag,
+    embeddingMs,
+    vectorQueryMs
+  };
+}
+
+async function fetchManualCandidates(scope: RetrievalScope, queries: string[]): Promise<ManualCandidateFetchResult> {
+  if (scope === "scc" || !isManualRetrievalEnabled()) {
+    return {
+      rows: [],
+      manualUsed: false,
+      manualError: null,
+      vectorModelTag: null,
+      embeddingMs: 0,
+      vectorQueryMs: 0
+    };
+  }
+
+  const uniqueQueries = [...new Set(queries.map((query) => query.trim()).filter((query) => query.length > 0))];
+  if (uniqueQueries.length === 0) {
+    return {
+      rows: [],
+      manualUsed: false,
+      manualError: "QUERY_VARIANTS_EMPTY",
+      vectorModelTag: null,
+      embeddingMs: 0,
+      vectorQueryMs: 0
+    };
+  }
+
+  const settled = await Promise.allSettled(
+    uniqueQueries.map((query) => fetchManualCandidatesForSingleQuery(query))
+  );
+  const results: ManualCandidateFetchResult[] = settled.map((result) =>
+    result.status === "fulfilled"
+      ? result.value
+      : {
+          rows: [],
+          manualUsed: false,
+          manualError: "MANUAL_QUERY_PROMISE_FAILED",
+          vectorModelTag: null,
+          embeddingMs: 0,
+          vectorQueryMs: 0
+        }
+  );
+
+  const limit = parseEnvInt(process.env.MANUAL_CANDIDATE_TOP_K, DEFAULT_MANUAL_SEARCH_LIMIT);
+  return {
+    rows: mergeManualCandidates(
+      results.filter((result) => result.rows.length > 0).map((result) => result.rows),
+      limit
+    ),
+    manualUsed: results.some((result) => result.manualUsed),
+    manualError: results.find((result) => result.manualError !== null)?.manualError ?? null,
+    vectorModelTag: results.find((result) => result.vectorModelTag !== null)?.vectorModelTag ?? null,
+    embeddingMs: results.reduce((max, result) => Math.max(max, result.embeddingMs), 0),
+    vectorQueryMs: results.reduce((sum, result) => sum + result.vectorQueryMs, 0)
+  };
+}
+
 function createAggregateFromRuleRow(row: ChunkRow): RequireAggregate {
   return {
     requireId: row.requireId,
@@ -2754,32 +3087,40 @@ async function computeChatSearch(
   ]);
   const rows = ruleFetchResult.rows;
   const vectorResult = vectorFetchResult.result;
+  const manualResult = await fetchManualCandidates(scope, queryVariants.embedding);
+  const manualCandidates = manualResult.rows;
 
   if (rows.length === 0) {
+    const bestManual = manualCandidates[0] ?? null;
+    const hasManualMatch = bestManual !== null && bestManual.score >= 0.45;
     const timingBase = {
       ruleMs: ruleFetchResult.durationMs,
-      embeddingMs: vectorResult.embeddingMs,
-      vectorMs: vectorResult.vectorQueryMs,
+      embeddingMs: Math.max(vectorResult.embeddingMs, manualResult.embeddingMs),
+      vectorMs: vectorResult.vectorQueryMs + manualResult.vectorQueryMs,
       rerankMs: 0
     };
     const emptyResponse: ChatResponseBody = {
       bestRequireId: null,
       bestSccId: null,
-      confidence: 0,
-      bestChunkType: null,
-      bestAnswerText: null,
+      confidence: hasManualMatch ? bestManual.score : 0,
+      bestChunkType: hasManualMatch ? "manual" : null,
+      bestAnswerText: hasManualMatch ? bestManual.previewText : null,
       bestIssueText: null,
       bestActionText: null,
       bestResolutionText: null,
       bestQaPairText: null,
-      message: "유사 처리이력을 찾지 못했습니다.",
-      similarIssueUrl: null,
+      message: hasManualMatch ? "사용자 매뉴얼에서 관련 내용을 찾았습니다." : "유사 처리이력을 찾지 못했습니다.",
+      similarIssueUrl: hasManualMatch ? bestManual.linkUrl : null,
       candidates: [],
-      vectorUsed: false,
-      retrievalMode: "rule_only",
-      vectorError: null,
-      vectorStrategy: "none",
-      vectorModelTag: null,
+      manualCandidates,
+      manualCandidateCount: manualCandidates.length,
+      manualUsed: manualResult.manualUsed,
+      manualError: manualResult.manualError,
+      vectorUsed: manualResult.manualUsed,
+      retrievalMode: manualResult.manualUsed ? "hybrid" : "rule_only",
+      vectorError: manualResult.manualError,
+      vectorStrategy: manualResult.manualUsed ? "pgvector" : "none",
+      vectorModelTag: manualResult.vectorModelTag,
       vectorCandidateCount: 0,
       timings: {
         ...timingBase,
@@ -2806,20 +3147,24 @@ async function computeChatSearch(
         requireCount: 0,
         bestRequireId: null,
         bestSccId: null,
-        bestChunkType: null,
-        confidence: 0,
-        vectorUsed: false,
-        retrievalMode: "rule_only",
-        vectorError: null,
-        vectorStrategy: "none",
-        vectorModelTag: null,
+        bestChunkType: hasManualMatch ? "manual" : null,
+        confidence: hasManualMatch ? bestManual.score : 0,
+        vectorUsed: manualResult.manualUsed,
+        retrievalMode: manualResult.manualUsed ? "hybrid" : "rule_only",
+        vectorError: manualResult.manualError,
+        vectorStrategy: manualResult.manualUsed ? "pgvector" : "none",
+        vectorModelTag: manualResult.vectorModelTag,
         vectorCandidateCount: 0,
         timings: {
           ...timingBase,
           retrievalMs: 0,
           cacheHit: false
         },
-        candidates: []
+        candidates: [],
+        manualCandidates,
+        manualCandidateCount: manualCandidates.length,
+        manualUsed: manualResult.manualUsed,
+        manualError: manualResult.manualError
       },
       timingBase
     };
@@ -3047,8 +3392,8 @@ async function computeChatSearch(
   const rerankMs = Date.now() - rerankStartedAt;
   const timingBase = {
     ruleMs,
-    embeddingMs: vectorResult.embeddingMs,
-    vectorMs: vectorResult.vectorQueryMs,
+    embeddingMs: Math.max(vectorResult.embeddingMs, manualResult.embeddingMs),
+    vectorMs: vectorResult.vectorQueryMs + manualResult.vectorQueryMs,
     rerankMs
   };
 
@@ -3075,6 +3420,10 @@ async function computeChatSearch(
         : "유사 처리이력을 찾지 못했습니다.",
       similarIssueUrl: topRequireId ? buildSimilarIssueUrl(topRequireId) : null,
       candidates: candidates.map(toChatCandidate),
+      manualCandidates,
+      manualCandidateCount: manualCandidates.length,
+      manualUsed: manualResult.manualUsed,
+      manualError: manualResult.manualError,
       vectorUsed: vectorResult.vectorUsed,
       retrievalMode: vectorResult.retrievalMode,
       vectorError: vectorResult.vectorError,
@@ -3111,6 +3460,10 @@ async function computeChatSearch(
       vectorStrategy: vectorResult.vectorStrategy,
       vectorModelTag: vectorResult.vectorModelTag,
       vectorCandidateCount: vectorResult.rows.length,
+      manualCandidates,
+      manualCandidateCount: manualCandidates.length,
+      manualUsed: manualResult.manualUsed,
+      manualError: manualResult.manualError,
       timings: {
         ...timingBase,
         retrievalMs: 0,

@@ -28,6 +28,7 @@ Backend RAG Pipeline:
   4. pgvector HNSW 인덱스로 벡터 유사도 검색
   5. Rule + Vector 퓨전 랭킹
   6. Google Gemini LLM 답변 생성 (SSE 스트리밍)
+  7. 사용자 매뉴얼 MVP 후보 병렬 조회 (manualCandidates)
 ```
 
 ## 현재 구축 단계 (2026-04-09 기준)
@@ -52,6 +53,14 @@ Backend RAG Pipeline:
 - 44,955건 전량 임베딩 완료 (커버리지 100%)
 - 서버 시작 시 HNSW 버퍼 워밍업 자동 실행
 
+### 4) 사용자 매뉴얼 연결 MVP (진행)
+- 대상: 운영 VM repo 루트의 `manuals/user/**/*.docx` 사용자 매뉴얼만 적재
+- 관리자 매뉴얼은 MVP 범위에서 제외
+- 적재 테이블: `ai_core.manual_documents`, `ai_core.manual_chunks`, `ai_core.manual_chunk_embeddings`
+- `/chat` 응답에 `manualCandidates`를 추가하고, SCC 매칭이 없을 때 `answerSource=manual`로 매뉴얼 답변 폴백
+- 보안 기본값: 원본 매뉴얼 다운로드 비활성화(`MANUAL_DOWNLOAD_ENABLED=false`)
+- 원본 다운로드를 명시적으로 켜면 브라우저 기준 `GET /api/manual/documents/:documentId` → 백엔드 `GET /manual/documents/:documentId`
+
 ## 주요 API
 
 ### POST `/chat/stream` (메인)
@@ -70,6 +79,15 @@ SSE 이벤트 순서: `metadata` → `chunk` × N → `done`
 - `top3Candidates[]`, `confidence`, `retrievalMode`
 - `timings` (`ruleMs`, `embeddingMs`, `vectorMs`, `rerankMs`, `retrievalMs`, `llmMs`, `totalMs`)
 - `answerSource` (`llm` / `deterministic_fallback` / `rule_only`)
+- `manualCandidates[]` (사용자 매뉴얼 후보. SCC 후보와 별도)
+
+### GET `/api/manual/documents/:documentId`
+사용자 매뉴얼 원본 `.docx`를 다운로드합니다. 단, 기본값은 보안상 비활성화입니다.
+
+- `documentId`는 `manualCandidates[].documentId` 값을 사용
+- DB의 `ai_core.manual_documents`에 등록된 `audience='user'` 문서만 허용
+- `.env`에서 `MANUAL_DOWNLOAD_ENABLED=true`를 명시한 경우에만 동작
+- 운영 VM에서는 repo 루트의 `./manuals/user`가 backend 컨테이너의 `/app/manuals/user`에 읽기 전용으로 마운트됩니다.
 
 JSP 연동 기준:
 - 화면 렌더링은 `display.*` 필드만 사용
@@ -380,6 +398,19 @@ npm run ingest:sync:scc-embeddings -- --provider google --batch-size 100 --max-b
 ```bash
 npm run db:check:vector
 ```
+
+사용자 매뉴얼 MVP 초기화/적재:
+```bash
+npm run db:init:manual
+npm run ingest:sync:user-manual -- --dry-run
+npm run ingest:sync:user-manual -- --provider google --batch-size 50 --max-batches 4
+```
+
+운영 메모:
+- Docker Compose 기준 기본 대상 경로는 컨테이너 내부 `/app/manuals/user`입니다.
+- Oracle VM에서는 repo 루트의 `./manuals/user`에 원본 `.docx`를 올리면 됩니다.
+- Oracle VM에서도 같은 경로에 원본 `.docx`가 있어야 `/manual/documents/:documentId` 다운로드가 동작합니다.
+- `--dry-run`은 DB에 쓰지 않고 `.docx` 추출과 청크 분할 가능 여부만 확인합니다.
 
 ## 환경 변수
 

@@ -1,5 +1,8 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import fastifyCors from "@fastify/cors";
+import { createReadStream } from "node:fs";
+import { stat as statFile } from "node:fs/promises";
+import { basename } from "node:path";
 import type { PoolClient } from "pg";
 import { renderChatTestPage } from "../modules/chat/chatTestPage.js";
 import {
@@ -20,6 +23,7 @@ import type {
   ChatRequestBody,
   ChatResponseBody,
   ConversationTurn,
+  ManualCandidate,
   RetrievalDebugRequestBody,
   RetrievalScope
 } from "../modules/chat/chat.types.js";
@@ -615,6 +619,40 @@ function buildSafeDefaultAnswer(similarIssueUrl: string | null, hasCandidate: bo
   ].join("\n");
 }
 
+function buildManualAnswer(candidate: ManualCandidate | null): string | null {
+  if (!candidate) {
+    return null;
+  }
+
+  const section = candidate.sectionTitle ? ` (${candidate.sectionTitle})` : "";
+  const parts = [
+    "1) 핵심 안내",
+    `사용자 매뉴얼 "${candidate.title}"${section}에서 질문과 관련된 내용을 찾았습니다.`,
+    "",
+    "2) 매뉴얼 내용",
+    candidate.previewText,
+    "",
+    "3) 확인 방법",
+    candidate.linkUrl
+      ? "- 아래 사용자 매뉴얼 링크를 열어 실제 화면 기준 절차를 확인해 주세요."
+      : "- 보안 정책상 원본 매뉴얼 다운로드는 현재 비활성화되어 있습니다. 필요한 경우 문서명 기준으로 내부 문서 저장소에서 확인해 주세요."
+  ];
+
+  if (candidate.linkUrl) {
+    parts.push("", "4) 참고 링크", candidate.linkUrl);
+  }
+
+  return parts.join("\n");
+}
+
+function isManualDownloadEnabled(): boolean {
+  const raw = process.env.MANUAL_DOWNLOAD_ENABLED?.trim().toLowerCase();
+  if (!raw) {
+    return false;
+  }
+  return ["1", "true", "on", "yes"].includes(raw);
+}
+
 function buildDisplayPayload(args: {
   answerText: string;
   requireId: string | null;
@@ -624,12 +662,13 @@ function buildDisplayPayload(args: {
   answerSource: ChatResponseBody["answerSource"];
   retrievalMode: ChatResponseBody["retrievalMode"];
 }): NonNullable<ChatResponseBody["display"]> {
-  const hasMatch = args.requireId !== null;
+  const isManual = args.answerSource === "manual";
+  const hasMatch = args.requireId !== null || isManual;
   return {
     status: hasMatch ? "matched" : "needs_more_info",
-    title: hasMatch ? "유사 처리 이력을 찾았습니다." : "추가 정보가 필요합니다.",
+    title: isManual ? "사용자 매뉴얼을 찾았습니다." : hasMatch ? "유사 처리 이력을 찾았습니다." : "추가 정보가 필요합니다.",
     answerText: args.answerText,
-    linkLabel: hasMatch && args.linkUrl ? "유사 이력 바로가기" : null,
+    linkLabel: hasMatch && args.linkUrl ? (isManual ? "사용자 매뉴얼 열기" : "유사 이력 바로가기") : null,
     linkUrl: hasMatch ? args.linkUrl : null,
     requireId: args.requireId,
     sccId: args.sccId,
@@ -1230,6 +1269,46 @@ export function buildServer(): FastifyInstance {
     return reply.type("text/html; charset=utf-8").send(renderChatTestPage());
   });
 
+  app.get<{ Params: { documentId: string } }>("/manual/documents/:documentId", async (request, reply) => {
+    if (!isManualDownloadEnabled()) {
+      return reply.code(404).send({ error: "MANUAL_DOWNLOAD_DISABLED" });
+    }
+
+    const documentId = request.params.documentId?.trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(documentId)) {
+      return reply.code(400).send({ error: "INVALID_DOCUMENT_ID" });
+    }
+
+    try {
+      const result = await getVectorPool().query<{
+        sourcePath: string;
+        title: string;
+      }>(
+        `
+        select source_path as "sourcePath", title
+        from ai_core.manual_documents
+        where document_id = $1::uuid
+          and audience = 'user'
+        limit 1
+        `,
+        [documentId]
+      );
+      const document = result.rows[0];
+      if (!document) {
+        return reply.code(404).send({ error: "MANUAL_DOCUMENT_NOT_FOUND" });
+      }
+
+      await statFile(document.sourcePath);
+      const fileName = `${document.title || basename(document.sourcePath, ".docx")}.docx`;
+      reply.header("content-type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      reply.header("content-disposition", `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+      return reply.send(createReadStream(document.sourcePath));
+    } catch (error) {
+      request.log.warn({ error, documentId }, "failed to download manual document");
+      return reply.code(404).send({ error: "MANUAL_DOCUMENT_UNAVAILABLE" });
+    }
+  });
+
   app.post<{ Body: ChatRequestBody }>("/chat", async (request, reply) => {
     const totalStartedAt = Date.now();
     const logUuid = crypto.randomUUID();
@@ -1283,7 +1362,10 @@ export function buildServer(): FastifyInstance {
       const retrievalStartedAt = Date.now();
       const result = await runChatSearch(effectiveQuery, scope, conversationHistory);
       const retrievalMs = Date.now() - retrievalStartedAt;
-      const hasRetrievalMatch = result.bestRequireId !== null;
+      const selectedManualCandidate =
+        result.bestChunkType === "manual" ? result.manualCandidates?.[0] ?? null : null;
+      const hasManualMatch = selectedManualCandidate !== null && result.bestAnswerText !== null;
+      const hasRetrievalMatch = result.bestRequireId !== null || hasManualMatch;
 
       // Log detailed timing breakdown for performance analysis
       request.log.info(
@@ -1317,6 +1399,10 @@ export function buildServer(): FastifyInstance {
       if (!hasRetrievalMatch) {
         llmSkipped = true;
         llmSkipReason = "NO_RETRIEVAL_MATCH";
+      } else if (hasManualMatch) {
+        llmSkipped = true;
+        llmSkipReason = "MANUAL_CANDIDATE";
+        llmResultRaw.generatedAnswer = buildManualAnswer(selectedManualCandidate);
       } else if (shouldSkipLlm(query, result)) {
         llmSkipped = true;
         llmSkipReason = `HIGH_CONFIDENCE_${result.bestChunkType ?? "unknown"}`;
@@ -1328,17 +1414,21 @@ export function buildServer(): FastifyInstance {
       }
 
       const selectedRequireId = hasRetrievalMatch
-        ? llmResultRaw.llmSelectedRequireId ?? result.bestRequireId
+        ? hasManualMatch
+          ? null
+          : llmResultRaw.llmSelectedRequireId ?? result.bestRequireId
         : null;
       const selectedSccId =
-        !hasRetrievalMatch
+        !hasRetrievalMatch || hasManualMatch
           ? null
           : llmResultRaw.llmSelectedSccId ??
         (selectedRequireId
           ? result.candidates.find((candidate) => candidate.requireId === selectedRequireId)?.sccId ??
             result.bestSccId
           : result.bestSccId);
-      const selectedUrl = selectedRequireId ? buildSimilarIssueUrl(selectedRequireId) : null;
+      const selectedUrl = hasManualMatch
+        ? selectedManualCandidate.linkUrl
+        : selectedRequireId ? buildSimilarIssueUrl(selectedRequireId) : null;
 
       const normalizedLlmAnswer =
         typeof llmResultRaw.generatedAnswer === "string" ? llmResultRaw.generatedAnswer.trim() : "";
@@ -1350,6 +1440,7 @@ export function buildServer(): FastifyInstance {
 
       const shouldForceDeterministic =
         hasRetrievalMatch &&
+        !hasManualMatch &&
         result.bestAnswerText !== null &&
         result.confidence >= FALLBACK_MIN_CONFIDENCE &&
         (llmSkipped || !hasUsableLlmAnswer || (llmResultRaw.llmSelectedRequireId === null && !explanationRequired));
@@ -1358,7 +1449,9 @@ export function buildServer(): FastifyInstance {
       const resolvedBaseAnswer = fallbackAnswer ?? llmAnswer ?? buildSafeDefaultAnswer(selectedUrl, selectedRequireId !== null);
       const finalAnswer = ensureAnswerHasSimilarLink(resolvedBaseAnswer, selectedUrl);
       const answerSource =
-        fallbackAnswer !== null
+        hasManualMatch
+          ? "manual"
+          : fallbackAnswer !== null
           ? result.retrievalMode === "rule_only"
             ? "rule_only"
             : "deterministic_fallback"
@@ -1368,7 +1461,9 @@ export function buildServer(): FastifyInstance {
               ? "rule_only"
               : "deterministic_fallback";
       const answerSourceReason =
-        fallbackAnswer !== null
+        hasManualMatch
+          ? "MANUAL_CANDIDATE"
+          : fallbackAnswer !== null
           ? llmSkipped
             ? llmSkipReason
             : llmResultRaw.llmError ?? "LLM_UNAVAILABLE_OR_FILTERED"
@@ -1612,7 +1707,10 @@ export function buildServer(): FastifyInstance {
       const retrievalStartedAt = Date.now();
       const result = await runChatSearch(effectiveQuery, scope, conversationHistory);
       const retrievalMs = Date.now() - retrievalStartedAt;
-      const hasRetrievalMatch = result.bestRequireId !== null;
+      const selectedManualCandidate =
+        result.bestChunkType === "manual" ? result.manualCandidates?.[0] ?? null : null;
+      const hasManualMatch = selectedManualCandidate !== null && result.bestAnswerText !== null;
+      const hasRetrievalMatch = result.bestRequireId !== null || hasManualMatch;
 
       // Log detailed timing breakdown for performance analysis
       request.log.info(
@@ -1709,18 +1807,24 @@ export function buildServer(): FastifyInstance {
       });
 
       // metadata를 먼저 전송해 프론트에서 링크와 상태를 즉시 표시할 수 있게 함
-      const similarIssueUrl = result.bestRequireId
+      const similarIssueUrl = hasManualMatch
+        ? selectedManualCandidate.linkUrl
+        : result.bestRequireId
         ? `${COVISION_SERVICE_VIEW_BASE_URL}?req_id=${result.bestRequireId}&system=Menu01&alias=Menu01.Service.List&mnid=705`
         : null;
       // Top3 후보를 카드 표시용으로 정제 (previewText 100자 기준)
-      const top3Candidates = result.candidates.slice(0, 3).map((c) => ({
-        requireId: c.requireId,
-        sccId: c.sccId,
-        score: c.score,
-        chunkType: c.chunkType,
-        previewText: (c.issuePreview ?? c.qaPairPreview ?? c.previewText ?? "").slice(0, 100),
-        linkUrl: buildSimilarIssueUrl(c.requireId),
-      }));
+      const top3Candidates = hasManualMatch
+        ? []
+        : result.candidates.slice(0, 3).map((c) => ({
+            requireId: c.requireId,
+            sccId: c.sccId,
+            score: c.score,
+            chunkType: c.chunkType,
+            previewText: (c.issuePreview ?? c.qaPairPreview ?? c.previewText ?? "").slice(0, 100),
+            linkUrl: buildSimilarIssueUrl(c.requireId),
+          }));
+      const streamAnswerSource = hasManualMatch ? "manual" : "llm_stream";
+      const streamAnswerText = hasManualMatch ? buildManualAnswer(selectedManualCandidate) ?? "" : "";
 
       const metadata: Record<string, unknown> & { streamTimings: StreamTimingMetadata } = {
         logId: logUuid,
@@ -1730,11 +1834,13 @@ export function buildServer(): FastifyInstance {
         bestRequireId: result.bestRequireId,
         bestSccId: result.bestSccId,
         confidence: result.confidence,
-        answerSource: "llm_stream",
+        answerSource: streamAnswerSource,
         retrievalMode: result.retrievalMode,
         similarIssueUrl,
-        linkLabel: similarIssueUrl ? "유사 이력 바로가기" : null,
+        linkLabel: similarIssueUrl ? (hasManualMatch ? "사용자 매뉴얼 열기" : "유사 이력 바로가기") : null,
         top3Candidates,
+        manualCandidates: result.manualCandidates ?? [],
+        manualCandidateCount: result.manualCandidateCount ?? 0,
         queryRewritten: rewrite.rewriteUsed,
         rewrittenQuery: rewrite.rewriteUsed ? effectiveQuery : null,
         vectorError: result.vectorError ?? null,
@@ -1753,6 +1859,15 @@ export function buildServer(): FastifyInstance {
           persistenceMs,
           totalMs: null,
         },
+        display: buildDisplayPayload({
+          answerText: streamAnswerText,
+          requireId: hasManualMatch ? null : result.bestRequireId,
+          sccId: hasManualMatch ? null : result.bestSccId,
+          linkUrl: similarIssueUrl,
+          confidence: result.confidence,
+          answerSource: hasManualMatch ? "manual" : "llm",
+          retrievalMode: result.retrievalMode
+        })
       };
       reply.raw.write(`data: ${JSON.stringify({ type: "metadata", data: metadata })}\n\n`);
 
@@ -1761,15 +1876,24 @@ export function buildServer(): FastifyInstance {
       let accumulatedText = "";
       let llmFirstTokenMs: number | null = null;
       const llmStartedAt = Date.now();
-      for await (const chunk of generateChatAnswerStream(effectiveQuery, result, conversationHistory)) {
-        chunkCount++;
-        accumulatedText += chunk;
-        llmFirstTokenMs ??= Date.now() - llmStartedAt;
-        const timestamp = Date.now();
-        request.log.info({ chunkCount, timestamp, chunkLength: chunk.length }, "Sending chunk");
-        reply.raw.write(`data: ${JSON.stringify({ type: "chunk", data: chunk })}\n\n`);
+      if (hasManualMatch) {
+        accumulatedText = streamAnswerText;
+        chunkCount = accumulatedText.length > 0 ? 1 : 0;
+        llmFirstTokenMs = 0;
+        if (accumulatedText.length > 0) {
+          reply.raw.write(`data: ${JSON.stringify({ type: "chunk", data: accumulatedText })}\n\n`);
+        }
+      } else {
+        for await (const chunk of generateChatAnswerStream(effectiveQuery, result, conversationHistory)) {
+          chunkCount++;
+          accumulatedText += chunk;
+          llmFirstTokenMs ??= Date.now() - llmStartedAt;
+          const timestamp = Date.now();
+          request.log.info({ chunkCount, timestamp, chunkLength: chunk.length }, "Sending chunk");
+          reply.raw.write(`data: ${JSON.stringify({ type: "chunk", data: chunk })}\n\n`);
+        }
       }
-      const llmStreamMs = Date.now() - llmStartedAt;
+      const llmStreamMs = hasManualMatch ? 0 : Date.now() - llmStartedAt;
       metadata.streamTimings = {
         ...metadata.streamTimings,
         llmFirstTokenMs,
@@ -1800,9 +1924,10 @@ export function buildServer(): FastifyInstance {
         chunkType: result.bestChunkType,
         vectorUsed: result.vectorUsed,
         retrievalMode: result.retrievalMode,
-        answerSource: "llm_stream",
-        llmUsed: true,
-        llmSkipped: false,
+        answerSource: streamAnswerSource,
+        llmUsed: !hasManualMatch,
+        llmSkipped: hasManualMatch,
+        llmSkipReason: hasManualMatch ? "MANUAL_CANDIDATE" : undefined,
         isNoMatch: false,
         ruleMs: result.timings?.ruleMs,
         embeddingMs: result.timings?.embeddingMs,
@@ -1819,12 +1944,12 @@ export function buildServer(): FastifyInstance {
           await finishConversationPersistence({
             context: persistenceContext,
             content: accumulatedText,
-            status: "llm_stream",
-            answerSource: "llm_stream",
+            status: streamAnswerSource,
+            answerSource: streamAnswerSource,
             retrievalMode: result.retrievalMode,
             confidence: result.confidence,
-            bestRequireId: result.bestRequireId,
-            bestSccId: result.bestSccId,
+            bestRequireId: hasManualMatch ? null : result.bestRequireId,
+            bestSccId: hasManualMatch ? null : result.bestSccId,
             similarIssueUrl,
             logUuid,
             metadata

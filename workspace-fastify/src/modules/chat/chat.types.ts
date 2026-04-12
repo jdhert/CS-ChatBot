@@ -1,6 +1,6 @@
 export type RetrievalScope = "all" | "manual" | "scc";
 export type RetrievalMode = "hybrid" | "rule_only";
-export type AnswerSource = "llm" | "deterministic_fallback" | "rule_only";
+export type AnswerSource = "llm" | "deterministic_fallback" | "rule_only" | "manual";
 export type ChatViewStatus = "matched" | "needs_more_info";
 export type VectorStrategy =
   | "pgvector"
@@ -49,6 +49,18 @@ export interface ChatCandidate {
   qaPairPreview?: string | null;
 }
 
+export interface ManualCandidate {
+  documentId: string;
+  chunkId: string;
+  score: number;
+  product: string;
+  title: string;
+  version?: string | null;
+  sectionTitle?: string | null;
+  previewText: string;
+  linkUrl: string | null;
+}
+
 export interface ChatResponseView {
   status: ChatViewStatus;
   title: string;
@@ -78,6 +90,10 @@ export interface ChatResponseBody {
   message: string;
   similarIssueUrl: string | null;
   candidates: ChatCandidate[];
+  manualCandidates?: ManualCandidate[];
+  manualCandidateCount?: number;
+  manualUsed?: boolean;
+  manualError?: string | null;
   vectorUsed: boolean;
   retrievalMode: RetrievalMode;
   vectorError: string | null;
@@ -168,6 +184,10 @@ export interface RetrievalDebugResponseBody {
   vectorCandidateCount?: number;
   timings?: RetrievalTimings;
   candidates: RetrievalDebugCandidate[];
+  manualCandidates?: ManualCandidate[];
+  manualCandidateCount?: number;
+  manualUsed?: boolean;
+  manualError?: string | null;
 }
 
 export interface ChunkRow {
