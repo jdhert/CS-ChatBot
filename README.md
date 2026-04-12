@@ -190,6 +190,7 @@ graph TB
 - 대화 이력 서버 저장 안정화 (DB hydrate 우선, 로컬 optimistic 대화 보존)
 - Query Embedding cooldown 모니터링 (`/logs`에서 429/cooldown 상태 확인)
 - Embedding 커버리지 모니터링 (`/logs`에서 모델별 적재율, 미임베딩 수, ingest 상태 확인)
+- Embedding 커버리지 자동 알림 (`/health`, `/logs`에서 warning/critical 상태 확인)
 - 스트리밍 응답 타이밍 분석 (`/logs`에서 rewrite/TTFT/LLM stream/persistence 확인)
 - 관리자 로그 상세 드릴다운 (`/logs`에서 후보 Top3, vector/LLM 진단, 응답 미리보기 확인)
 
@@ -552,6 +553,7 @@ sequenceDiagram
 - [x] 대화 이력 서버 저장 안정화 — 서버 hydrate와 로컬 optimistic 대화 병합, 메시지 append 충돌 방지
 - [x] Query Embedding 429/cooldown 대응 강화 — `Retry-After` 반영, `/health`·`/logs` 런타임 상태 노출
 - [x] Embedding 커버리지 운영 모니터링 — `/admin/logs`와 `/logs`에서 모델별 coverage, pending chunk, ingest 상태 확인
+- [x] Embedding 커버리지 자동 알림 — `/health`와 `/logs`에서 warning/critical 상태 노출
 - [x] 스트리밍 응답 타이밍 세분화 — `/chat/stream`의 rewrite, TTFT, LLM stream, persistence 시간을 metadata로 기록
 - [x] 관리자 로그 상세 드릴다운 — `/logs`에서 후보 Top3와 vector/LLM 진단 정보 표시
 - [x] 대화 이력 UX 개선 — 제목 정제, 제목/내용 검색, 날짜 그룹핑, 삭제/동기화 상태 표시
@@ -582,7 +584,7 @@ sequenceDiagram
 #### 🟢 낮은 우선순위 (코드 품질)
 - [ ] **page.tsx 커스텀 훅 분리** — `useChat`, `useConversations` 분리
 - [x] **임베딩 커버리지 운영 모니터링** — `/logs`에서 모델별 적재율과 미임베딩 수 확인
-- [ ] **임베딩 커버리지 자동 알림** — 신규 SCC 적재/커버리지 하락 시 알림
+- [x] **임베딩 커버리지 자동 알림** — 신규 SCC 적재/커버리지 하락 시 `/health`, `/logs` 경고 표시
 
 ## 📝 변경 이력
 
@@ -592,6 +594,7 @@ sequenceDiagram
 - ✅ **대화 이력 서버 저장 안정화** — 서버 대화 hydrate 시 로컬 전용 대화를 보존하고 DB 메시지 append를 세션 단위로 직렬화
 - ✅ **Query Embedding cooldown 대응 강화** — 429 발생 시 `Retry-After` 우선 반영, active cooldown과 캐시 통계를 운영 화면에 노출
 - ✅ **Embedding 커버리지 모니터링 추가** — `/admin/logs` 응답과 `/logs` 화면에 모델별 coverage, 미임베딩 수, 최근 ingest 상태 표시
+- ✅ **Embedding 커버리지 자동 알림 추가** — 임계치 기반 warning/critical 판정과 `/health`, `/logs` 경고 노출
 - ✅ **스트리밍 응답 타이밍 세분화** — `/chat/stream` 응답의 rewrite, TTFT, LLM stream, persistence 시간을 `/logs` 드릴다운에서 확인
 - ✅ **관리자 로그 상세 드릴다운 추가** — 대화 메시지 metadata 기반 Top 후보, 진단값, 응답 미리보기 표시
 - ✅ **대화 이력 UX 개선** — 사이드바 제목/내용 검색, 날짜 그룹핑, 서버 hydrate/삭제 동기화 상태 표시

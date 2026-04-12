@@ -110,6 +110,48 @@ interface ConversationPersistenceContext {
   assistantMessageId: string;
 }
 
+type EmbeddingCoverageAlertLevel = "ok" | "warning" | "critical";
+
+interface EmbeddingCoverageAlert {
+  level: EmbeddingCoverageAlertLevel;
+  message: string;
+  reasons: string[];
+  warnMinCoveragePct: number;
+  criticalMinCoveragePct: number;
+  warnPendingChunks: number;
+  criticalPendingChunks: number;
+}
+
+interface EmbeddingCoverageSnapshot {
+  available: boolean;
+  sourceChunkRows: number;
+  minCoveragePct: number | null;
+  pendingChunks: number;
+  coverage: Array<{
+    embedding_model: string;
+    source_chunk_rows: number;
+    embedded_chunks: number;
+    coverage_pct: number | null;
+  }>;
+  status: unknown[];
+  ingestState: Array<{
+    state_key?: string;
+    last_source_ingested_at?: Date | string | null;
+    last_run_at?: Date | string | null;
+    last_status?: string | null;
+    last_message?: string | null;
+    updated_at?: Date | string | null;
+  }>;
+  alert: EmbeddingCoverageAlert;
+  error: string | null;
+}
+
+let embeddingCoverageCache: {
+  expiresAt: number;
+  snapshot: EmbeddingCoverageSnapshot;
+} | null = null;
+let embeddingCoverageHealthProbeInFlight: Promise<EmbeddingCoverageSnapshot> | null = null;
+
 function buildConversationTitle(query: string): string {
   const normalized = query
     .replace(/\s+/g, " ")
@@ -803,7 +845,77 @@ function getRateLimitMonitoring(days: number) {
   };
 }
 
-async function getEmbeddingCoverageMonitoring() {
+function buildEmbeddingCoverageAlert(args: {
+  available: boolean;
+  sourceChunkRows: number;
+  minCoveragePct: number | null;
+  pendingChunks: number;
+  ingestState: EmbeddingCoverageSnapshot["ingestState"];
+  error?: string | null;
+}): EmbeddingCoverageAlert {
+  const warnMinCoveragePct = parseEnvNumber(process.env.EMBEDDING_COVERAGE_WARN_MIN_PCT, 99);
+  const criticalMinCoveragePct = parseEnvNumber(process.env.EMBEDDING_COVERAGE_CRITICAL_MIN_PCT, 95);
+  const warnPendingChunks = parseEnvInteger(process.env.EMBEDDING_COVERAGE_WARN_PENDING_CHUNKS, 500);
+  const criticalPendingChunks = parseEnvInteger(process.env.EMBEDDING_COVERAGE_CRITICAL_PENDING_CHUNKS, 2_000);
+  const reasons: string[] = [];
+  let level: EmbeddingCoverageAlertLevel = "ok";
+
+  if (!args.available) {
+    reasons.push(args.error ? `커버리지 조회 실패: ${args.error}` : "커버리지 조회 실패");
+    level = "critical";
+  }
+
+  if (args.sourceChunkRows > 0 && args.minCoveragePct === null) {
+    reasons.push("source chunk는 있으나 임베딩 모델별 커버리지 데이터가 없습니다.");
+    level = "critical";
+  }
+
+  if (args.minCoveragePct !== null) {
+    if (args.minCoveragePct < criticalMinCoveragePct) {
+      reasons.push(`최저 커버리지 ${args.minCoveragePct}% < critical ${criticalMinCoveragePct}%`);
+      level = "critical";
+    } else if (args.minCoveragePct < warnMinCoveragePct && level !== "critical") {
+      reasons.push(`최저 커버리지 ${args.minCoveragePct}% < warn ${warnMinCoveragePct}%`);
+      level = "warning";
+    }
+  }
+
+  if (args.pendingChunks >= criticalPendingChunks && criticalPendingChunks > 0) {
+    reasons.push(`미임베딩 추정 ${args.pendingChunks}건 >= critical ${criticalPendingChunks}건`);
+    level = "critical";
+  } else if (args.pendingChunks >= warnPendingChunks && warnPendingChunks > 0 && level !== "critical") {
+    reasons.push(`미임베딩 추정 ${args.pendingChunks}건 >= warn ${warnPendingChunks}건`);
+    level = "warning";
+  }
+
+  const latestStatus = args.ingestState[0]?.last_status?.toLowerCase() ?? null;
+  if (latestStatus === "error" && level !== "critical") {
+    reasons.push("최근 ingest 상태가 error입니다.");
+    level = "warning";
+  }
+
+  return {
+    level,
+    message:
+      level === "critical"
+        ? "임베딩 커버리지 확인이 필요합니다."
+        : level === "warning"
+          ? "임베딩 커버리지 주의가 필요합니다."
+          : "임베딩 커버리지가 정상 범위입니다.",
+    reasons,
+    warnMinCoveragePct,
+    criticalMinCoveragePct,
+    warnPendingChunks,
+    criticalPendingChunks,
+  };
+}
+
+async function getEmbeddingCoverageMonitoring(options: { useCache?: boolean } = {}): Promise<EmbeddingCoverageSnapshot> {
+  const cacheTtlMs = parseEnvInteger(process.env.EMBEDDING_COVERAGE_CACHE_TTL_MS, 60_000);
+  if (options.useCache && embeddingCoverageCache && embeddingCoverageCache.expiresAt > Date.now()) {
+    return embeddingCoverageCache.snapshot;
+  }
+
   const pool = getVectorPool();
   let client: PoolClient | null = null;
   try {
@@ -875,7 +987,7 @@ async function getEmbeddingCoverageMonitoring() {
       return sum + Math.max(0, sourceRows - embeddedRows);
     }, 0);
 
-    return {
+    const snapshot: EmbeddingCoverageSnapshot = {
       available: true,
       sourceChunkRows,
       minCoveragePct: Number.isFinite(minCoveragePct) ? minCoveragePct : null,
@@ -883,8 +995,17 @@ async function getEmbeddingCoverageMonitoring() {
       coverage: coverageRows,
       status: statusResult.rows,
       ingestState: ingestStateResult.rows,
+      alert: buildEmbeddingCoverageAlert({
+        available: true,
+        sourceChunkRows,
+        minCoveragePct: Number.isFinite(minCoveragePct) ? minCoveragePct : null,
+        pendingChunks,
+        ingestState: ingestStateResult.rows,
+      }),
       error: null,
     };
+    embeddingCoverageCache = { snapshot, expiresAt: Date.now() + cacheTtlMs };
+    return snapshot;
   } catch (error) {
     if (client) {
       try {
@@ -893,7 +1014,8 @@ async function getEmbeddingCoverageMonitoring() {
         // Ignore rollback errors after a failed monitoring-only query.
       }
     }
-    return {
+    const errorMessage = error instanceof Error ? error.message : "EMBEDDING_COVERAGE_QUERY_FAILED";
+    const snapshot: EmbeddingCoverageSnapshot = {
       available: false,
       sourceChunkRows: 0,
       minCoveragePct: null,
@@ -901,11 +1023,60 @@ async function getEmbeddingCoverageMonitoring() {
       coverage: [],
       status: [],
       ingestState: [],
-      error: error instanceof Error ? error.message : "EMBEDDING_COVERAGE_QUERY_FAILED",
+      alert: buildEmbeddingCoverageAlert({
+        available: false,
+        sourceChunkRows: 0,
+        minCoveragePct: null,
+        pendingChunks: 0,
+        ingestState: [],
+        error: errorMessage,
+      }),
+      error: errorMessage,
     };
+    embeddingCoverageCache = { snapshot, expiresAt: Date.now() + Math.min(cacheTtlMs, 30_000) };
+    return snapshot;
   } finally {
     client?.release();
   }
+}
+
+function createEmbeddingCoverageHealthFallback(message: string): EmbeddingCoverageSnapshot {
+  return {
+    available: false,
+    sourceChunkRows: 0,
+    minCoveragePct: null,
+    pendingChunks: 0,
+    coverage: [],
+    status: [],
+    ingestState: [],
+    alert: {
+      level: "warning",
+      message: "임베딩 커버리지 health 조회가 지연되었습니다.",
+      reasons: [message],
+      warnMinCoveragePct: parseEnvNumber(process.env.EMBEDDING_COVERAGE_WARN_MIN_PCT, 99),
+      criticalMinCoveragePct: parseEnvNumber(process.env.EMBEDDING_COVERAGE_CRITICAL_MIN_PCT, 95),
+      warnPendingChunks: parseEnvInteger(process.env.EMBEDDING_COVERAGE_WARN_PENDING_CHUNKS, 500),
+      criticalPendingChunks: parseEnvInteger(process.env.EMBEDDING_COVERAGE_CRITICAL_PENDING_CHUNKS, 2_000),
+    },
+    error: message,
+  };
+}
+
+async function getEmbeddingCoverageHealthSnapshot(): Promise<EmbeddingCoverageSnapshot> {
+  const timeoutMs = parseEnvInteger(process.env.EMBEDDING_COVERAGE_HEALTH_TIMEOUT_MS, 1_500);
+  const probe = embeddingCoverageHealthProbeInFlight ?? getEmbeddingCoverageMonitoring({ useCache: true }).finally(() => {
+    embeddingCoverageHealthProbeInFlight = null;
+  });
+  embeddingCoverageHealthProbeInFlight = probe;
+
+  return Promise.race([
+    probe,
+    new Promise<EmbeddingCoverageSnapshot>((resolve) => {
+      setTimeout(() => {
+        resolve(createEmbeddingCoverageHealthFallback(`health 조회 제한 시간 ${timeoutMs}ms를 초과했습니다.`));
+      }, timeoutMs);
+    }),
+  ]);
 }
 
 function requiresExplanatoryAnswer(query: string): boolean {
@@ -1019,11 +1190,20 @@ export function buildServer(): FastifyInstance {
   });
 
   app.get("/health", async () => {
+    const embeddingCoverage = await getEmbeddingCoverageHealthSnapshot();
     return {
       status: "ok",
       service: "workspace-fastify",
       cache: getCacheStats(),
       queryEmbedding: getQueryEmbeddingRuntimeStatus(),
+      embeddingCoverage: {
+        available: embeddingCoverage.available,
+        sourceChunkRows: embeddingCoverage.sourceChunkRows,
+        minCoveragePct: embeddingCoverage.minCoveragePct,
+        pendingChunks: embeddingCoverage.pendingChunks,
+        alert: embeddingCoverage.alert,
+        error: embeddingCoverage.error,
+      },
     };
   });
 

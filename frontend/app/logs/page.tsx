@@ -207,7 +207,18 @@ interface EmbeddingCoverageSnapshot {
   coverage: EmbeddingCoverageRow[]
   status: EmbeddingStatusRow[]
   ingestState: EmbeddingIngestStateRow[]
+  alert: EmbeddingCoverageAlert
   error: string | null
+}
+
+interface EmbeddingCoverageAlert {
+  level: "ok" | "warning" | "critical"
+  message: string
+  reasons: string[]
+  warnMinCoveragePct: number
+  criticalMinCoveragePct: number
+  warnPendingChunks: number
+  criticalPendingChunks: number
 }
 
 interface EmbeddingCoverageRow {
@@ -637,6 +648,12 @@ function EmbeddingCoverageMonitoring({ snapshot }: { snapshot: EmbeddingCoverage
     minCoverage >= 99 ? "text-emerald-600 dark:text-emerald-400" :
     minCoverage >= 90 ? "text-amber-600 dark:text-amber-400" :
     "text-red-600 dark:text-red-400"
+  const alertTone =
+    snapshot.alert.level === "critical"
+      ? "border-red-300 bg-red-50 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300"
+      : snapshot.alert.level === "warning"
+        ? "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"
+        : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300"
 
   return (
     <section className="mb-5 rounded-2xl border border-border bg-card p-4 shadow-sm">
@@ -648,6 +665,24 @@ function EmbeddingCoverageMonitoring({ snapshot }: { snapshot: EmbeddingCoverage
           </p>
         </div>
         <BarChart3 className={cn("h-4 w-4", minCoverage >= 99 ? "text-emerald-500" : "text-amber-500")} />
+      </div>
+
+      <div className={cn("mb-3 rounded-xl border p-3 text-xs", alertTone)}>
+        <div className="flex items-center gap-2 font-semibold">
+          {snapshot.alert.level === "ok" ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+          {snapshot.alert.message}
+        </div>
+        {snapshot.alert.reasons.length > 0 ? (
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {snapshot.alert.reasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1 opacity-80">
+            warning 기준: {formatPct(snapshot.alert.warnMinCoveragePct)} 미만 또는 미임베딩 {snapshot.alert.warnPendingChunks.toLocaleString()}건 이상
+          </p>
+        )}
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">
