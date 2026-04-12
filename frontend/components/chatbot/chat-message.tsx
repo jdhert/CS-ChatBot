@@ -15,6 +15,18 @@ export interface CandidateCard {
   linkUrl: string
 }
 
+export interface ManualCandidateCard {
+  documentId: string
+  chunkId: string
+  score: number
+  product: string
+  title: string
+  version?: string | null
+  sectionTitle?: string | null
+  previewText: string
+  linkUrl?: string | null
+}
+
 export interface Message {
   id: string
   content: string
@@ -29,6 +41,7 @@ export interface Message {
   linkLabel?: string | null
   logId?: string | null
   top3Candidates?: CandidateCard[] | null
+  manualCandidates?: ManualCandidateCard[] | null
   isNewMessage?: boolean
 }
 
@@ -252,6 +265,77 @@ function CandidateCards({ candidates }: { candidates: CandidateCard[] }) {
   )
 }
 
+function ManualCandidateCards({ candidates }: { candidates: ManualCandidateCard[] }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  if (candidates.length === 0) return null
+
+  return (
+    <div className="mt-3">
+      <button
+        onClick={() => setIsExpanded((value) => !value)}
+        className="flex items-center gap-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+        type="button"
+      >
+        {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        참고 매뉴얼 {candidates.length}건
+        {!isExpanded && <span className="text-[10px] opacity-60">펼쳐보기</span>}
+      </button>
+
+      {isExpanded && (
+        <div className="mt-2 flex flex-col gap-1.5">
+          {candidates.map((candidate, index) => {
+            const content = (
+              <>
+                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sky-500/10 text-[10px] font-bold text-sky-500">
+                  {index + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate font-medium text-foreground">{candidate.title}</span>
+                    <span className="rounded bg-sky-500/10 px-1 py-0.5 text-[10px] text-sky-500">
+                      {candidate.product}
+                    </span>
+                    <span className="ml-auto text-[10px] text-muted-foreground">
+                      {Math.round(candidate.score * 100)}%
+                    </span>
+                  </div>
+                  {candidate.sectionTitle ? (
+                    <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{candidate.sectionTitle}</p>
+                  ) : null}
+                  <p className="mt-0.5 line-clamp-2 break-words text-muted-foreground">{candidate.previewText}</p>
+                </div>
+                {candidate.linkUrl ? (
+                  <ExternalLink className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                ) : null}
+              </>
+            )
+
+            return candidate.linkUrl ? (
+              <a
+                key={candidate.chunkId}
+                href={candidate.linkUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="group flex items-start gap-2 rounded-lg border border-border bg-sky-500/5 px-3 py-2 text-xs transition-colors hover:bg-sky-500/10"
+              >
+                {content}
+              </a>
+            ) : (
+              <div
+                key={candidate.chunkId}
+                className="group flex items-start gap-2 rounded-lg border border-border bg-sky-500/5 px-3 py-2 text-xs"
+              >
+                {content}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuestion, originalQuery }: ChatMessageProps) {
   const isUser = message.sender === "user"
   const isNoMatch = !isUser && message.answerSource === "no_match"
@@ -265,6 +349,8 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
   const canEditQuestion = isNoMatch && onEditQuestion != null && originalQuery != null
   const showActions = !isUser && !isNoMatch && !isSecurityBlocked && !isGenerating && !isSearching
   const showCandidates = showActions && Array.isArray(message.top3Candidates) && message.top3Candidates.length > 1
+  const showManualCandidates =
+    showActions && Array.isArray(message.manualCandidates) && message.manualCandidates.length > 0
   const showSuggestions = showCandidates && onSuggestedQuestion != null
 
   return (
@@ -353,6 +439,7 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
           ) : null}
 
           {showCandidates && <CandidateCards candidates={message.top3Candidates!} />}
+          {showManualCandidates && <ManualCandidateCards candidates={message.manualCandidates!} />}
           {showSuggestions && <SuggestedQuestions candidates={message.top3Candidates!} onSelect={onSuggestedQuestion!} />}
         </div>
 

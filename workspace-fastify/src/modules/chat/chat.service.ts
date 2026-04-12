@@ -23,6 +23,8 @@ const CANDIDATE_PREVIEW_TEXT_LENGTH = 120;
 const CANDIDATE_SUPPORT_PREVIEW_TEXT_LENGTH = 100;
 const MANUAL_PREVIEW_TEXT_LENGTH = 800;
 const DEFAULT_MANUAL_SEARCH_LIMIT = 5;
+const DEFAULT_MANUAL_PRIORITY_MIN_SCORE = 0.75;
+const DEFAULT_MANUAL_PRIORITY_MIN_LEXICAL_COVERAGE = 0.12;
 const DEFAULT_VECTOR_SEARCH_LIMIT = 30;
 const DEFAULT_EMBEDDING_TIMEOUT_MS = 8000;
 const COVISION_SERVICE_VIEW_BASE_URL =
@@ -511,6 +513,11 @@ function applySearchTimings(
 function parseEnvInt(raw: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(raw ?? "", 10);
   return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+function parseEnvNumber(raw: string | undefined, fallback: number): number {
+  const parsed = Number.parseFloat(raw ?? "");
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 interface RawManualVectorRow {
@@ -2339,6 +2346,23 @@ function isManualRetrievalEnabled(): boolean {
   return !["0", "false", "off", "no"].includes(raw);
 }
 
+function isManualHowToPriorityEnabled(): boolean {
+  const raw = process.env.MANUAL_HOWTO_PRIORITY_ENABLED?.trim().toLowerCase();
+  if (!raw) {
+    return true;
+  }
+  return !["0", "false", "off", "no"].includes(raw);
+}
+
+function isManualHowToPriorityQuery(query: string, intent: QueryIntent): boolean {
+  if (!intent.needsResolution) {
+    return false;
+  }
+
+  const normalized = normalizeText(query);
+  return /방법|사용법|가이드|절차|어떻게|지정|설정|등록|추가|작성|조회|사용/u.test(normalized);
+}
+
 function isManualDownloadEnabled(): boolean {
   const raw = process.env.MANUAL_DOWNLOAD_ENABLED?.trim().toLowerCase();
   if (!raw) {
@@ -3390,7 +3414,27 @@ async function computeChatSearch(
   const hasCooldownRelaxedBest = shouldPromoteCooldownBest(best, runnerUp, vectorResult);
   const hasConfidentBest = best ? round2(best.score) >= DEFAULT_SCORE_THRESHOLD || hasCooldownRelaxedBest : false;
   const bestManual = manualCandidates[0] ?? null;
-  const hasManualFallback = !hasConfidentBest && bestManual !== null && bestManual.score >= DEFAULT_SCORE_THRESHOLD;
+  const manualPriorityMinScore = parseEnvNumber(
+    process.env.MANUAL_PRIORITY_MIN_SCORE,
+    DEFAULT_MANUAL_PRIORITY_MIN_SCORE
+  );
+  const manualPriorityMinLexicalCoverage = parseEnvNumber(
+    process.env.MANUAL_PRIORITY_MIN_LEXICAL_COVERAGE,
+    DEFAULT_MANUAL_PRIORITY_MIN_LEXICAL_COVERAGE
+  );
+  const bestManualLexicalCoverage = bestManual && queryVariants.lexical.length > 0
+    ? Math.max(...queryVariants.lexical.map((queryVariant) => computeLexicalCoverage(queryVariant, bestManual.previewText)))
+    : 0;
+  const hasManualHowToPriority =
+    isManualHowToPriorityEnabled() &&
+    isManualHowToPriorityQuery(query, intent) &&
+    bestManual !== null &&
+    bestManual.score >= manualPriorityMinScore &&
+    bestManualLexicalCoverage >= manualPriorityMinLexicalCoverage;
+  const hasManualFallback =
+    bestManual !== null &&
+    bestManual.score >= DEFAULT_SCORE_THRESHOLD &&
+    (!hasConfidentBest || hasManualHowToPriority);
   const responseConfidence = hasManualFallback ? bestManual.score : confidence;
   const responseVectorUsed = vectorResult.vectorUsed || manualResult.manualUsed;
   const responseRetrievalMode = responseVectorUsed ? "hybrid" : "rule_only";
@@ -3413,22 +3457,31 @@ async function computeChatSearch(
 
   const computed: SearchComputationResult = {
     response: {
-      bestRequireId: hasConfidentBest ? best.requireId : null,
-      bestSccId: hasConfidentBest ? best.sccId : null,
+      bestRequireId: !hasManualFallback && hasConfidentBest ? best.requireId : null,
+      bestSccId: !hasManualFallback && hasConfidentBest ? best.sccId : null,
       confidence: responseConfidence,
       bestChunkType: hasManualFallback ? "manual" : hasConfidentBest ? best.chunkType : null,
-      bestAnswerText: hasConfidentBest
-        ? truncate(best.answerText, MAX_ANSWER_TEXT_LENGTH)
-        : hasManualFallback
-          ? bestManual.previewText
-        : null,
-      bestIssueText: hasConfidentBest && best.issueText ? truncate(best.issueText, MAX_ANSWER_TEXT_LENGTH) : null,
+      bestAnswerText: hasManualFallback
+        ? bestManual.previewText
+        : hasConfidentBest
+          ? truncate(best.answerText, MAX_ANSWER_TEXT_LENGTH)
+          : null,
+      bestIssueText:
+        !hasManualFallback && hasConfidentBest && best.issueText
+          ? truncate(best.issueText, MAX_ANSWER_TEXT_LENGTH)
+          : null,
       bestActionText:
-        hasConfidentBest && best.actionText ? truncate(best.actionText, MAX_ANSWER_TEXT_LENGTH) : null,
+        !hasManualFallback && hasConfidentBest && best.actionText
+          ? truncate(best.actionText, MAX_ANSWER_TEXT_LENGTH)
+          : null,
       bestResolutionText:
-        hasConfidentBest && best.resolutionText ? truncate(best.resolutionText, MAX_ANSWER_TEXT_LENGTH) : null,
+        !hasManualFallback && hasConfidentBest && best.resolutionText
+          ? truncate(best.resolutionText, MAX_ANSWER_TEXT_LENGTH)
+          : null,
       bestQaPairText:
-        hasConfidentBest && best.qaPairText ? truncate(best.qaPairText, MAX_ANSWER_TEXT_LENGTH) : null,
+        !hasManualFallback && hasConfidentBest && best.qaPairText
+          ? truncate(best.qaPairText, MAX_ANSWER_TEXT_LENGTH)
+          : null,
       message: hasManualFallback
         ? "사용자 매뉴얼에서 관련 내용을 찾았습니다."
         : topRequireId
@@ -3466,8 +3519,8 @@ async function computeChatSearch(
       queryVariants,
       rowCount: rows.length,
       requireCount: byRequire.size,
-      bestRequireId: hasConfidentBest ? best.requireId : null,
-      bestSccId: hasConfidentBest ? best.sccId : null,
+      bestRequireId: !hasManualFallback && hasConfidentBest ? best.requireId : null,
+      bestSccId: !hasManualFallback && hasConfidentBest ? best.sccId : null,
       bestChunkType: hasManualFallback ? "manual" : hasConfidentBest ? best.chunkType : null,
       confidence: responseConfidence,
       vectorUsed: responseVectorUsed,

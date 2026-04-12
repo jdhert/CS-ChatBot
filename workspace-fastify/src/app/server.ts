@@ -1523,6 +1523,8 @@ export function buildServer(): FastifyInstance {
             logUuid,
             metadata: {
               top3Candidates,
+              manualCandidates: result.manualCandidates ?? [],
+              manualCandidateCount: result.manualCandidateCount ?? 0,
               queryRewritten: rewrite.rewriteUsed,
               rewrittenQuery: rewrite.rewriteUsed ? effectiveQuery : null,
               answerSourceReason,

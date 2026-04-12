@@ -35,6 +35,7 @@ interface ServerMessageRow {
   metadata?: {
     linkLabel?: string | null
     top3Candidates?: Message["top3Candidates"]
+    manualCandidates?: Message["manualCandidates"]
   } | null
   log_uuid?: string | null
 }
@@ -275,6 +276,7 @@ function mapServerMessage(row: ServerMessageRow): Message | null {
     linkLabel: row.metadata?.linkLabel ?? null,
     logId: row.log_uuid ?? null,
     top3Candidates: row.metadata?.top3Candidates ?? null,
+    manualCandidates: row.metadata?.manualCandidates ?? null,
     isNewMessage: false,
   }
 }

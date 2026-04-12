@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useRef, useState } from "react"
 import { flushSync } from "react-dom"
-import type { CandidateCard, Message } from "@/components/chatbot/chat-message"
+import type { CandidateCard, ManualCandidateCard, Message } from "@/components/chatbot/chat-message"
 import { toast } from "@/hooks/use-toast"
 import { exportChatMessages, getChatExportFormatLabel, type ChatExportFormat } from "@/lib/chat-export"
 
@@ -202,6 +202,7 @@ export function useChat(args: {
       let metadata: Record<string, unknown> | null = null
       let capturedLogId: string | null = null
       let capturedTop3: CandidateCard[] | null = null
+      let capturedManualCandidates: ManualCandidateCard[] | null = null
 
       try {
         while (true) {
@@ -225,8 +226,12 @@ export function useChat(args: {
                 if (Array.isArray(event.data?.top3Candidates)) {
                   capturedTop3 = event.data.top3Candidates as CandidateCard[]
                 }
+                if (Array.isArray(event.data?.manualCandidates)) {
+                  capturedManualCandidates = event.data.manualCandidates as ManualCandidateCard[]
+                }
                 const earlyLinkUrl = typeof metadata?.similarIssueUrl === "string" ? metadata.similarIssueUrl : null
-                const earlyLinkLabel = earlyLinkUrl ? "유사 이력 바로가기" : null
+                const earlyLinkLabel =
+                  earlyLinkUrl && typeof metadata?.linkLabel === "string" ? metadata.linkLabel : earlyLinkUrl ? "유사 이력 바로가기" : null
                 setCurrentMessages((prev) =>
                   prev.map((msg) =>
                     msg.id === assistantMessageId
@@ -250,7 +255,8 @@ export function useChat(args: {
                 }
                 const finalText = pendingTextRef.current
                 const finalLinkUrl = typeof metadata?.similarIssueUrl === "string" ? metadata.similarIssueUrl : null
-                const finalLinkLabel = finalLinkUrl ? "유사 이력 바로가기" : null
+                const finalLinkLabel =
+                  finalLinkUrl && typeof metadata?.linkLabel === "string" ? metadata.linkLabel : finalLinkUrl ? "유사 이력 바로가기" : null
                 setCurrentMessages((prev) =>
                   prev.map((msg) =>
                     msg.id === assistantMessageId
@@ -262,6 +268,7 @@ export function useChat(args: {
                           linkLabel: finalLinkLabel,
                           logId: capturedLogId,
                           top3Candidates: capturedTop3 ?? undefined,
+                          manualCandidates: capturedManualCandidates ?? undefined,
                           status: "matched",
                           isNewMessage: false,
                         }
