@@ -25,6 +25,8 @@ export interface ManualCandidateCard {
   sectionTitle?: string | null
   previewText: string
   linkUrl?: string | null
+  sourceLabel?: string | null
+  previewImageUrl?: string | null
 }
 
 export interface Message {
@@ -267,6 +269,7 @@ function CandidateCards({ candidates }: { candidates: CandidateCard[] }) {
 
 function ManualCandidateCards({ candidates }: { candidates: ManualCandidateCard[] }) {
   const [isExpanded, setIsExpanded] = useState(false)
+  const [hiddenPreviewIds, setHiddenPreviewIds] = useState<Set<string>>(new Set())
 
   if (candidates.length === 0) return null
 
@@ -300,8 +303,28 @@ function ManualCandidateCards({ candidates }: { candidates: ManualCandidateCard[
                       {Math.round(candidate.score * 100)}%
                     </span>
                   </div>
+                  {candidate.sourceLabel ? (
+                    <p className="mt-0.5 truncate text-[10px] text-sky-600 dark:text-sky-300">
+                      출처: {candidate.sourceLabel}
+                    </p>
+                  ) : null}
                   {candidate.sectionTitle ? (
                     <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{candidate.sectionTitle}</p>
+                  ) : null}
+                  {candidate.previewImageUrl && !hiddenPreviewIds.has(candidate.chunkId) ? (
+                    <img
+                      src={candidate.previewImageUrl}
+                      alt={`${candidate.title} 매뉴얼 미리보기`}
+                      className="mt-2 max-h-36 w-full rounded-md border border-border object-contain bg-background"
+                      loading="lazy"
+                      onError={() =>
+                        setHiddenPreviewIds((current) => {
+                          const next = new Set(current)
+                          next.add(candidate.chunkId)
+                          return next
+                        })
+                      }
+                    />
                   ) : null}
                   <p className="mt-0.5 line-clamp-2 break-words text-muted-foreground">{candidate.previewText}</p>
                 </div>

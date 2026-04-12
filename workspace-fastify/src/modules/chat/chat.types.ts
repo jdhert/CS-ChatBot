@@ -59,6 +59,8 @@ export interface ManualCandidate {
   sectionTitle?: string | null;
   previewText: string;
   linkUrl: string | null;
+  sourceLabel?: string | null;
+  previewImageUrl?: string | null;
 }
 
 export interface ChatResponseView {

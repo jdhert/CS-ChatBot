@@ -2388,6 +2388,31 @@ function toManualLinkUrl(documentId: string): string | null {
   return isManualDownloadEnabled() ? `/api/manual/documents/${encodeURIComponent(documentId)}` : null;
 }
 
+function isManualPreviewEnabled(): boolean {
+  const raw = process.env.MANUAL_PREVIEW_ENABLED?.trim().toLowerCase();
+  if (!raw) {
+    return false;
+  }
+  return ["1", "true", "on", "yes"].includes(raw);
+}
+
+function toManualPreviewImageUrl(documentId: string, chunkId: string): string | null {
+  if (!isManualPreviewEnabled()) {
+    return null;
+  }
+  return `/api/manual/previews/${encodeURIComponent(documentId)}/${encodeURIComponent(chunkId)}`;
+}
+
+function extractManualScreenLabel(text: string): string | null {
+  const match = text.match(/<\s*([^<>]{4,120})\s*>/u);
+  return match?.[1]?.replace(/\s+/g, " ").trim() || null;
+}
+
+function toManualSourceLabel(title: string, sectionTitle: string | null, chunkText: string): string {
+  const displaySection = extractManualScreenLabel(chunkText) ?? sectionTitle;
+  return displaySection ? `${title} / ${displaySection}` : title;
+}
+
 function toManualCandidate(row: ManualVectorCandidateRow): ManualCandidate {
   return {
     documentId: row.documentId,
@@ -2398,7 +2423,9 @@ function toManualCandidate(row: ManualVectorCandidateRow): ManualCandidate {
     version: row.version,
     sectionTitle: row.sectionTitle,
     previewText: truncate(row.chunkText, MANUAL_PREVIEW_TEXT_LENGTH),
-    linkUrl: toManualLinkUrl(row.documentId)
+    linkUrl: toManualLinkUrl(row.documentId),
+    sourceLabel: toManualSourceLabel(row.title, row.sectionTitle, row.chunkText),
+    previewImageUrl: toManualPreviewImageUrl(row.documentId, row.chunkId)
   };
 }
 
@@ -2439,6 +2466,73 @@ function getManualProductBoost(query: string, candidate: ManualCandidate): numbe
   return boost;
 }
 
+function getManualContentQualityBoost(query: string, candidate: ManualCandidate): number {
+  const normalizedQuery = normalizeText(query);
+  const haystack = normalizeText(`${candidate.sectionTitle ?? ""} ${candidate.previewText}`);
+  const lines = candidate.previewText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const tocLineCount = lines.filter((line) => /^\d+(?:\.\d+){1,4}\.?\s+.+\s+\d+$/u.test(line)).length;
+  let boost = 0;
+
+  if (/제\.?개정\s*이력서|revision history/i.test(candidate.previewText)) {
+    boost -= 0.12;
+  }
+
+  const isHowToQuery =
+    normalizedQuery.includes("방법") ||
+    normalizedQuery.includes("사용법") ||
+    normalizedQuery.includes("어떻게") ||
+    normalizedQuery.includes("생성") ||
+    normalizedQuery.includes("신청") ||
+    normalizedQuery.includes("등록");
+
+  if (tocLineCount >= 8) {
+    boost -= isHowToQuery ? 0.42 : 0.18;
+  } else if (tocLineCount >= 4) {
+    boost -= isHowToQuery ? 0.18 : 0.08;
+  }
+
+  if (isHowToQuery && tocLineCount > 0 && normalizeText(`${candidate.sectionTitle ?? ""}`).includes("개요")) {
+    boost -= 0.2;
+  }
+
+  if (normalizedQuery.includes("생성") || normalizedQuery.includes("신청") || normalizedQuery.includes("등록")) {
+    if (haystack.includes("경로") && haystack.includes("신청")) {
+      boost += 0.08;
+    }
+    if (haystack.includes("버튼") || haystack.includes("클릭")) {
+      boost += 0.04;
+    }
+    if (haystack.includes("달력") || haystack.includes("날짜")) {
+      boost += 0.04;
+    }
+  }
+
+  if (normalizedQuery.includes("근무일정")) {
+    if (haystack.includes("근무일정 신청") || haystack.includes("근무일정 생성")) {
+      boost += 0.24;
+    }
+    if (haystack.includes("내 근태현황") && haystack.includes("근무신청")) {
+      boost += 0.08;
+    }
+    if (haystack.includes("달력에 선택된 날짜로 근무 일정 생성")) {
+      boost += 0.24;
+    }
+    if (!haystack.includes("근무일정") && !haystack.includes("근무 신청") && !haystack.includes("근무신청")) {
+      boost -= 0.46;
+    } else if (!haystack.includes("근무일정 신청") && !haystack.includes("근무일정 생성") && !haystack.includes("근무신청-근무일정")) {
+      boost -= 0.16;
+    }
+    if (!normalizedQuery.includes("휴가") && normalizeText(`${candidate.sectionTitle ?? ""}`).includes("휴가")) {
+      boost -= 0.16;
+    }
+  }
+
+  return boost;
+}
+
 function toManualLexicalCandidate(row: ManualLexicalCandidateRow, query: string): ManualCandidate {
   const haystack = `${row.product} ${row.title} ${row.sectionTitle ?? ""} ${row.chunkText}`;
   const lexicalCoverage = computeLexicalCoverage(query, haystack);
@@ -2455,7 +2549,9 @@ function toManualLexicalCandidate(row: ManualLexicalCandidateRow, query: string)
     version: row.version,
     sectionTitle: row.sectionTitle,
     previewText: truncate(row.chunkText, MANUAL_PREVIEW_TEXT_LENGTH),
-    linkUrl: toManualLinkUrl(row.documentId)
+    linkUrl: toManualLinkUrl(row.documentId),
+    sourceLabel: toManualSourceLabel(row.title, row.sectionTitle, row.chunkText),
+    previewImageUrl: toManualPreviewImageUrl(row.documentId, row.chunkId)
   };
 }
 
@@ -2465,7 +2561,10 @@ function rerankManualCandidates(candidates: ManualCandidate[], query: string, li
       const lexicalCoverage = computeLexicalCoverage(query, candidate.previewText);
       const titleCoverage = computeLexicalCoverage(query, `${candidate.title} ${candidate.sectionTitle ?? ""}`);
       const productBoost = getManualProductBoost(query, candidate);
-      const adjustedScore = clamp01(candidate.score + 0.08 * lexicalCoverage + 0.04 * titleCoverage + productBoost);
+      const qualityBoost = getManualContentQualityBoost(query, candidate);
+      const adjustedScore = clamp01(
+        candidate.score + 0.08 * lexicalCoverage + 0.04 * titleCoverage + productBoost + qualityBoost
+      );
 
       return {
         candidate: {

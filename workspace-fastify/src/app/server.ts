@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import fastifyCors from "@fastify/cors";
 import { createReadStream } from "node:fs";
 import { stat as statFile } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, resolve, sep } from "node:path";
 import type { PoolClient } from "pg";
 import { renderChatTestPage } from "../modules/chat/chatTestPage.js";
 import {
@@ -619,27 +619,98 @@ function buildSafeDefaultAnswer(similarIssueUrl: string | null, hasCandidate: bo
   ].join("\n");
 }
 
+function isManualNoiseLine(line: string, candidateTitle: string): boolean {
+  if (!line) {
+    return true;
+  }
+  if (line === candidateTitle) {
+    return true;
+  }
+  if (/^[\u2460-\u2473]$/u.test(line) || /^\d+$/.test(line)) {
+    return true;
+  }
+  if (/^\d+(?:\.\d+){1,4}\.?\s+.+\s+\d+$/u.test(line)) {
+    return true;
+  }
+  if (/\uC81C\.?\uAC1C\uC815\s*\uC774\uB825\uC11C|revision history|version\s*:/i.test(line)) {
+    return true;
+  }
+  return false;
+}
+
+function buildManualEvidenceLines(candidate: ManualCandidate): string[] {
+  const rawLines = candidate.previewText
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line) => !isManualNoiseLine(line, candidate.title));
+
+  const pathIndex = rawLines.findIndex((line) => line.includes("\uACBD\uB85C"));
+  const scopedLines = pathIndex >= 0 ? rawLines.slice(pathIndex, pathIndex + 24) : rawLines;
+  const result: string[] = [];
+  const seen = new Set<string>();
+
+  for (let index = 0; index < scopedLines.length; index += 1) {
+    const line = scopedLines[index];
+    if (!line || seen.has(line)) {
+      continue;
+    }
+
+    const next = scopedLines[index + 1] ?? "";
+    const shouldPairWithNext =
+      line.length <= 16 &&
+      next.length > 0 &&
+      next.length <= 140 &&
+      !isManualNoiseLine(next, candidate.title) &&
+      !next.includes("\uACBD\uB85C") &&
+      !/[:\uFF1A.]$/u.test(line);
+    const summaryLine = shouldPairWithNext ? `${line}: ${next}` : line;
+    result.push(summaryLine.length > 160 ? `${summaryLine.slice(0, 160)}...` : summaryLine);
+    seen.add(line);
+    if (shouldPairWithNext) {
+      seen.add(next);
+      index += 1;
+    }
+    if (result.length >= 7) {
+      break;
+    }
+  }
+
+  return result;
+}
+
+function extractManualScreenLabel(text: string): string | null {
+  const match = text.match(/<\s*([^<>]{4,120})\s*>/u);
+  return match?.[1]?.replace(/\s+/g, " ").trim() || null;
+}
+
 function buildManualAnswer(candidate: ManualCandidate | null): string | null {
   if (!candidate) {
     return null;
   }
 
-  const section = candidate.sectionTitle ? ` (${candidate.sectionTitle})` : "";
+  const displaySection = extractManualScreenLabel(candidate.previewText) ?? candidate.sectionTitle;
+  const section = displaySection ? ` (${displaySection})` : "";
+  const evidenceLines = buildManualEvidenceLines(candidate);
+  const pathLine = evidenceLines.find((line) => line.includes("\uACBD\uB85C"));
+  const detailLines = evidenceLines.filter((line) => line !== pathLine).slice(0, 6);
   const parts = [
-    "1) 핵심 안내",
-    `사용자 매뉴얼 "${candidate.title}"${section}에서 질문과 관련된 내용을 찾았습니다.`,
+    "1) \uD575\uC2EC \uC548\uB0B4",
+    `\uC0AC\uC6A9\uC790 \uB9E4\uB274\uC5BC "${candidate.title}"${section}\uC5D0\uC11C \uC9C8\uBB38\uACFC \uAD00\uB828\uB41C \uC808\uCC28\uB97C \uCC3E\uC558\uC2B5\uB2C8\uB2E4.`,
     "",
-    "2) 매뉴얼 내용",
-    candidate.previewText,
+    "2) \uD655\uC778 \uACBD\uB85C",
+    pathLine ? `- ${pathLine}` : `- ${candidate.sectionTitle ?? candidate.title}`,
     "",
-    "3) 확인 방법",
+    "3) \uC8FC\uC694 \uB0B4\uC6A9",
+    ...(detailLines.length > 0 ? detailLines.map((line) => `- ${line}`) : ["- \uB9E4\uB274\uC5BC \uBCF8\uBB38\uC5D0\uC11C \uAD00\uB828 \uD56D\uBAA9\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694."]),
+    "",
+    "4) \uD655\uC778 \uBC29\uBC95",
     candidate.linkUrl
-      ? "- 아래 사용자 매뉴얼 링크를 열어 실제 화면 기준 절차를 확인해 주세요."
-      : "- 보안 정책상 원본 매뉴얼 다운로드는 현재 비활성화되어 있습니다. 필요한 경우 문서명 기준으로 내부 문서 저장소에서 확인해 주세요."
+      ? "- \uC544\uB798 \uC0AC\uC6A9\uC790 \uB9E4\uB274\uC5BC \uB9C1\uD06C\uB97C \uC5F4\uC5B4 \uC2E4\uC81C \uD654\uBA74 \uAE30\uC900 \uC808\uCC28\uB97C \uD655\uC778\uD574 \uC8FC\uC138\uC694."
+      : "- \uBCF4\uC548 \uC815\uCC45\uC0C1 \uC6D0\uBCF8 \uB9E4\uB274\uC5BC \uB2E4\uC6B4\uB85C\uB4DC\uB294 \uD604\uC7AC \uBE44\uD65C\uC131\uD654\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4. \uD544\uC694\uD55C \uACBD\uC6B0 \uBB38\uC11C\uBA85 \uAE30\uC900\uC73C\uB85C \uB0B4\uBD80 \uBB38\uC11C \uC800\uC7A5\uC18C\uC5D0\uC11C \uD655\uC778\uD574 \uC8FC\uC138\uC694."
   ];
 
   if (candidate.linkUrl) {
-    parts.push("", "4) 참고 링크", candidate.linkUrl);
+    parts.push("", "5) \uCC38\uACE0 \uB9C1\uD06C", candidate.linkUrl);
   }
 
   return parts.join("\n");
@@ -651,6 +722,35 @@ function isManualDownloadEnabled(): boolean {
     return false;
   }
   return ["1", "true", "on", "yes"].includes(raw);
+}
+
+function isManualPreviewEnabled(): boolean {
+  const raw = process.env.MANUAL_PREVIEW_ENABLED?.trim().toLowerCase();
+  if (!raw) {
+    return false;
+  }
+  return ["1", "true", "on", "yes"].includes(raw);
+}
+
+function getManualPreviewRoot(): string | null {
+  const raw = process.env.MANUAL_PREVIEW_DIR?.trim();
+  return raw ? resolve(raw) : null;
+}
+
+function isUuidLike(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function resolveManualPreviewPath(documentId: string, chunkId: string): string | null {
+  const root = getManualPreviewRoot();
+  if (!root) {
+    return null;
+  }
+  const filePath = resolve(root, documentId, `${chunkId}.png`);
+  if (!filePath.startsWith(`${root}${sep}`)) {
+    return null;
+  }
+  return filePath;
 }
 
 function buildDisplayPayload(args: {
@@ -1308,6 +1408,36 @@ export function buildServer(): FastifyInstance {
       return reply.code(404).send({ error: "MANUAL_DOCUMENT_UNAVAILABLE" });
     }
   });
+
+  app.get<{ Params: { documentId: string; chunkId: string } }>(
+    "/manual/previews/:documentId/:chunkId",
+    async (request, reply) => {
+      if (!isManualPreviewEnabled()) {
+        return reply.code(404).send({ error: "MANUAL_PREVIEW_DISABLED" });
+      }
+
+      const documentId = request.params.documentId?.trim();
+      const chunkId = request.params.chunkId?.trim();
+      if (!isUuidLike(documentId) || !isUuidLike(chunkId)) {
+        return reply.code(400).send({ error: "INVALID_MANUAL_PREVIEW_ID" });
+      }
+
+      const filePath = resolveManualPreviewPath(documentId, chunkId);
+      if (!filePath) {
+        return reply.code(404).send({ error: "MANUAL_PREVIEW_DIR_NOT_CONFIGURED" });
+      }
+
+      try {
+        await statFile(filePath);
+        reply.header("cache-control", "private, max-age=300");
+        reply.header("content-type", "image/png");
+        return reply.send(createReadStream(filePath));
+      } catch (error) {
+        request.log.debug({ error, documentId, chunkId }, "manual preview image not available");
+        return reply.code(404).send({ error: "MANUAL_PREVIEW_NOT_FOUND" });
+      }
+    }
+  );
 
   app.post<{ Body: ChatRequestBody }>("/chat", async (request, reply) => {
     const totalStartedAt = Date.now();
