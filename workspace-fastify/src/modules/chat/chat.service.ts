@@ -3749,8 +3749,9 @@ async function computeChatSearch(
     bestManualLexicalCoverage >= manualPriorityMinLexicalCoverage;
   const hasManualDominantScore =
     bestManual !== null &&
-    (bestManual.score >= confidence + 0.12 ||
+    ((bestManual.score >= confidence + 0.12 && bestManualFocusCoverage >= 0.75) ||
       (bestManual.score >= confidence + 0.015 && bestManualFocusCoverage >= 0.75) ||
+      (bestManual.score >= 0.87 && confidence < 0.65) ||
       (bestManual.score >= 0.92 && bestManualLexicalCoverage >= 0.35));
   const hasManualFallbackScore =
     bestManual !== null &&
