@@ -16,6 +16,9 @@ export default function ChatbotPage() {
     currentMessages,
     browserUserKey,
     deletingConversationIds,
+    isHydratingConversations,
+    conversationSyncError,
+    lastConversationSyncAt,
     setCurrentMessages,
     startNewConversation,
     ensureConversation,
@@ -73,6 +76,9 @@ export default function ChatbotPage() {
           conversations={conversations}
           activeConversationId={activeConversationId}
           deletingConversationIds={deletingConversationIds}
+          isHydratingConversations={isHydratingConversations}
+          conversationSyncError={conversationSyncError}
+          lastConversationSyncAt={lastConversationSyncAt}
           onSelectConversation={(id) => {
             selectConversation(id)
             setIsSidebarOpen(false)

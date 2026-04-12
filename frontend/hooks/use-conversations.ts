@@ -31,6 +31,9 @@ export function useConversations() {
   const [currentMessages, setCurrentMessages] = useState<Message[]>([])
   const [browserUserKey, setBrowserUserKey] = useState<string | null>(null)
   const [deletingConversationIds, setDeletingConversationIds] = useState<Set<string>>(() => new Set())
+  const [isHydratingConversations, setIsHydratingConversations] = useState(true)
+  const [conversationSyncError, setConversationSyncError] = useState<string | null>(null)
+  const [lastConversationSyncAt, setLastConversationSyncAt] = useState<string | null>(null)
 
   const applyConversationSelection = useCallback((nextConversations: Conversation[], preferredId?: string | null) => {
     if (nextConversations.length === 0) {
@@ -51,6 +54,8 @@ export function useConversations() {
     let cancelled = false
 
     async function hydrateConversations() {
+      setIsHydratingConversations(true)
+      setConversationSyncError(null)
       const localConversations = loadConversations()
       const savedActiveId = loadActiveSessionId()
       const stableUserKey = getBrowserUserKey()
@@ -66,6 +71,9 @@ export function useConversations() {
         const serverConversations = await fetchConversationsFromServer(stableUserKey)
         if (cancelled) return
 
+        setConversationSyncError(null)
+        setLastConversationSyncAt(new Date().toISOString())
+
         if (serverConversations.length > 0) {
           const mergedConversations = mergeConversations(localConversations, serverConversations)
           setConversations(mergedConversations)
@@ -75,6 +83,9 @@ export function useConversations() {
         }
       } catch (error) {
         console.warn("Failed to hydrate conversations from server:", error)
+        if (!cancelled) {
+          setConversationSyncError(error instanceof Error ? error.message : "서버 대화 이력을 불러오지 못했습니다")
+        }
       }
 
       if (!cancelled && localConversations.length > 0) {
@@ -83,7 +94,11 @@ export function useConversations() {
       }
     }
 
-    void hydrateConversations()
+    void hydrateConversations().finally(() => {
+      if (!cancelled) {
+        setIsHydratingConversations(false)
+      }
+    })
 
     return () => {
       cancelled = true
@@ -183,8 +198,11 @@ export function useConversations() {
       try {
         if (targetConversation.messages.length > 0) {
           await deleteConversationFromServer(conversationId, browserUserKey)
+          setLastConversationSyncAt(new Date().toISOString())
         }
+        setConversationSyncError(null)
       } catch (error) {
+        setConversationSyncError(error instanceof Error ? error.message : "대화를 삭제하지 못했습니다")
         toast({
           title: "대화를 삭제하지 못했습니다",
           description: error instanceof Error ? error.message : "잠시 후 다시 시도해 주세요.",
@@ -204,7 +222,7 @@ export function useConversations() {
       saveConversations(next)
 
       if (conversationId !== activeConversationId) {
-        toast({ title: "대화를 삭제했습니다" })
+        toast({ title: "대화를 삭제했습니다", description: "서버와 로컬 대화 목록을 동기화했습니다." })
         return
       }
 
@@ -213,14 +231,14 @@ export function useConversations() {
         setActiveConversationId(nextConv.id)
         setCurrentMessages(nextConv.messages)
         saveActiveSessionId(nextConv.id)
-        toast({ title: "대화를 삭제했습니다" })
+        toast({ title: "대화를 삭제했습니다", description: "다음 대화로 이동했습니다." })
         return
       }
 
       setActiveConversationId(null)
       setCurrentMessages([])
       clearActiveSessionId()
-      toast({ title: "대화를 삭제했습니다" })
+      toast({ title: "대화를 삭제했습니다", description: "대화 목록이 비었습니다." })
     },
     [activeConversationId, browserUserKey, conversations, deletingConversationIds],
   )
@@ -231,6 +249,9 @@ export function useConversations() {
     currentMessages,
     browserUserKey,
     deletingConversationIds,
+    isHydratingConversations,
+    conversationSyncError,
+    lastConversationSyncAt,
     setCurrentMessages,
     setActiveConversationId,
     startNewConversation,

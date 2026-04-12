@@ -1,6 +1,7 @@
-﻿"use client"
+"use client"
 
-import { MessageSquarePlus, Trash2, X } from "lucide-react"
+import { useMemo, useState } from "react"
+import { Loader2, MessageSquarePlus, Search, Trash2, X } from "lucide-react"
 import { groupConversationsByDate, type Conversation } from "@/lib/conversations"
 import { cn } from "@/lib/utils"
 
@@ -8,6 +9,9 @@ interface ConversationsPanelProps {
   conversations: Conversation[]
   activeConversationId: string | null
   deletingConversationIds?: Set<string>
+  isHydratingConversations?: boolean
+  conversationSyncError?: string | null
+  lastConversationSyncAt?: string | null
   onSelectConversation: (conversationId: string) => void
   onNewConversation: () => void
   onDeleteConversation: (conversationId: string) => void
@@ -18,13 +22,34 @@ export function ConversationsPanel({
   conversations,
   activeConversationId,
   deletingConversationIds,
+  isHydratingConversations = false,
+  conversationSyncError,
+  lastConversationSyncAt,
   onSelectConversation,
   onNewConversation,
   onDeleteConversation,
   onClose,
 }: ConversationsPanelProps) {
-  const groupedConversations = groupConversationsByDate(conversations)
-  const groups = ["오늘", "어제", "지난 7일", "이전"]
+  const [searchQuery, setSearchQuery] = useState("")
+  const trimmedSearch = searchQuery.trim().toLowerCase()
+  const filteredConversations = useMemo(() => {
+    if (!trimmedSearch) return conversations
+    return conversations.filter((conversation) => {
+      const searchable = [
+        conversation.title,
+        ...conversation.messages.slice(-6).map((message) => message.content),
+      ].join(" ").toLowerCase()
+      return searchable.includes(trimmedSearch)
+    })
+  }, [conversations, trimmedSearch])
+  const groupedConversations = groupConversationsByDate(filteredConversations)
+  const syncStatusText = isHydratingConversations
+    ? "대화 이력 동기화 중"
+    : conversationSyncError
+      ? "로컬 대화 이력 사용 중"
+      : lastConversationSyncAt
+        ? `동기화 완료 ${new Date(lastConversationSyncAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}`
+        : "대화 이력 준비됨"
 
   return (
     <div className="flex h-full flex-col bg-card">
@@ -52,6 +77,33 @@ export function ConversationsPanel({
         </button>
       </div>
 
+      <div className="border-b border-border p-3">
+        <label className="relative block">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="대화 제목/내용 검색"
+            className="h-9 w-full rounded-xl border border-border bg-background pl-8 pr-8 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label="검색어 지우기"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </label>
+        {trimmedSearch && (
+          <div className="mt-2 text-[11px] text-muted-foreground">
+            {filteredConversations.length.toLocaleString()}개 대화가 검색되었습니다.
+          </div>
+        )}
+      </div>
+
       <div className="flex-1 overflow-y-auto p-3">
         {conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -59,66 +111,70 @@ export function ConversationsPanel({
             <p className="text-sm text-muted-foreground">아직 대화가 없습니다.</p>
             <p className="mt-1 text-xs text-muted-foreground">새 대화를 시작해보세요.</p>
           </div>
+        ) : filteredConversations.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <Search className="mb-3 h-10 w-10 text-muted-foreground opacity-50" />
+            <p className="text-sm text-muted-foreground">검색 결과가 없습니다.</p>
+            <p className="mt-1 text-xs text-muted-foreground">다른 제목이나 오류 문구로 찾아보세요.</p>
+          </div>
         ) : (
           <div className="space-y-6">
-            {groups.map((groupName) => {
-              const groupConversations = groupedConversations.get(groupName)
-              if (!groupConversations || groupConversations.length === 0) {
-                return null
-              }
-
-              return (
-                <div key={groupName}>
-                  <h3 className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    {groupName}
-                  </h3>
-                  <div className="space-y-1">
-                    {groupConversations.map((conversation) => {
-                      const isActive = conversation.id === activeConversationId
-                      const isDeleting = deletingConversationIds?.has(conversation.id) ?? false
-                      return (
-                        <div
-                          key={conversation.id}
-                          className={cn(
-                            "group relative flex items-center gap-2 rounded-lg px-3 py-2 transition-all",
-                            isActive
-                              ? "bg-primary/10 text-primary"
-                              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                          )}
+            {groupedConversations.map(({ label, conversations: groupConversations }) => (
+              <div key={label}>
+                <h3 className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {label}
+                </h3>
+                <div className="space-y-1">
+                  {groupConversations.map((conversation) => {
+                    const isActive = conversation.id === activeConversationId
+                    const isDeleting = deletingConversationIds?.has(conversation.id) ?? false
+                    return (
+                      <div
+                        key={conversation.id}
+                        className={cn(
+                          "group relative flex items-center gap-2 rounded-lg px-3 py-2 transition-all",
+                          isActive
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                        )}
+                      >
+                        <button
+                          onClick={() => onSelectConversation(conversation.id)}
+                          className="flex-1 overflow-hidden text-left disabled:cursor-wait"
+                          disabled={isDeleting}
+                          type="button"
                         >
-                          <button
-                            onClick={() => onSelectConversation(conversation.id)}
-                            className="flex-1 overflow-hidden text-left"
-                            type="button"
-                          >
-                            <p className="truncate text-sm font-medium">{conversation.title}</p>
-                            <p className="mt-0.5 truncate text-xs opacity-70">
-                              {conversation.messages.length}개 메시지
-                            </p>
-                          </button>
-                          <button
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              onDeleteConversation(conversation.id)
-                            }}
-                            className={cn(
-                              "shrink-0 rounded-md p-1.5 transition-all",
-                              isDeleting ? "opacity-50" : "opacity-0 group-hover:opacity-100",
-                              "hover:bg-destructive/10",
-                            )}
-                            disabled={isDeleting}
-                            type="button"
-                            title={isDeleting ? "삭제 중" : "대화 삭제"}
-                          >
+                          <p className="truncate text-sm font-medium">{conversation.title}</p>
+                          <p className="mt-0.5 truncate text-xs opacity-70">
+                            {isDeleting ? "서버와 로컬에서 삭제 중..." : `${conversation.messages.length}개 메시지`}
+                          </p>
+                        </button>
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onDeleteConversation(conversation.id)
+                          }}
+                          className={cn(
+                            "shrink-0 rounded-md p-1.5 transition-all",
+                            isDeleting ? "opacity-70" : "opacity-0 group-hover:opacity-100",
+                            "hover:bg-destructive/10",
+                          )}
+                          disabled={isDeleting}
+                          type="button"
+                          title={isDeleting ? "삭제 중" : "대화 삭제"}
+                        >
+                          {isDeleting ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                          ) : (
                             <Trash2 className="h-3.5 w-3.5 text-muted-foreground transition-colors hover:text-destructive" />
-                          </button>
-                        </div>
-                      )
-                    })}
-                  </div>
+                          )}
+                        </button>
+                      </div>
+                    )
+                  })}
                 </div>
-              )
-            })}
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -126,11 +182,21 @@ export function ConversationsPanel({
       <div className="border-t border-border bg-card px-4 py-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span>
+            {isHydratingConversations && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />}
+            <span
+              className={cn(
+                "relative inline-flex h-2 w-2 rounded-full",
+                conversationSyncError ? "bg-amber-500" : isHydratingConversations ? "bg-blue-500" : "bg-green-500",
+              )}
+            />
           </span>
-          <span>CS Bot 온라인</span>
+          <span className="truncate">{syncStatusText}</span>
         </div>
+        {conversationSyncError && (
+          <p className="mt-1 line-clamp-2 text-[11px] text-amber-600 dark:text-amber-400">
+            {conversationSyncError}
+          </p>
+        )}
       </div>
     </div>
   )

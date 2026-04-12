@@ -111,8 +111,12 @@ interface ConversationPersistenceContext {
 }
 
 function buildConversationTitle(query: string): string {
-  const trimmed = query.trim();
-  return trimmed.length > 40 ? `${trimmed.slice(0, 40)}...` : trimmed;
+  const normalized = query
+    .replace(/\s+/g, " ")
+    .replace(/^(안녕하세요|안녕|혹시|저기|음|어|그|저)\s*[,.:!?]?\s*/i, "")
+    .trim();
+  const titleSource = normalized || query.trim() || "새 대화";
+  return titleSource.length > 40 ? `${titleSource.slice(0, 40)}...` : titleSource;
 }
 
 async function ensureConversationSession(input: ConversationSessionInput): Promise<string> {

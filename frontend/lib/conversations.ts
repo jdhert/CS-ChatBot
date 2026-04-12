@@ -8,6 +8,11 @@ export interface Conversation {
   updatedAt: string
 }
 
+export interface ConversationDateGroup {
+  label: string
+  conversations: Conversation[]
+}
+
 interface ServerConversationRow {
   session_id: string
   client_session_id: string | null
@@ -44,7 +49,12 @@ export function generateConversationId(): string {
 }
 
 export function generateConversationTitle(firstMessage: string): string {
-  return firstMessage.length > 30 ? `${firstMessage.slice(0, 30)}...` : firstMessage
+  const normalized = firstMessage
+    .replace(/\s+/g, " ")
+    .replace(/^(안녕하세요|안녕|혹시|저기|음|어|그|저)\s*[,.:!?]?\s*/i, "")
+    .trim()
+  const titleSource = normalized || firstMessage.trim() || "새 대화"
+  return titleSource.length > 28 ? `${titleSource.slice(0, 28)}...` : titleSource
 }
 
 export function loadConversations(): Conversation[] {
@@ -181,7 +191,7 @@ export function deleteConversation(conversations: Conversation[], conversationId
   return conversations.filter((conv) => conv.id !== conversationId)
 }
 
-export function groupConversationsByDate(conversations: Conversation[]): Map<string, Conversation[]> {
+export function groupConversationsByDate(conversations: Conversation[]): ConversationDateGroup[] {
   const groups = new Map<string, Conversation[]>()
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -189,6 +199,8 @@ export function groupConversationsByDate(conversations: Conversation[]): Map<str
   yesterday.setDate(yesterday.getDate() - 1)
   const lastWeek = new Date(today)
   lastWeek.setDate(lastWeek.getDate() - 7)
+  const lastMonth = new Date(today)
+  lastMonth.setDate(lastMonth.getDate() - 30)
 
   for (const conv of conversations) {
     const convDate = new Date(conv.updatedAt)
@@ -201,8 +213,10 @@ export function groupConversationsByDate(conversations: Conversation[]): Map<str
       group = "어제"
     } else if (convDay >= lastWeek) {
       group = "지난 7일"
+    } else if (convDay >= lastMonth) {
+      group = "지난 30일"
     } else {
-      group = "이전"
+      group = `${convDate.getFullYear()}년 ${convDate.getMonth() + 1}월`
     }
 
     if (!groups.has(group)) {
@@ -211,7 +225,10 @@ export function groupConversationsByDate(conversations: Conversation[]): Map<str
     groups.get(group)!.push(conv)
   }
 
-  return groups
+  return Array.from(groups.entries()).map(([label, groupConversations]) => ({
+    label,
+    conversations: groupConversations,
+  }))
 }
 
 function mapServerMessage(row: ServerMessageRow): Message | null {
@@ -251,7 +268,7 @@ async function fetchServerMessages(sessionId: string): Promise<Message[]> {
 }
 
 export async function fetchConversationsFromServer(userKey: string): Promise<Conversation[]> {
-  const response = await fetch(`/api/conversations?userKey=${encodeURIComponent(userKey)}&includeMessages=true`, {
+  const response = await fetch(`/api/conversations?userKey=${encodeURIComponent(userKey)}&includeMessages=true&limit=50`, {
     cache: "no-store",
   })
 
