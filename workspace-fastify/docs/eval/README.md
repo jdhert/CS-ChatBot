@@ -14,6 +14,9 @@
 - `scc_eval_set.seed.json`
   - 초기 시드 평가셋
   - 실제 `ai_core.v_scc_chunk_preview` 사례를 기준으로 만든 대표 질문셋
+- `query_log_eval_candidates.latest.json`
+  - `ai_core.query_log`에서 자동 추출한 실패/싫어요/결과 없음/저신뢰 eval 후보
+  - 실행 산출물이므로 Git 추적 대상이 아니며, 수동 검토 후 `scc_eval_set.seed.json`으로 승격한다.
 
 ## 데이터 스키마
 
@@ -119,6 +122,39 @@ Invoke-RestMethod `
 1. 질문셋은 증상형 / how-to형 / 상태확인형 / 무관질문을 섞어서 유지한다.
 2. 평가셋 수정 시에는 왜 추가/변경했는지 커밋 메시지나 handoff 문서에 남긴다.
 3. retrieval 튜닝 전/후에는 동일 질문셋으로 반드시 다시 측정한다.
+
+## 운영 로그 기반 후보 추출
+
+운영 `query_log`에 쌓인 실패/싫어요/결과 없음/저신뢰 질의를 eval 후보로 추출한다.
+
+```powershell
+cd workspace-fastify
+npm run eval:candidates -- --days 14 --limit 50
+```
+
+기본 산출물:
+
+- `docs/eval/query_log_eval_candidates.latest.json`
+
+추출 조건:
+
+- `user_feedback = 'down'`
+- `is_failure = true`
+- `is_no_match = true`
+- `confidence < 0.45`
+
+옵션:
+
+- `--days 30`: 최근 30일 기준
+- `--limit 100`: 후보 최대 100건
+- `--min-confidence 0.5`: 저신뢰 기준 변경
+- `--include-slow --slow-ms 8000`: 느린 쿼리도 후보에 포함
+
+주의:
+
+- 자동 후보는 `manualReviewRequired=true`로 생성된다.
+- `draftEvalItem.expectedRequireId`는 당시 관측된 best 후보일 뿐 정답으로 확정하면 안 된다.
+- 운영 로그와 SCC 이력을 확인한 뒤 `expectedRequireId`, `expectedChunkType`, `answerable`을 확정해서 seed로 승격한다.
 
 
 ## Latest Hybrid Recheck

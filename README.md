@@ -180,6 +180,7 @@ graph TB
 - 쿼리 로그 자동 기록 (`ai_core.query_log`)
 - 운영 smoke 평가 (`npm run smoke:prod`)
 - 배포 후 운영 smoke 자동화 (GitHub Actions에서 `csbotservice.com` 공개 도메인 검증)
+- 실패/싫어요 케이스 eval 후보 자동 추출 (`npm run eval:candidates`)
 - 관리자 운영 로그 대시보드 (`/logs`) 요약/필터/검색
 - 사용자 피드백 분석 (`/logs`) 답변 경로별 분포와 싫어요 Top 질의
 - JSP AJAX 연동용 `display` 응답 계약 문서화
@@ -548,6 +549,7 @@ sequenceDiagram
 - [x] 운영 API 라우팅 규칙 문서화 및 CI 회귀 검사 (`check:api-routes`)
 - [x] 운영 smoke 평가 스크립트 (`npm run smoke:prod`)
 - [x] 배포 후 운영 smoke 자동화 — GitHub Actions에서 `/health`와 대표 질문 smoke 검증
+- [x] 실패/싫어요 케이스 eval 후보 자동 추출 — `query_log` 기반 수동 검토 후보 JSON 생성
 - [x] 대화 이력 DB hydrate 및 삭제 UX 안정화
 - [x] JSP AJAX `display` 응답 계약 문서화
 - [x] `query_log` 운영 스키마 보정 (`log_uuid`, `is_failure`, `failure_reason`, `user_feedback`)
@@ -605,6 +607,7 @@ sequenceDiagram
 - ✅ **대화 이력 UX 개선** — 사이드바 제목/내용 검색, 날짜 그룹핑, 서버 hydrate/삭제 동기화 상태 표시
 - ✅ **채팅 내보내기 포맷 개선** — 헤더 다운로드 메뉴에서 `.txt`, Markdown, PDF 저장용 인쇄 화면 선택 지원
 - ✅ **배포 후 운영 smoke 자동화** — GitHub Actions 배포 완료 후 공개 `/health`와 `production_smoke.seed.json` 대표 질문 자동 검증
+- ✅ **실패/싫어요 eval 후보 자동 추출** — `query_log`에서 실패, no-match, 싫어요, 저신뢰 질의를 `query_log_eval_candidates.latest.json`으로 생성
 
 ### 2026-04-11
 - ✅ **운영 API 라우팅 규칙 고정** — nginx `/api/* → backend` 구조 기준으로 프론트 호출 경로 정리 (`/api/chat/stream`, `/api/retrieval/search`, `/api/admin/logs`)

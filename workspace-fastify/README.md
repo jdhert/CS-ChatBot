@@ -157,6 +157,19 @@ GitHub Actions 배포 workflow는 VM 재배포 후 별도 `Production Smoke` job
 - base URL 변경: `npm run smoke:prod -- --base-url https://example.com/api`
 - 일부만 실행: `npm run smoke:prod -- --limit 2`
 
+## 운영 로그 기반 eval 후보 추출
+
+`query_log`의 실패/싫어요/no-match/저신뢰 질의를 수동 검토용 eval 후보로 추출합니다.
+
+```bash
+npm run eval:candidates -- --days 14 --limit 50
+```
+
+기본 산출물:
+- `docs/eval/query_log_eval_candidates.latest.json`
+
+이 파일은 실행 결과 산출물이므로 Git 추적 대상에서 제외합니다. `draftEvalItem.expectedRequireId`는 당시 검색 결과일 뿐 정답 확정값이 아니므로, SCC 이력 검토 후 `scc_eval_set.seed.json`으로 승격합니다.
+
 ## API Rate Limiting
 
 운영 노출 API는 Fastify `onRequest` 훅에서 경로 그룹별 인메모리 rate limit을 적용합니다.
