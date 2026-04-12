@@ -1419,6 +1419,132 @@ function computeDomainCoverage(query: string, chunkText: string): number {
   return clamp01(hits / domainTokens.length);
 }
 
+const MANUAL_SPECIFICITY_STOP_TOKENS = new Set([
+  "방법",
+  "안내",
+  "설정",
+  "추가",
+  "등록",
+  "기능",
+  "적용",
+  "처리",
+  "변경",
+  "수정",
+  "바꾸기",
+  "바꾸는",
+  "표시",
+  "노출",
+  "나오게",
+  "보여",
+  "생성",
+  "신청"
+]);
+
+interface ManualSpecificitySignal {
+  tokens: string[];
+  coverage: number;
+  hasGap: boolean;
+}
+
+function canonicalizeManualSpecificityPhrases(query: string): string {
+  let rewritten = normalizeText(query);
+  const phraseRules: Array<[RegExp, string]> = [
+    [/야간근무\s+일정/gu, "야간근무일정"],
+    [/근무\s+일정/gu, "근무일정"],
+    [/메일\s+발송/gu, "메일발송"],
+    [/이메일\s+발송/gu, "메일발송"],
+    [/브라우저\s+캐시\s+여부/gu, "브라우저캐시여부"],
+    [/message\s*-\s*id/giu, "message-id"],
+    [/메시지\s*아이디/gu, "message-id"],
+    [/메세지\s*아이디/gu, "message-id"],
+    [/지출\s+결의서/gu, "지출결의서"],
+    [/비용\s+품의/gu, "비용품의"],
+    [/예산\s+품의/gu, "예산품의"]
+  ];
+
+  for (const [pattern, replacement] of phraseRules) {
+    rewritten = rewritten.replace(pattern, replacement);
+  }
+  return rewritten;
+}
+
+function getManualSpecificityTokens(query: string): string[] {
+  const tokenSet = new Set<string>();
+  for (const queryVariant of [query, canonicalizeManualSpecificityPhrases(query)]) {
+    for (const token of getDomainTokens(queryVariant)) {
+      if (!MANUAL_SPECIFICITY_STOP_TOKENS.has(token)) {
+        tokenSet.add(token);
+      }
+    }
+  }
+  return [...tokenSet].slice(0, 6);
+}
+
+function isHighSpecificityManualToken(token: string): boolean {
+  return token.length >= 5 || token.includes("-") || /\d/u.test(token) || token.includes("야간");
+}
+
+function shouldUseManualSpecificityVariant(token: string, variant: string): boolean {
+  if (variant === token) {
+    return true;
+  }
+
+  if (!isHighSpecificityManualToken(token)) {
+    return true;
+  }
+
+  if (token.includes("야간") && !variant.includes("야간")) {
+    return false;
+  }
+
+  return variant.length >= token.length - 2 || variant.includes(token) || (token.includes(variant) && variant.length >= 4);
+}
+
+function manualSpecificityTokenHit(
+  token: string,
+  candidateText: string,
+  candidateCompactText: string,
+  candidateTokens: Set<string>
+): boolean {
+  return expandWithSynonyms(token).some((variant) => {
+    const normalizedVariant = normalizeText(variant);
+    if (!normalizedVariant || !shouldUseManualSpecificityVariant(token, normalizedVariant)) {
+      return false;
+    }
+
+    const compactVariant = normalizedVariant.replace(/\s+/g, "");
+    return (
+      candidateText.includes(normalizedVariant) ||
+      candidateCompactText.includes(compactVariant) ||
+      (!isHighSpecificityManualToken(token) && tokenFuzzyHit(normalizedVariant, candidateTokens))
+    );
+  });
+}
+
+function computeManualSpecificitySignal(query: string, candidate: ManualCandidate | null): ManualSpecificitySignal {
+  const tokens = getManualSpecificityTokens(query);
+  if (tokens.length === 0) {
+    return { tokens, coverage: 1, hasGap: false };
+  }
+
+  if (!candidate) {
+    return { tokens, coverage: 0, hasGap: false };
+  }
+
+  const candidateText = normalizeText(`${candidate.title} ${candidate.sectionTitle ?? ""} ${candidate.previewText}`);
+  const candidateCompactText = candidateText.replace(/\s+/g, "");
+  const candidateTokens = new Set(tokenize(candidateText));
+  const hits = tokens.filter((token) =>
+    manualSpecificityTokenHit(token, candidateText, candidateCompactText, candidateTokens)
+  ).length;
+  const coverage = clamp01(hits / tokens.length);
+  const hasGap =
+    tokens.length >= 2
+      ? coverage < 0.6
+      : tokens.some(isHighSpecificityManualToken) && coverage < 1;
+  return { tokens, coverage, hasGap };
+}
+
 function isSensitiveQuery(query: string): boolean {
   return SENSITIVE_QUERY_PATTERNS.some((pattern) => pattern.test(query));
 }
@@ -2512,12 +2638,6 @@ function getManualContentQualityBoost(query: string, candidate: ManualCandidate)
   }
 
   if (normalizedQuery.includes("근무일정")) {
-    const isNightWorkQuery =
-      normalizedQuery.includes("야간근무") ||
-      (normalizedQuery.includes("야간") && normalizedQuery.includes("근무"));
-    if (isNightWorkQuery && !haystack.includes("야간근무") && !haystack.includes("야간 근무")) {
-      boost -= 0.44;
-    }
     if (haystack.includes("근무일정 신청") || haystack.includes("근무일정 생성")) {
       boost += 0.24;
     }
@@ -3746,17 +3866,12 @@ async function computeChatSearch(
   const bestManualLexicalCoverage = bestManual && queryVariants.lexical.length > 0
     ? Math.max(...queryVariants.lexical.map((queryVariant) => computeLexicalCoverage(queryVariant, bestManual.previewText)))
     : 0;
-  const bestManualFocusCoverage = bestManual ? computeFocusCoverage(query, bestManual.previewText) : 0;
-  const normalizedManualPriorityQuery = normalizeText(query);
-  const normalizedBestManualText = bestManual
-    ? normalizeText(`${bestManual.title} ${bestManual.sectionTitle ?? ""} ${bestManual.previewText}`)
+  const bestManualSearchText = bestManual
+    ? `${bestManual.title} ${bestManual.sectionTitle ?? ""} ${bestManual.previewText}`
     : "";
-  const hasManualMissingNightWorkSpecificity =
-    bestManual !== null &&
-    (normalizedManualPriorityQuery.includes("야간근무") ||
-      (normalizedManualPriorityQuery.includes("야간") && normalizedManualPriorityQuery.includes("근무"))) &&
-    !normalizedBestManualText.includes("야간근무") &&
-    !normalizedBestManualText.includes("야간 근무");
+  const bestManualFocusCoverage = bestManual ? computeFocusCoverage(query, bestManualSearchText) : 0;
+  const bestManualSpecificitySignal = computeManualSpecificitySignal(query, bestManual);
+  const hasManualSpecificity = bestManual !== null && !bestManualSpecificitySignal.hasGap;
   const hasManualHowToPriority =
     isManualHowToPriorityEnabled() &&
     isManualHowToPriorityQuery(query, intent) &&
@@ -3765,6 +3880,7 @@ async function computeChatSearch(
     bestManualLexicalCoverage >= manualPriorityMinLexicalCoverage;
   const hasManualDominantScore =
     bestManual !== null &&
+    hasManualSpecificity &&
     ((bestManual.score >= confidence + 0.12 && bestManualFocusCoverage >= 0.75) ||
       (bestManual.score >= confidence + 0.015 && bestManualFocusCoverage >= 0.75) ||
       (bestManual.score >= 0.87 && confidence < 0.65) ||
@@ -3775,7 +3891,7 @@ async function computeChatSearch(
   const hasManualFallback =
     bestManual !== null &&
     hasManualFallbackScore &&
-    !(hasConfidentBest && hasManualMissingNightWorkSpecificity) &&
+    !(hasConfidentBest && bestManualSpecificitySignal.hasGap) &&
     (!hasConfidentBest || (hasManualHowToPriority && hasManualDominantScore));
   const responseConfidence = hasManualFallback ? bestManual.score : confidence;
   const responseVectorUsed = vectorResult.vectorUsed || manualResult.manualUsed;
