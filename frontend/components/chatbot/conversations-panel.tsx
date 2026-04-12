@@ -1,7 +1,7 @@
 "use client"
 
-import { useMemo } from "react"
-import { Loader2, MessageSquarePlus, Search, Trash2, X } from "lucide-react"
+import { type FormEvent, useMemo, useState } from "react"
+import { Check, Loader2, MessageSquarePlus, Pencil, Search, Trash2, X } from "lucide-react"
 import { groupConversationsByDate, type Conversation } from "@/lib/conversations"
 import { cn } from "@/lib/utils"
 
@@ -9,6 +9,7 @@ interface ConversationsPanelProps {
   conversations: Conversation[]
   activeConversationId: string | null
   deletingConversationIds?: Set<string>
+  renamingConversationIds?: Set<string>
   isHydratingConversations?: boolean
   conversationSyncError?: string | null
   lastConversationSyncAt?: string | null
@@ -21,6 +22,7 @@ interface ConversationsPanelProps {
   onSelectConversation: (conversationId: string) => void
   onNewConversation: () => void
   onDeleteConversation: (conversationId: string) => void
+  onRenameConversation?: (conversationId: string, title: string) => Promise<void>
   onSearchQueryChange?: (query: string) => void
   onLoadMoreConversations?: () => void
   onClose?: () => void
@@ -30,6 +32,7 @@ export function ConversationsPanel({
   conversations,
   activeConversationId,
   deletingConversationIds,
+  renamingConversationIds,
   isHydratingConversations = false,
   conversationSyncError,
   lastConversationSyncAt,
@@ -42,10 +45,13 @@ export function ConversationsPanel({
   onSelectConversation,
   onNewConversation,
   onDeleteConversation,
+  onRenameConversation,
   onSearchQueryChange,
   onLoadMoreConversations,
   onClose,
 }: ConversationsPanelProps) {
+  const [editingConversationId, setEditingConversationId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState("")
   const trimmedSearch = searchQuery.trim().toLowerCase()
   const filteredConversations = useMemo(() => {
     if (!trimmedSearch) return conversations
@@ -65,6 +71,32 @@ export function ConversationsPanel({
       : lastConversationSyncAt
         ? `동기화 완료 ${new Date(lastConversationSyncAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}`
         : "대화 이력 준비됨"
+
+  const startEditingTitle = (conversation: Conversation) => {
+    setEditingConversationId(conversation.id)
+    setEditingTitle(conversation.title)
+  }
+
+  const cancelEditingTitle = () => {
+    setEditingConversationId(null)
+    setEditingTitle("")
+  }
+
+  const submitEditingTitle = async (event: FormEvent<HTMLFormElement>, conversation: Conversation) => {
+    event.preventDefault()
+    const title = editingTitle.trim()
+    if (!title || title === conversation.title || !onRenameConversation) {
+      cancelEditingTitle()
+      return
+    }
+
+    try {
+      await onRenameConversation(conversation.id, title)
+      cancelEditingTitle()
+    } catch {
+      // Hook already surfaces the error with toast and sync status.
+    }
+  }
 
   return (
     <div className="flex h-full flex-col bg-card">
@@ -150,6 +182,8 @@ export function ConversationsPanel({
                   {groupConversations.map((conversation) => {
                     const isActive = conversation.id === activeConversationId
                     const isDeleting = deletingConversationIds?.has(conversation.id) ?? false
+                    const isRenaming = renamingConversationIds?.has(conversation.id) ?? false
+                    const isEditing = editingConversationId === conversation.id
                     return (
                       <div
                         key={conversation.id}
@@ -160,17 +194,77 @@ export function ConversationsPanel({
                             : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                         )}
                       >
-                        <button
-                          onClick={() => onSelectConversation(conversation.id)}
-                          className="flex-1 overflow-hidden text-left disabled:cursor-wait"
-                          disabled={isDeleting}
-                          type="button"
-                        >
-                          <p className="truncate text-sm font-medium">{conversation.title}</p>
-                          <p className="mt-0.5 truncate text-xs opacity-70">
-                            {isDeleting ? "서버와 로컬에서 삭제 중..." : `${conversation.messages.length}개 메시지`}
-                          </p>
-                        </button>
+                        {isEditing ? (
+                          <form
+                            className="flex min-w-0 flex-1 items-center gap-1"
+                            onSubmit={(event) => submitEditingTitle(event, conversation)}
+                          >
+                            <input
+                              value={editingTitle}
+                              onChange={(event) => setEditingTitle(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Escape") {
+                                  event.preventDefault()
+                                  cancelEditingTitle()
+                                }
+                              }}
+                              className="h-7 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
+                              maxLength={80}
+                              autoFocus
+                            />
+                            <button
+                              type="submit"
+                              disabled={isRenaming || !editingTitle.trim()}
+                              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-primary disabled:cursor-wait disabled:opacity-60"
+                              aria-label="대화 제목 저장"
+                            >
+                              {isRenaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEditingTitle}
+                              disabled={isRenaming}
+                              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-wait disabled:opacity-60"
+                              aria-label="대화 제목 편집 취소"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </form>
+                        ) : (
+                          <button
+                            onClick={() => onSelectConversation(conversation.id)}
+                            className="flex-1 overflow-hidden text-left disabled:cursor-wait"
+                            disabled={isDeleting || isRenaming}
+                            type="button"
+                          >
+                            <p className="truncate text-sm font-medium">{conversation.title}</p>
+                            <p className="mt-0.5 truncate text-xs opacity-70">
+                              {isDeleting
+                                ? "서버와 로컬에서 삭제 중..."
+                                : isRenaming
+                                  ? "제목 변경 중..."
+                                  : `${conversation.messages.length}개 메시지`}
+                            </p>
+                          </button>
+                        )}
+                        {!isEditing && onRenameConversation && (
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              startEditingTitle(conversation)
+                            }}
+                            className="shrink-0 rounded-md p-1.5 opacity-0 transition-all hover:bg-accent group-hover:opacity-100"
+                            disabled={isDeleting || isRenaming}
+                            type="button"
+                            title="대화 제목 편집"
+                          >
+                            {isRenaming ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                            ) : (
+                              <Pencil className="h-3.5 w-3.5 text-muted-foreground transition-colors hover:text-primary" />
+                            )}
+                          </button>
+                        )}
                         <button
                           onClick={(event) => {
                             event.stopPropagation()
@@ -181,7 +275,7 @@ export function ConversationsPanel({
                             isDeleting ? "opacity-70" : "opacity-0 group-hover:opacity-100",
                             "hover:bg-destructive/10",
                           )}
-                          disabled={isDeleting}
+                          disabled={isDeleting || isRenaming || isEditing}
                           type="button"
                           title={isDeleting ? "삭제 중" : "대화 삭제"}
                         >

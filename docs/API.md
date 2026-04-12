@@ -11,6 +11,7 @@ CS 챗봇 시스템의 REST API 문서입니다.
   - [GET /health](#get-health)
   - [GET /conversations](#get-conversations)
   - [GET /conversations/:sessionId/messages](#get-conversationssessionidmessages)
+  - [PATCH /conversations/:sessionId](#patch-conversationssessionid)
 
 ---
 
@@ -342,6 +343,38 @@ GET /conversations?userKey=user-identifier&limit=20&search=휴가신청&includeM
     "createdAt": "2026-04-09T10:00:05Z"
   }
 ]
+```
+
+---
+
+### PATCH /conversations/:sessionId
+
+대화 제목을 변경합니다. `sessionId`는 프론트의 `clientConversationId`입니다.
+
+#### 요청
+
+```http
+PATCH /conversations/conv-123?userKey=user-identifier
+Content-Type: application/json
+```
+
+```json
+{
+  "title": "휴가신청 상신 오류 문의"
+}
+```
+
+#### 응답
+
+```json
+{
+  "ok": true,
+  "row": {
+    "session_id": "uuid",
+    "client_session_id": "conv-123",
+    "title": "휴가신청 상신 오류 문의"
+  }
+}
 ```
 
 ---

@@ -16,6 +16,7 @@ import {
   saveActiveSessionId,
   saveConversations,
   updateConversation,
+  updateConversationTitleOnServer,
 } from "@/lib/conversations"
 
 const CONVERSATION_PAGE_SIZE = 50
@@ -46,6 +47,7 @@ export function useConversations() {
   const [searchConversationOffset, setSearchConversationOffset] = useState(0)
   const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false)
   const [conversationPaginationError, setConversationPaginationError] = useState<string | null>(null)
+  const [renamingConversationIds, setRenamingConversationIds] = useState<Set<string>>(() => new Set())
 
   const applyConversationSelection = useCallback((nextConversations: Conversation[], preferredId?: string | null) => {
     if (nextConversations.length === 0) {
@@ -378,12 +380,68 @@ export function useConversations() {
     [activeConversationId, browserUserKey, conversations, deletingConversationIds],
   )
 
+  const renameConversation = useCallback(
+    async (conversationId: string, nextTitle: string) => {
+      const title = nextTitle.trim()
+      if (!title) {
+        throw new Error("대화 제목을 입력해 주세요.")
+      }
+
+      const targetConversation = conversations.find((conv) => conv.id === conversationId)
+      if (!targetConversation) {
+        throw new Error("대화를 찾지 못했습니다.")
+      }
+      if (targetConversation.title === title) {
+        return
+      }
+
+      setRenamingConversationIds((prev) => new Set(prev).add(conversationId))
+
+      try {
+        if (targetConversation.messages.length > 0) {
+          await updateConversationTitleOnServer(conversationId, title, browserUserKey)
+          setLastConversationSyncAt(new Date().toISOString())
+        }
+
+        setConversationSyncError(null)
+        setConversations((prev) => {
+          const existingConv = prev.find((conv) => conv.id === conversationId)
+          if (!existingConv) return prev
+          const next = updateConversation(prev, {
+            ...existingConv,
+            title,
+          })
+          saveConversations(next)
+          return next
+        })
+        toast({ title: "대화 제목을 변경했습니다" })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "대화 제목을 변경하지 못했습니다"
+        setConversationSyncError(message)
+        toast({
+          title: "대화 제목을 변경하지 못했습니다",
+          description: message,
+          variant: "destructive",
+        })
+        throw error
+      } finally {
+        setRenamingConversationIds((prev) => {
+          const next = new Set(prev)
+          next.delete(conversationId)
+          return next
+        })
+      }
+    },
+    [browserUserKey, conversations],
+  )
+
   return {
     conversations,
     activeConversationId,
     currentMessages,
     browserUserKey,
     deletingConversationIds,
+    renamingConversationIds,
     isHydratingConversations,
     conversationSyncError,
     lastConversationSyncAt,
@@ -400,6 +458,7 @@ export function useConversations() {
     ensureConversation,
     selectConversation,
     removeConversation,
+    renameConversation,
     loadMoreConversations,
   }
 }

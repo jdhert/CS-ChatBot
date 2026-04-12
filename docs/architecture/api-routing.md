@@ -21,7 +21,7 @@ location /api/ {
 | `/api/admin/logs` | `/admin/logs` | `GET /admin/logs` |
 | `/api/feedback` | `/feedback` | `POST /feedback` |
 | `/api/conversations` | `/conversations` | `GET /conversations` |
-| `/api/conversations/:sessionId` | `/conversations/:sessionId` | `DELETE /conversations/:sessionId` |
+| `/api/conversations/:sessionId` | `/conversations/:sessionId` | `PATCH /conversations/:sessionId`, `DELETE /conversations/:sessionId` |
 | `/api/conversations/:sessionId/messages` | `/conversations/:sessionId/messages` | `GET /conversations/:sessionId/messages` |
 | `/health` | `/health` | `GET /health` |
 

@@ -379,3 +379,28 @@ export async function deleteConversationFromServer(conversationId: string, userK
     throw new Error(payload?.message ?? payload?.error ?? `Failed to delete conversation: ${response.status}`)
   }
 }
+
+export async function updateConversationTitleOnServer(
+  conversationId: string,
+  title: string,
+  userKey?: string | null,
+): Promise<void> {
+  const query = new URLSearchParams()
+  if (userKey) {
+    query.set("userKey", userKey)
+  }
+
+  const suffix = query.toString() ? `?${query.toString()}` : ""
+  const response = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}${suffix}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ title }),
+  })
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { message?: string; error?: string } | null
+    throw new Error(payload?.message ?? payload?.error ?? `Failed to update conversation title: ${response.status}`)
+  }
+}

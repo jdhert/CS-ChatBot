@@ -16,6 +16,7 @@ export default function ChatbotPage() {
     currentMessages,
     browserUserKey,
     deletingConversationIds,
+    renamingConversationIds,
     isHydratingConversations,
     conversationSyncError,
     lastConversationSyncAt,
@@ -31,6 +32,7 @@ export default function ChatbotPage() {
     ensureConversation,
     selectConversation,
     removeConversation,
+    renameConversation,
     loadMoreConversations,
   } = useConversations()
 
@@ -84,6 +86,7 @@ export default function ChatbotPage() {
           conversations={conversations}
           activeConversationId={activeConversationId}
           deletingConversationIds={deletingConversationIds}
+          renamingConversationIds={renamingConversationIds}
           isHydratingConversations={isHydratingConversations}
           conversationSyncError={conversationSyncError}
           lastConversationSyncAt={lastConversationSyncAt}
@@ -102,6 +105,7 @@ export default function ChatbotPage() {
             setIsSidebarOpen(false)
           }}
           onDeleteConversation={removeConversation}
+          onRenameConversation={renameConversation}
           onSearchQueryChange={setConversationSearchQuery}
           onLoadMoreConversations={loadMoreConversations}
           onClose={() => setIsSidebarOpen(false)}

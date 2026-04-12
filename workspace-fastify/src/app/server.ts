@@ -2229,6 +2229,64 @@ export function buildServer(): FastifyInstance {
     }
   });
 
+  app.patch<{ Params: { clientSessionId: string }; Body: { title?: string } }>("/conversations/:clientSessionId", async (request, reply) => {
+    const clientSessionId = request.params?.clientSessionId?.trim();
+    const userKey = (request.query as Record<string, string> | undefined)?.userKey?.trim() || null;
+    const title = request.body?.title?.trim() ?? "";
+
+    if (!clientSessionId) {
+      return reply.code(400).send({
+        error: "INVALID_CLIENT_SESSION_ID",
+        message: "`clientSessionId` is required."
+      });
+    }
+    if (!title) {
+      return reply.code(400).send({
+        error: "INVALID_CONVERSATION_TITLE",
+        message: "`title` is required."
+      });
+    }
+    if (title.length > 80) {
+      return reply.code(400).send({
+        error: "CONVERSATION_TITLE_TOO_LONG",
+        message: "`title` must be 80 characters or less."
+      });
+    }
+
+    const pool = getVectorPool();
+    try {
+      const existing = await pool.query<{ session_id: string; user_key: string | null }>(
+        `select session_id, user_key
+           from ai_core.conversation_session
+          where client_session_id = $1
+          limit 1`,
+        [clientSessionId]
+      );
+
+      if (!existing.rowCount || !existing.rows[0]?.session_id) {
+        return reply.code(404).send({ error: "CONVERSATION_NOT_FOUND" });
+      }
+
+      if (userKey && existing.rows[0].user_key && existing.rows[0].user_key !== userKey) {
+        return reply.code(403).send({ error: "CONVERSATION_UPDATE_FORBIDDEN" });
+      }
+
+      const result = await pool.query(
+        `update ai_core.conversation_session
+            set title = $2
+          where session_id = $1
+          returning session_id, client_session_id, user_key, title, status,
+                    message_count, last_message_at, created_at, updated_at`,
+        [existing.rows[0].session_id, title]
+      );
+
+      return reply.code(200).send({ ok: true, row: result.rows[0] ?? null });
+    } catch (error) {
+      request.log.error(error, "failed to update conversation title");
+      return reply.code(500).send({ error: "CONVERSATION_UPDATE_FAILED" });
+    }
+  });
+
   app.delete<{ Params: { clientSessionId: string } }>("/conversations/:clientSessionId", async (request, reply) => {
     const clientSessionId = request.params?.clientSessionId?.trim();
     const userKey = (request.query as Record<string, string> | undefined)?.userKey?.trim() || null;

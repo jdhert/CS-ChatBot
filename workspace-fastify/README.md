@@ -248,7 +248,7 @@ npm run eval:candidates -- --days 14 --limit 50
 
 프론트는 초기 로딩 시 `/api/conversations?userKey=...&includeMessages=true`로 서버 저장 대화를 hydrate합니다. 서버 결과가 있더라도 로컬에만 남아 있는 optimistic 대화는 병합해서 보존합니다.
 
-Next.js 채팅 사이드바는 hydrate된 대화 이력을 제목/로드된 메시지 기준으로 즉시 필터링하고, 2글자 이상 검색어는 `/conversations?search=...&includeMessages=true`로 서버 저장 본문까지 검색합니다. 결과는 로컬 optimistic 대화와 병합되며, `offset` 기반 더보기로 최근 목록과 검색 결과를 추가 로드합니다. 오늘/어제/지난 7일/지난 30일/월별 그룹으로 묶어 표시하고, 삭제 중에는 해당 항목에 진행 상태를 표시하며, hydrate 실패 시에는 로컬 optimistic 이력을 사용 중임을 footer에서 안내합니다.
+Next.js 채팅 사이드바는 hydrate된 대화 이력을 제목/로드된 메시지 기준으로 즉시 필터링하고, 2글자 이상 검색어는 `/conversations?search=...&includeMessages=true`로 서버 저장 본문까지 검색합니다. 결과는 로컬 optimistic 대화와 병합되며, `offset` 기반 더보기로 최근 목록과 검색 결과를 추가 로드합니다. 대화 제목은 사이드바에서 직접 편집할 수 있고 `PATCH /conversations/:clientSessionId`로 서버에 동기화합니다. 오늘/어제/지난 7일/지난 30일/월별 그룹으로 묶어 표시하고, 삭제 중에는 해당 항목에 진행 상태를 표시하며, hydrate 실패 시에는 로컬 optimistic 이력을 사용 중임을 footer에서 안내합니다.
 
 백엔드는 같은 세션에 메시지를 append할 때 `conversation_session` row를 트랜잭션에서 `for update`로 잠근 뒤 `turn_index`를 계산합니다. 병렬 요청이 들어와도 `(session_id, turn_index)` 충돌 가능성을 줄이고 `message_count`는 실제 메시지 수 기준으로 재계산합니다.
 
