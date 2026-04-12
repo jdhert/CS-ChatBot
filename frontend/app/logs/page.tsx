@@ -285,6 +285,19 @@ const ANSWER_SOURCE_LABEL: Record<string, string> = {
   llm_stream: "스트리밍 LLM",
 }
 
+const DIAGNOSTIC_LABEL: Record<string, string> = {
+  vectorError: "벡터 오류",
+  vectorStrategy: "벡터 전략",
+  vectorModelTag: "벡터 모델",
+  vectorCandidateCount: "벡터 후보 수",
+  llmError: "LLM 오류",
+  llmSkipReason: "LLM 스킵 사유",
+  answerSourceReason: "답변 출처 사유",
+  queryRewritten: "질의 보정 여부",
+  rewrittenQuery: "보정 질의",
+  assistantStatus: "응답 상태",
+}
+
 function formatDate(iso: string) {
   const d = new Date(iso)
   return d.toLocaleString("ko-KR", {
@@ -422,24 +435,24 @@ function BuildInfoMonitoring({ build }: { build: BuildInfo | null }) {
 
       <div className="grid gap-3 md:grid-cols-4">
         <div className="rounded-xl bg-muted/40 p-3">
-          <div className="text-[11px] text-muted-foreground">Commit</div>
+          <div className="text-[11px] text-muted-foreground">커밋</div>
           <div className="mt-1 font-mono text-sm font-semibold text-foreground">{commit}</div>
           <div className="mt-1 truncate text-[11px] text-muted-foreground">{build.commitSha ?? "unknown"}</div>
         </div>
         <div className="rounded-xl bg-muted/40 p-3">
-          <div className="text-[11px] text-muted-foreground">Branch</div>
+          <div className="text-[11px] text-muted-foreground">브랜치</div>
           <div className="mt-1 text-sm font-semibold text-foreground">{build.refName ?? "-"}</div>
-          <div className="mt-1 text-[11px] text-muted-foreground">GitHub ref</div>
+          <div className="mt-1 text-[11px] text-muted-foreground">GitHub 기준 브랜치</div>
         </div>
         <div className="rounded-xl bg-muted/40 p-3">
-          <div className="text-[11px] text-muted-foreground">Build time</div>
+          <div className="text-[11px] text-muted-foreground">빌드 시각</div>
           <div className="mt-1 text-sm font-semibold text-foreground">
             {build.buildTime ? formatDate(build.buildTime) : "-"}
           </div>
           <div className="mt-1 text-[11px] text-muted-foreground">UTC deploy script 기준</div>
         </div>
         <div className="rounded-xl bg-muted/40 p-3">
-          <div className="text-[11px] text-muted-foreground">Image / Run</div>
+          <div className="text-[11px] text-muted-foreground">이미지 / 실행</div>
           <div className="mt-1 text-sm font-semibold text-foreground">{build.imageTag ?? "latest"}</div>
           {githubRunUrl ? (
             <a
@@ -448,10 +461,10 @@ function BuildInfoMonitoring({ build }: { build: BuildInfo | null }) {
               rel="noreferrer"
               className="mt-1 block text-[11px] text-primary underline-offset-2 hover:underline"
             >
-              Actions run {build.runId}
+              Actions 실행 {build.runId}
             </a>
           ) : (
-            <div className="mt-1 text-[11px] text-muted-foreground">Actions run 없음</div>
+            <div className="mt-1 text-[11px] text-muted-foreground">Actions 실행 없음</div>
           )}
         </div>
       </div>
@@ -626,7 +639,7 @@ function RateLimitMonitoring({ snapshot }: { snapshot: RateLimitSnapshot | null 
                   <span className="font-medium text-foreground">{row.group}</span>
                   <span>{row.method} {row.path}</span>
                   <span>IP {row.ip}</span>
-                  <span>limit {row.max}</span>
+                  <span>제한 {row.max}</span>
                   <span>{formatDate(row.blockedAt)}</span>
                 </div>
               ))}
@@ -650,7 +663,7 @@ function QueryEmbeddingMonitoring({ snapshot }: { snapshot: QueryEmbeddingSnapsh
         <div>
           <h2 className="text-sm font-semibold text-foreground">Query Embedding 상태</h2>
           <p className="text-xs text-muted-foreground">
-            Google/OpenAI 쿼리 임베딩 캐시와 429 cooldown 상태입니다. 프로세스 재기동 시 초기화됩니다.
+            Google/OpenAI 쿼리 임베딩 캐시와 429 쿨다운 상태입니다. 프로세스 재기동 시 초기화됩니다.
           </p>
         </div>
         <Zap className={cn("h-4 w-4", snapshot.activeCooldownCount > 0 ? "text-amber-500" : "text-blue-500")} />
@@ -670,7 +683,7 @@ function QueryEmbeddingMonitoring({ snapshot }: { snapshot: QueryEmbeddingSnapsh
           <div className="mt-1 text-[11px] text-muted-foreground">시도 {snapshot.attempts.toLocaleString()} · 캐시 {snapshot.cacheHits.toLocaleString()}</div>
         </div>
         <div className="rounded-xl bg-muted/40 p-3">
-          <div className="text-[11px] text-muted-foreground">Cooldown</div>
+          <div className="text-[11px] text-muted-foreground">쿨다운</div>
           <div className={cn("mt-1 text-sm font-semibold", snapshot.activeCooldownCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground")}>
             {snapshot.activeCooldownCount > 0 ? `${cooldownMinutes}분 남음` : "없음"}
           </div>
@@ -689,7 +702,7 @@ function QueryEmbeddingMonitoring({ snapshot }: { snapshot: QueryEmbeddingSnapsh
           {snapshot.lastFailureAt && <div>최근 실패: {formatDate(snapshot.lastFailureAt)}</div>}
           {activeCooldown && (
             <div>
-              cooldown 모델: {activeCooldown.modelTag} · 해제 예정 {formatDate(activeCooldown.cooldownUntil)}
+              쿨다운 모델: {activeCooldown.modelTag} · 해제 예정 {formatDate(activeCooldown.cooldownUntil)}
             </div>
           )}
         </div>
@@ -762,7 +775,7 @@ function EmbeddingCoverageMonitoring({ snapshot }: { snapshot: EmbeddingCoverage
 
       <div className="grid gap-3 md:grid-cols-4">
         <div className="rounded-xl bg-muted/40 p-3">
-          <div className="text-[11px] text-muted-foreground">Source chunks</div>
+          <div className="text-[11px] text-muted-foreground">원본 청크</div>
           <div className="mt-1 text-sm font-semibold text-foreground">{snapshot.sourceChunkRows.toLocaleString()}건</div>
           <div className="mt-1 text-[11px] text-muted-foreground">v_scc_chunk_preview 기준</div>
         </div>
@@ -968,7 +981,7 @@ function LogRowCard({ row }: { row: LogRow }) {
               <dl className="grid gap-1.5 text-xs sm:grid-cols-2">
                 {diagnostics.map(([label, value]) => (
                   <div key={String(label)} className="min-w-0">
-                    <dt className="text-muted-foreground">{label}</dt>
+                    <dt className="text-muted-foreground">{DIAGNOSTIC_LABEL[String(label)] ?? label}</dt>
                     <dd className="truncate font-medium text-foreground">{String(value)}</dd>
                   </div>
                 ))}
@@ -992,7 +1005,7 @@ function LogRowCard({ row }: { row: LogRow }) {
                         <span className="font-semibold text-foreground">#{index + 1}</span>
                         {candidate.sccId && <span className="text-muted-foreground">SCC {candidate.sccId}</span>}
                         {candidate.chunkType && <span className="text-muted-foreground">{candidate.chunkType}</span>}
-                        <span className="text-muted-foreground">score {formatMaybeScore(candidate.score)}</span>
+                        <span className="text-muted-foreground">점수 {formatMaybeScore(candidate.score)}</span>
                         {candidateUrl && (
                           <a href={candidateUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">
                             이력 보기
