@@ -160,7 +160,7 @@ graph TB
 - 서버 DB 기반 대화 이력 저장/복원 (`conversation_session`, `conversation_message`)
 - localStorage는 optimistic UI 및 임시 보조 저장으로만 사용
 - 대화 제목 자동 생성 / 직접 편집 / 삭제 / 전환
-- 대화 제목·로드된 메시지 검색, 서버 저장 본문 검색, 대화 이력 더보기, 오늘/어제/지난 7일/지난 30일/월별 그룹핑
+- 대화 제목·로드된 메시지 검색, 서버 저장 본문 검색, 검색어 하이라이트, 대화 이력 더보기, 오늘/어제/지난 7일/지난 30일/월별 그룹핑
 - 사이드바 삭제 UX 안정화 (중복 삭제 방지, 삭제 중 상태 표시, 빈 대화 강제 생성 방지)
 - 대화 이력 hydrate/삭제 동기화 상태 표시
 - 멀티턴 컨텍스트 (최근 6개 메시지 LLM에 전달)
@@ -563,7 +563,7 @@ sequenceDiagram
 - [x] Embedding 커버리지 자동 알림 — `/health`와 `/logs`에서 warning/critical 상태 노출
 - [x] 스트리밍 응답 타이밍 세분화 — `/chat/stream`의 rewrite, TTFT, LLM stream, persistence 시간을 metadata로 기록
 - [x] 관리자 로그 상세 드릴다운 — `/logs`에서 후보 Top3와 vector/LLM 진단 정보 표시
-- [x] 대화 이력 UX 개선 — 제목 정제/직접 편집, 제목/내용 검색, 더보기, 날짜 그룹핑, 삭제/동기화 상태 표시
+- [x] 대화 이력 UX 개선 — 제목 정제/직접 편집, 제목/내용 검색, 검색어 하이라이트, 더보기, 날짜 그룹핑, 삭제/동기화 상태 표시
 
 ### 완료 (2026-04-02 추가)
 - [x] nginx `depends_on` healthcheck 조건 추가 (502 재발 방지)
@@ -582,7 +582,7 @@ sequenceDiagram
 
 #### 🟡 중간 우선순위
 - [x] **대화 이력 UI 복원** — `/conversations` API 연동, 사이드바에서 이전 대화 불러오기
-- [x] **대화 이력 UX 개선** — 제목 직접 편집, 제목/내용 검색, 더보기, 날짜 그룹핑, 삭제/동기화 상태 표시
+- [x] **대화 이력 UX 개선** — 제목 직접 편집, 제목/내용 검색, 검색어 하이라이트, 더보기, 날짜 그룹핑, 삭제/동기화 상태 표시
 - [x] **사용자 피드백 수집 강화** — 👍👎 누적 통계 대시보드 (`query_log.user_feedback` 활용)
 - [x] **검색 결과 URL 공유** — `/search?q=` 쿼리스트링 반영
 - [x] **채팅 내보내기 토스트 알림** — 내보내기 완료/실패 피드백
@@ -604,7 +604,7 @@ sequenceDiagram
 - ✅ **Embedding 커버리지 자동 알림 추가** — 임계치 기반 warning/critical 판정과 `/health`, `/logs` 경고 노출
 - ✅ **스트리밍 응답 타이밍 세분화** — `/chat/stream` 응답의 rewrite, TTFT, LLM stream, persistence 시간을 `/logs` 드릴다운에서 확인
 - ✅ **관리자 로그 상세 드릴다운 추가** — 대화 메시지 metadata 기반 Top 후보, 진단값, 응답 미리보기 표시
-- ✅ **대화 이력 UX 개선** — 사이드바 제목 직접 편집, 제목/로드된 메시지 검색, 서버 본문 검색, 더보기, 날짜 그룹핑, 서버 hydrate/삭제 동기화 상태 표시
+- ✅ **대화 이력 UX 개선** — 사이드바 제목 직접 편집, 제목/로드된 메시지 검색, 서버 본문 검색, 검색어 하이라이트, 더보기, 날짜 그룹핑, 서버 hydrate/삭제 동기화 상태 표시
 - ✅ **채팅 내보내기 포맷 개선** — 헤더 다운로드 메뉴에서 `.txt`, Markdown, PDF 저장용 인쇄 화면 선택 지원
 - ✅ **배포 후 운영 smoke 자동화** — GitHub Actions 배포 완료 후 공개 `/health`와 `production_smoke.seed.json` 대표 질문 자동 검증
 - ✅ **실패/싫어요 eval 후보 자동 추출** — `query_log`에서 실패, no-match, 싫어요, 저신뢰 질의를 `query_log_eval_candidates.latest.json`으로 생성

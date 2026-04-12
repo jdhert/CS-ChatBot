@@ -1,9 +1,75 @@
 "use client"
 
-import { type FormEvent, useMemo, useState } from "react"
+import { type FormEvent, type ReactNode, useMemo, useState } from "react"
 import { Check, Loader2, MessageSquarePlus, Pencil, Search, Trash2, X } from "lucide-react"
 import { groupConversationsByDate, type Conversation } from "@/lib/conversations"
 import { cn } from "@/lib/utils"
+
+const SEARCH_PREVIEW_BEFORE = 18
+const SEARCH_PREVIEW_AFTER = 34
+
+function highlightText(text: string, normalizedSearch: string): ReactNode {
+  if (!normalizedSearch) return text
+
+  const lowerText = text.toLowerCase()
+  const parts: ReactNode[] = []
+  let cursor = 0
+  let matchIndex = lowerText.indexOf(normalizedSearch)
+
+  while (matchIndex !== -1) {
+    if (matchIndex > cursor) {
+      parts.push(text.slice(cursor, matchIndex))
+    }
+
+    const endIndex = matchIndex + normalizedSearch.length
+    parts.push(
+      <mark
+        key={`${matchIndex}-${endIndex}`}
+        className="rounded bg-yellow-200 px-0.5 text-yellow-950 dark:bg-yellow-500/30 dark:text-yellow-100"
+      >
+        {text.slice(matchIndex, endIndex)}
+      </mark>,
+    )
+
+    cursor = endIndex
+    matchIndex = lowerText.indexOf(normalizedSearch, cursor)
+  }
+
+  if (cursor < text.length) {
+    parts.push(text.slice(cursor))
+  }
+
+  return parts.length > 0 ? parts : text
+}
+
+function buildSearchPreview(conversation: Conversation, normalizedSearch: string): string | null {
+  if (!normalizedSearch) return null
+
+  const matchedMessage = conversation.messages.find((message) =>
+    message.content.toLowerCase().includes(normalizedSearch),
+  )
+  if (matchedMessage) {
+    const normalizedContent = matchedMessage.content.replace(/\s+/g, " ").trim()
+    const matchIndex = normalizedContent.toLowerCase().indexOf(normalizedSearch)
+    if (matchIndex === -1) return null
+
+    const startIndex = Math.max(0, matchIndex - SEARCH_PREVIEW_BEFORE)
+    const endIndex = Math.min(
+      normalizedContent.length,
+      matchIndex + normalizedSearch.length + SEARCH_PREVIEW_AFTER,
+    )
+
+    return `${startIndex > 0 ? "..." : ""}${normalizedContent.slice(startIndex, endIndex)}${
+      endIndex < normalizedContent.length ? "..." : ""
+    }`
+  }
+
+  if (conversation.title.toLowerCase().includes(normalizedSearch)) {
+    return "제목에서 일치"
+  }
+
+  return null
+}
 
 interface ConversationsPanelProps {
   conversations: Conversation[]
@@ -184,6 +250,7 @@ export function ConversationsPanel({
                     const isDeleting = deletingConversationIds?.has(conversation.id) ?? false
                     const isRenaming = renamingConversationIds?.has(conversation.id) ?? false
                     const isEditing = editingConversationId === conversation.id
+                    const searchPreview = buildSearchPreview(conversation, trimmedSearch)
                     return (
                       <div
                         key={conversation.id}
@@ -237,13 +304,17 @@ export function ConversationsPanel({
                             disabled={isDeleting || isRenaming}
                             type="button"
                           >
-                            <p className="truncate text-sm font-medium">{conversation.title}</p>
-                            <p className="mt-0.5 truncate text-xs opacity-70">
+                            <p className="truncate text-sm font-medium">
+                              {highlightText(conversation.title, trimmedSearch)}
+                            </p>
+                            <p className="mt-0.5 line-clamp-2 text-xs opacity-70">
                               {isDeleting
                                 ? "서버와 로컬에서 삭제 중..."
                                 : isRenaming
                                   ? "제목 변경 중..."
-                                  : `${conversation.messages.length}개 메시지`}
+                                  : searchPreview
+                                    ? highlightText(searchPreview, trimmedSearch)
+                                    : `${conversation.messages.length}개 메시지`}
                             </p>
                           </button>
                         )}
