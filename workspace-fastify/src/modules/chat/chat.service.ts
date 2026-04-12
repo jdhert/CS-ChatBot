@@ -2512,6 +2512,12 @@ function getManualContentQualityBoost(query: string, candidate: ManualCandidate)
   }
 
   if (normalizedQuery.includes("근무일정")) {
+    const isNightWorkQuery =
+      normalizedQuery.includes("야간근무") ||
+      (normalizedQuery.includes("야간") && normalizedQuery.includes("근무"));
+    if (isNightWorkQuery && !haystack.includes("야간근무") && !haystack.includes("야간 근무")) {
+      boost -= 0.44;
+    }
     if (haystack.includes("근무일정 신청") || haystack.includes("근무일정 생성")) {
       boost += 0.24;
     }
@@ -3741,6 +3747,16 @@ async function computeChatSearch(
     ? Math.max(...queryVariants.lexical.map((queryVariant) => computeLexicalCoverage(queryVariant, bestManual.previewText)))
     : 0;
   const bestManualFocusCoverage = bestManual ? computeFocusCoverage(query, bestManual.previewText) : 0;
+  const normalizedManualPriorityQuery = normalizeText(query);
+  const normalizedBestManualText = bestManual
+    ? normalizeText(`${bestManual.title} ${bestManual.sectionTitle ?? ""} ${bestManual.previewText}`)
+    : "";
+  const hasManualMissingNightWorkSpecificity =
+    bestManual !== null &&
+    (normalizedManualPriorityQuery.includes("야간근무") ||
+      (normalizedManualPriorityQuery.includes("야간") && normalizedManualPriorityQuery.includes("근무"))) &&
+    !normalizedBestManualText.includes("야간근무") &&
+    !normalizedBestManualText.includes("야간 근무");
   const hasManualHowToPriority =
     isManualHowToPriorityEnabled() &&
     isManualHowToPriorityQuery(query, intent) &&
@@ -3759,6 +3775,7 @@ async function computeChatSearch(
   const hasManualFallback =
     bestManual !== null &&
     hasManualFallbackScore &&
+    !(hasConfidentBest && hasManualMissingNightWorkSpecificity) &&
     (!hasConfidentBest || (hasManualHowToPriority && hasManualDominantScore));
   const responseConfidence = hasManualFallback ? bestManual.score : confidence;
   const responseVectorUsed = vectorResult.vectorUsed || manualResult.manualUsed;
