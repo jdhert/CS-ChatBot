@@ -62,6 +62,24 @@ interface QueryLogEntry {
   totalMs?: number;
 }
 
+interface StreamTimingMetadata {
+  rewriteMs?: number | null;
+  retrievalMs?: number | null;
+  ruleMs?: number | null;
+  embeddingMs?: number | null;
+  vectorMs?: number | null;
+  rerankMs?: number | null;
+  llmFirstTokenMs?: number | null;
+  llmStreamMs?: number | null;
+  cacheReplayMs?: number | null;
+  persistenceMs?: number | null;
+  totalMs?: number | null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 // 대화 세션 / 메시지 저장용 구조
 
 interface ConversationSessionInput {
@@ -1272,6 +1290,7 @@ export function buildServer(): FastifyInstance {
   });
 
   app.post<{ Body: ChatRequestBody }>("/chat/stream", async (request, reply) => {
+    const requestStartedAt = Date.now();
     const logUuid = crypto.randomUUID();
     const query = request.body?.query?.trim();
     const scopeRaw = request.body?.retrievalScope?.trim().toLowerCase();
@@ -1281,6 +1300,7 @@ export function buildServer(): FastifyInstance {
     const clientConversationId = request.body?.conversationId?.trim() || null;
     const userKey = request.body?.userKey?.trim() || null;
     let persistenceContext: ConversationPersistenceContext | null = null;
+    let persistenceMs = 0;
 
     if (!query) {
       return reply.code(400).send({
@@ -1313,6 +1333,7 @@ export function buildServer(): FastifyInstance {
     }
 
     try {
+      const persistenceStartedAt = Date.now();
       persistenceContext = await startConversationPersistence({
         clientSessionId: clientConversationId,
         userKey,
@@ -1320,6 +1341,7 @@ export function buildServer(): FastifyInstance {
         query,
         retrievalScope: scope,
       });
+      persistenceMs += Date.now() - persistenceStartedAt;
     } catch (error) {
       request.log.warn(error, "failed to persist conversation user turn before /chat/stream flow");
     }
@@ -1328,8 +1350,20 @@ export function buildServer(): FastifyInstance {
     const cachedResult = getCachedResult(query, scope);
     if (cachedResult) {
       request.log.info({ query, scope }, "Cache hit ??replaying cached stream result");
+      const cachedStreamTimings = cachedResult.metadata?.streamTimings;
+      const cachedMetadata = {
+        ...(cachedResult.metadata ?? {}),
+        cacheHit: true,
+        streamTimings: {
+          ...(isRecord(cachedStreamTimings) ? cachedStreamTimings : {}),
+          cacheReplayMs: Date.now() - requestStartedAt,
+          persistenceMs,
+          totalMs: Date.now() - requestStartedAt,
+        } satisfies StreamTimingMetadata,
+      };
       if (persistenceContext) {
         try {
+          const persistenceStartedAt = Date.now();
           await finishConversationPersistence({
             context: persistenceContext,
             content: cachedResult.fullText,
@@ -1337,11 +1371,14 @@ export function buildServer(): FastifyInstance {
             answerSource: "llm_stream",
             retrievalMode: "hybrid",
             logUuid,
-            metadata: {
-              ...(cachedResult.metadata ?? {}),
-              cacheHit: true,
-            }
+            metadata: cachedMetadata
           });
+          persistenceMs += Date.now() - persistenceStartedAt;
+          cachedMetadata.streamTimings = {
+            ...cachedMetadata.streamTimings,
+            persistenceMs,
+            totalMs: Date.now() - requestStartedAt,
+          };
         } catch (error) {
           request.log.warn(error, "failed to persist cached assistant turn before /chat/stream replay");
         }
@@ -1352,12 +1389,13 @@ export function buildServer(): FastifyInstance {
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no",
       });
-      reply.raw.write(`data: ${JSON.stringify({ type: "metadata", data: { ...cachedResult.metadata, cacheHit: true } })}\n\n`);
+      reply.raw.write(`data: ${JSON.stringify({ type: "metadata", data: cachedMetadata })}\n\n`);
       reply.raw.write(`data: ${JSON.stringify({ type: "chunk", data: cachedResult.fullText })}\n\n`);
       reply.raw.write(`data: ${JSON.stringify({ type: "done", data: {
         conversationId: persistenceContext?.conversationId ?? null,
         userMessageId: persistenceContext?.userMessageId ?? null,
-        assistantMessageId: persistenceContext?.assistantMessageId ?? null
+        assistantMessageId: persistenceContext?.assistantMessageId ?? null,
+        streamTimings: cachedMetadata.streamTimings
       } })}\n\n`);
       reply.raw.end();
       return;
@@ -1402,7 +1440,7 @@ export function buildServer(): FastifyInstance {
           vectorMs: result.timings?.vectorMs,
           rerankMs: result.timings?.rerankMs,
           retrievalMs: result.timings?.retrievalMs,
-          totalMs: Date.now() - (retrievalStartedAt - retrievalMs),
+          totalMs: Date.now() - requestStartedAt,
         });
 
         const noMatchMessage = hasCandidates && topScore >= 0.3
@@ -1411,6 +1449,7 @@ export function buildServer(): FastifyInstance {
 
         if (persistenceContext) {
           try {
+            const persistenceStartedAt = Date.now();
             await finishConversationPersistence({
               context: persistenceContext,
               content: noMatchMessage,
@@ -1426,9 +1465,22 @@ export function buildServer(): FastifyInstance {
                 vectorError: result.vectorError ?? null,
                 vectorStrategy: result.vectorStrategy ?? null,
                 vectorModelTag: result.vectorModelTag ?? null,
-                vectorCandidateCount: result.vectorCandidateCount ?? null
+                vectorCandidateCount: result.vectorCandidateCount ?? null,
+                streamTimings: {
+                  rewriteMs: rewrite.rewriteMs,
+                  retrievalMs,
+                  ruleMs: result.timings?.ruleMs ?? null,
+                  embeddingMs: result.timings?.embeddingMs ?? null,
+                  vectorMs: result.timings?.vectorMs ?? null,
+                  rerankMs: result.timings?.rerankMs ?? null,
+                  llmFirstTokenMs: null,
+                  llmStreamMs: null,
+                  persistenceMs,
+                  totalMs: Date.now() - requestStartedAt,
+                }
               }
             });
+            persistenceMs += Date.now() - persistenceStartedAt;
           } catch (error) {
             request.log.warn(error, "failed to persist no-match assistant turn before /chat/stream response");
           }
@@ -1467,7 +1519,7 @@ export function buildServer(): FastifyInstance {
         linkUrl: buildSimilarIssueUrl(c.requireId),
       }));
 
-      const metadata = {
+      const metadata: Record<string, unknown> & { streamTimings: StreamTimingMetadata } = {
         logId: logUuid,
         conversationId: persistenceContext?.conversationId ?? null,
         userMessageId: persistenceContext?.userMessageId ?? null,
@@ -1486,22 +1538,45 @@ export function buildServer(): FastifyInstance {
         vectorStrategy: result.vectorStrategy ?? null,
         vectorModelTag: result.vectorModelTag ?? null,
         vectorCandidateCount: result.vectorCandidateCount ?? null,
+        streamTimings: {
+          rewriteMs: rewrite.rewriteMs,
+          retrievalMs,
+          ruleMs: result.timings?.ruleMs ?? null,
+          embeddingMs: result.timings?.embeddingMs ?? null,
+          vectorMs: result.timings?.vectorMs ?? null,
+          rerankMs: result.timings?.rerankMs ?? null,
+          llmFirstTokenMs: null,
+          llmStreamMs: null,
+          persistenceMs,
+          totalMs: null,
+        },
       };
       reply.raw.write(`data: ${JSON.stringify({ type: "metadata", data: metadata })}\n\n`);
 
       // Stream the answer
       let chunkCount = 0;
       let accumulatedText = "";
+      let llmFirstTokenMs: number | null = null;
+      const llmStartedAt = Date.now();
       for await (const chunk of generateChatAnswerStream(effectiveQuery, result, conversationHistory)) {
         chunkCount++;
         accumulatedText += chunk;
+        llmFirstTokenMs ??= Date.now() - llmStartedAt;
         const timestamp = Date.now();
         request.log.info({ chunkCount, timestamp, chunkLength: chunk.length }, "Sending chunk");
         reply.raw.write(`data: ${JSON.stringify({ type: "chunk", data: chunk })}\n\n`);
       }
+      const llmStreamMs = Date.now() - llmStartedAt;
+      metadata.streamTimings = {
+        ...metadata.streamTimings,
+        llmFirstTokenMs,
+        llmStreamMs,
+        persistenceMs,
+        totalMs: Date.now() - requestStartedAt,
+      };
 
       // Send done signal
-      request.log.info({ totalChunks: chunkCount }, "Stream completed");
+      request.log.info({ totalChunks: chunkCount, streamTimings: metadata.streamTimings }, "Stream completed");
 
       // 스트림 완료 후 결과를 캐시에 저장 (LLM 응답이 있을 때만)
       if (accumulatedText.length > 0) {
@@ -1531,11 +1606,13 @@ export function buildServer(): FastifyInstance {
         vectorMs: result.timings?.vectorMs,
         rerankMs: result.timings?.rerankMs,
         retrievalMs,
-        totalMs: Date.now() - retrievalStartedAt,
+        llmMs: llmStreamMs,
+        totalMs: Date.now() - requestStartedAt,
       });
 
       if (persistenceContext) {
         try {
+          const persistenceStartedAt = Date.now();
           await finishConversationPersistence({
             context: persistenceContext,
             content: accumulatedText,
@@ -1549,6 +1626,12 @@ export function buildServer(): FastifyInstance {
             logUuid,
             metadata
           });
+          persistenceMs += Date.now() - persistenceStartedAt;
+          metadata.streamTimings = {
+            ...metadata.streamTimings,
+            persistenceMs,
+            totalMs: Date.now() - requestStartedAt,
+          };
         } catch (error) {
           request.log.warn(error, "failed to persist conversation assistant turn before /chat/stream done");
         }
@@ -1557,7 +1640,8 @@ export function buildServer(): FastifyInstance {
       reply.raw.write(`data: ${JSON.stringify({ type: "done", data: {
         conversationId: persistenceContext?.conversationId ?? null,
         userMessageId: persistenceContext?.userMessageId ?? null,
-        assistantMessageId: persistenceContext?.assistantMessageId ?? null
+        assistantMessageId: persistenceContext?.assistantMessageId ?? null,
+        streamTimings: metadata.streamTimings
       } })}\n\n`);
       reply.raw.end();
     } catch (error) {

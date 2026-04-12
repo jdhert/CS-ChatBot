@@ -73,6 +73,21 @@ interface LogConversationMetadata {
   cacheHit?: boolean | null
   hasCandidates?: boolean | null
   topScore?: number | null
+  streamTimings?: StreamTimings | null
+}
+
+interface StreamTimings {
+  rewriteMs?: number | null
+  retrievalMs?: number | null
+  ruleMs?: number | null
+  embeddingMs?: number | null
+  vectorMs?: number | null
+  rerankMs?: number | null
+  llmFirstTokenMs?: number | null
+  llmStreamMs?: number | null
+  cacheReplayMs?: number | null
+  persistenceMs?: number | null
+  totalMs?: number | null
 }
 
 interface LogsResponse {
@@ -316,7 +331,7 @@ function StatusBadge({ row }: { row: LogRow }) {
 }
 
 function TimingChip({ label, ms }: { label: string; ms: number | null }) {
-  if (!ms) return null
+  if (ms === null || ms === undefined) return null
   return (
     <span className="flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
       <Clock className="h-2.5 w-2.5" />
@@ -718,6 +733,7 @@ function LogRowCard({ row }: { row: LogRow }) {
     : null
   const metadata = row.conversation_metadata ?? {}
   const topCandidates = Array.isArray(metadata.top3Candidates) ? metadata.top3Candidates : []
+  const streamTimings = metadata.streamTimings ?? null
   const diagnostics = [
     ["vectorError", metadata.vectorError],
     ["vectorStrategy", metadata.vectorStrategy],
@@ -793,6 +809,21 @@ function LogRowCard({ row }: { row: LogRow }) {
             <TimingChip label="LLM" ms={row.llm_ms} />
             <TimingChip label="전체" ms={row.total_ms} />
           </div>
+
+          {streamTimings && (
+            <div className="rounded-xl bg-muted/40 p-3">
+              <div className="mb-2 text-xs font-semibold text-foreground">스트리밍 세부 타이밍</div>
+              <div className="flex flex-wrap gap-1.5">
+                <TimingChip label="rewrite" ms={streamTimings.rewriteMs ?? null} />
+                <TimingChip label="retrieval" ms={streamTimings.retrievalMs ?? null} />
+                <TimingChip label="TTFT" ms={streamTimings.llmFirstTokenMs ?? null} />
+                <TimingChip label="LLM stream" ms={streamTimings.llmStreamMs ?? null} />
+                <TimingChip label="persist" ms={streamTimings.persistenceMs ?? null} />
+                <TimingChip label="cache replay" ms={streamTimings.cacheReplayMs ?? null} />
+                <TimingChip label="total" ms={streamTimings.totalMs ?? null} />
+              </div>
+            </div>
+          )}
 
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-3">
             {row.chunk_type && (

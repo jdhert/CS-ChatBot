@@ -210,6 +210,7 @@ npm run smoke:prod
 - `vectorError`, `vectorStrategy`, `vectorModelTag`, `vectorCandidateCount`
 - `llmError`, `llmSkipReason`, `answerSourceReason`
 - rewrite 여부와 rewrite query
+- `/chat/stream` 세부 타이밍 (`streamTimings.rewriteMs`, `llmFirstTokenMs`, `llmStreamMs`, `persistenceMs`)
 - assistant 응답 미리보기
 
 별도 DB 스키마 변경 없이 기존 `conversation_message.metadata`를 사용합니다.
