@@ -15,10 +15,14 @@ interface ConversationsPanelProps {
   searchQuery?: string
   isSearchingConversations?: boolean
   conversationSearchError?: string | null
+  hasMoreConversations?: boolean
+  isLoadingMoreConversations?: boolean
+  conversationPaginationError?: string | null
   onSelectConversation: (conversationId: string) => void
   onNewConversation: () => void
   onDeleteConversation: (conversationId: string) => void
   onSearchQueryChange?: (query: string) => void
+  onLoadMoreConversations?: () => void
   onClose?: () => void
 }
 
@@ -32,10 +36,14 @@ export function ConversationsPanel({
   searchQuery = "",
   isSearchingConversations = false,
   conversationSearchError,
+  hasMoreConversations = false,
+  isLoadingMoreConversations = false,
+  conversationPaginationError,
   onSelectConversation,
   onNewConversation,
   onDeleteConversation,
   onSearchQueryChange,
+  onLoadMoreConversations,
   onClose,
 }: ConversationsPanelProps) {
   const trimmedSearch = searchQuery.trim().toLowerCase()
@@ -189,6 +197,22 @@ export function ConversationsPanel({
                 </div>
               </div>
             ))}
+            {hasMoreConversations && (
+              <button
+                type="button"
+                onClick={onLoadMoreConversations}
+                disabled={isLoadingMoreConversations || !onLoadMoreConversations}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-wait disabled:opacity-60"
+              >
+                {isLoadingMoreConversations && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {trimmedSearch ? "검색 결과 더 보기" : "이전 대화 더 보기"}
+              </button>
+            )}
+            {conversationPaginationError && (
+              <p className="px-2 text-[11px] text-amber-600 dark:text-amber-400">
+                더 보기 실패: {conversationPaginationError}
+              </p>
+            )}
           </div>
         )}
       </div>

@@ -7,7 +7,7 @@ import {
   createNewConversation,
   deleteConversation,
   deleteConversationFromServer,
-  fetchConversationsFromServer,
+  fetchConversationPageFromServer,
   generateConversationTitle,
   getBrowserUserKey,
   loadActiveSessionId,
@@ -17,6 +17,9 @@ import {
   saveConversations,
   updateConversation,
 } from "@/lib/conversations"
+
+const CONVERSATION_PAGE_SIZE = 50
+const SEARCH_PAGE_SIZE = 50
 
 function isConversationSettled(messages: Message[]): boolean {
   if (messages.length === 0) return false
@@ -37,6 +40,12 @@ export function useConversations() {
   const [conversationSearchQuery, setConversationSearchQuery] = useState("")
   const [isSearchingConversations, setIsSearchingConversations] = useState(false)
   const [conversationSearchError, setConversationSearchError] = useState<string | null>(null)
+  const [hasMoreConversations, setHasMoreConversations] = useState(false)
+  const [recentConversationOffset, setRecentConversationOffset] = useState(0)
+  const [hasMoreSearchConversations, setHasMoreSearchConversations] = useState(false)
+  const [searchConversationOffset, setSearchConversationOffset] = useState(0)
+  const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false)
+  const [conversationPaginationError, setConversationPaginationError] = useState<string | null>(null)
 
   const applyConversationSelection = useCallback((nextConversations: Conversation[], preferredId?: string | null) => {
     if (nextConversations.length === 0) {
@@ -71,11 +80,17 @@ export function useConversations() {
       }
 
       try {
-        const serverConversations = await fetchConversationsFromServer(stableUserKey)
+        const serverResult = await fetchConversationPageFromServer(stableUserKey, {
+          includeMessages: true,
+          limit: CONVERSATION_PAGE_SIZE,
+        })
         if (cancelled) return
 
+        const serverConversations = serverResult.conversations
         setConversationSyncError(null)
         setLastConversationSyncAt(new Date().toISOString())
+        setHasMoreConversations(serverResult.pagination?.hasMore ?? serverConversations.length >= CONVERSATION_PAGE_SIZE)
+        setRecentConversationOffset(serverResult.pagination?.nextOffset ?? serverConversations.length)
 
         if (serverConversations.length > 0) {
           const mergedConversations = mergeConversations(localConversations, serverConversations)
@@ -117,24 +132,31 @@ export function useConversations() {
     if (search.length < 2) {
       setConversationSearchError(null)
       setIsSearchingConversations(false)
+      setHasMoreSearchConversations(false)
+      setSearchConversationOffset(0)
       return
     }
 
     let cancelled = false
+    setHasMoreSearchConversations(false)
+    setSearchConversationOffset(0)
     const timer = window.setTimeout(async () => {
       setIsSearchingConversations(true)
       setConversationSearchError(null)
 
       try {
-        const serverConversations = await fetchConversationsFromServer(browserUserKey, {
+        const serverResult = await fetchConversationPageFromServer(browserUserKey, {
           search,
           includeMessages: true,
-          limit: 100,
+          limit: SEARCH_PAGE_SIZE,
         })
         if (cancelled) return
 
+        const serverConversations = serverResult.conversations
         setConversationSyncError(null)
         setLastConversationSyncAt(new Date().toISOString())
+        setHasMoreSearchConversations(serverResult.pagination?.hasMore ?? serverConversations.length >= SEARCH_PAGE_SIZE)
+        setSearchConversationOffset(serverResult.pagination?.nextOffset ?? serverConversations.length)
         setConversations((prev) => {
           const next = mergeConversations(prev, serverConversations, 100)
           saveConversations(next)
@@ -157,6 +179,66 @@ export function useConversations() {
       window.clearTimeout(timer)
     }
   }, [browserUserKey, conversationSearchQuery])
+
+  const loadMoreConversations = useCallback(async () => {
+    if (!browserUserKey || isLoadingMoreConversations) {
+      return
+    }
+
+    const search = conversationSearchQuery.trim()
+    const isSearchMode = search.length >= 2
+    const hasMore = isSearchMode ? hasMoreSearchConversations : hasMoreConversations
+    if (!hasMore) {
+      return
+    }
+
+    const offset = isSearchMode ? searchConversationOffset : recentConversationOffset
+    setIsLoadingMoreConversations(true)
+    setConversationPaginationError(null)
+
+    try {
+      const serverResult = await fetchConversationPageFromServer(browserUserKey, {
+        search: isSearchMode ? search : undefined,
+        includeMessages: true,
+        limit: isSearchMode ? SEARCH_PAGE_SIZE : CONVERSATION_PAGE_SIZE,
+        offset,
+      })
+
+      if (isSearchMode) {
+        setHasMoreSearchConversations(serverResult.pagination?.hasMore ?? serverResult.conversations.length >= SEARCH_PAGE_SIZE)
+        setSearchConversationOffset(serverResult.pagination?.nextOffset ?? offset + serverResult.conversations.length)
+      } else {
+        setHasMoreConversations(serverResult.pagination?.hasMore ?? serverResult.conversations.length >= CONVERSATION_PAGE_SIZE)
+        setRecentConversationOffset(serverResult.pagination?.nextOffset ?? offset + serverResult.conversations.length)
+      }
+
+      setConversationSyncError(null)
+      setLastConversationSyncAt(new Date().toISOString())
+      setConversations((prev) => {
+        const next = mergeConversations(prev, serverResult.conversations, Math.max(prev.length + serverResult.conversations.length, 100))
+        saveConversations(next)
+        return next
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "대화 이력을 더 불러오지 못했습니다"
+      setConversationPaginationError(message)
+      toast({
+        title: "대화 이력을 더 불러오지 못했습니다",
+        description: message,
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoadingMoreConversations(false)
+    }
+  }, [
+    browserUserKey,
+    conversationSearchQuery,
+    hasMoreConversations,
+    hasMoreSearchConversations,
+    isLoadingMoreConversations,
+    recentConversationOffset,
+    searchConversationOffset,
+  ])
 
   useEffect(() => {
     if (!activeConversationId || currentMessages.length === 0 || !isConversationSettled(currentMessages)) {
@@ -308,6 +390,9 @@ export function useConversations() {
     conversationSearchQuery,
     isSearchingConversations,
     conversationSearchError,
+    hasMoreConversations: conversationSearchQuery.trim().length >= 2 ? hasMoreSearchConversations : hasMoreConversations,
+    isLoadingMoreConversations,
+    conversationPaginationError,
     setCurrentMessages,
     setActiveConversationId,
     setConversationSearchQuery,
@@ -315,5 +400,6 @@ export function useConversations() {
     ensureConversation,
     selectConversation,
     removeConversation,
+    loadMoreConversations,
   }
 }

@@ -22,12 +22,16 @@ export default function ChatbotPage() {
     conversationSearchQuery,
     isSearchingConversations,
     conversationSearchError,
+    hasMoreConversations,
+    isLoadingMoreConversations,
+    conversationPaginationError,
     setCurrentMessages,
     setConversationSearchQuery,
     startNewConversation,
     ensureConversation,
     selectConversation,
     removeConversation,
+    loadMoreConversations,
   } = useConversations()
 
   const {
@@ -86,6 +90,9 @@ export default function ChatbotPage() {
           searchQuery={conversationSearchQuery}
           isSearchingConversations={isSearchingConversations}
           conversationSearchError={conversationSearchError}
+          hasMoreConversations={hasMoreConversations}
+          isLoadingMoreConversations={isLoadingMoreConversations}
+          conversationPaginationError={conversationPaginationError}
           onSelectConversation={(id) => {
             selectConversation(id)
             setIsSidebarOpen(false)
@@ -96,6 +103,7 @@ export default function ChatbotPage() {
           }}
           onDeleteConversation={removeConversation}
           onSearchQueryChange={setConversationSearchQuery}
+          onLoadMoreConversations={loadMoreConversations}
           onClose={() => setIsSidebarOpen(false)}
         />
       </div>

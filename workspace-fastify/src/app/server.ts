@@ -2133,7 +2133,7 @@ export function buildServer(): FastifyInstance {
           )
         )`);
       }
-      params.push(limit);
+      params.push(limit + 1);
       const limitParam = params.length;
       params.push(offset);
       const offsetParam = params.length;
@@ -2148,12 +2148,23 @@ export function buildServer(): FastifyInstance {
          offset $${offsetParam}`,
         params
       );
+      const sessionRows = sessionResult.rows.slice(0, limit);
+      const hasMore = sessionResult.rows.length > limit;
 
-      if (!includeMessages || sessionResult.rows.length === 0) {
-        return reply.code(200).send({ rows: sessionResult.rows });
+      if (!includeMessages || sessionRows.length === 0) {
+        return reply.code(200).send({
+          rows: sessionRows,
+          pagination: {
+            limit,
+            offset,
+            count: sessionRows.length,
+            hasMore,
+            nextOffset: hasMore ? offset + sessionRows.length : null
+          }
+        });
       }
 
-      const sessionIds = sessionResult.rows.map((row) => row.session_id);
+      const sessionIds = sessionRows.map((row) => row.session_id);
       const messageResult = await pool.query(
         `select session_id, message_id, turn_index, role, content, status,
                 answer_source, retrieval_mode, confidence, best_require_id, best_scc_id,
@@ -2171,12 +2182,21 @@ export function buildServer(): FastifyInstance {
         messageMap.set(row.session_id, items);
       }
 
-      const rows = sessionResult.rows.map((row) => ({
+      const rows = sessionRows.map((row) => ({
         ...row,
         messages: messageMap.get(row.session_id) ?? []
       }));
 
-      return reply.code(200).send({ rows });
+      return reply.code(200).send({
+        rows,
+        pagination: {
+          limit,
+          offset,
+          count: rows.length,
+          hasMore,
+          nextOffset: hasMore ? offset + rows.length : null
+        }
+      });
     } catch (error) {
       request.log.error(error, "failed to fetch conversations");
       return reply.code(500).send({ error: "CONVERSATION_LIST_FAILED" });

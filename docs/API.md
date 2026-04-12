@@ -292,17 +292,28 @@ GET /conversations?userKey=user-identifier&limit=20&search=휴가신청&includeM
 
 #### 응답
 
+`pagination.hasMore=true`이면 `pagination.nextOffset`을 다음 `offset`으로 전달해 다음 페이지를 조회합니다.
+
 ```json
-[
-  {
-    "sessionId": "uuid",
-    "clientSessionId": "client-uuid",
-    "userKey": "user-identifier",
-    "title": "휴가신청 불가 문의",
-    "createdAt": "2026-04-09T10:00:00Z",
-    "updatedAt": "2026-04-09T10:05:00Z"
+{
+  "rows": [
+    {
+      "session_id": "uuid",
+      "client_session_id": "client-uuid",
+      "user_key": "user-identifier",
+      "title": "휴가신청 불가 문의",
+      "created_at": "2026-04-09T10:00:00Z",
+      "updated_at": "2026-04-09T10:05:00Z"
+    }
+  ],
+  "pagination": {
+    "limit": 20,
+    "offset": 0,
+    "count": 20,
+    "hasMore": true,
+    "nextOffset": 20
   }
-]
+}
 ```
 
 ---

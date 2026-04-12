@@ -52,6 +52,19 @@ export interface FetchConversationsOptions {
   includeMessages?: boolean
 }
 
+export interface ConversationPagination {
+  limit: number
+  offset: number
+  count: number
+  hasMore: boolean
+  nextOffset: number | null
+}
+
+export interface FetchConversationsResult {
+  conversations: Conversation[]
+  pagination: ConversationPagination | null
+}
+
 export function generateConversationId(): string {
   return `conv-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
 }
@@ -283,6 +296,14 @@ export async function fetchConversationsFromServer(
   userKey: string,
   options: FetchConversationsOptions = {},
 ): Promise<Conversation[]> {
+  const result = await fetchConversationPageFromServer(userKey, options)
+  return result.conversations
+}
+
+export async function fetchConversationPageFromServer(
+  userKey: string,
+  options: FetchConversationsOptions = {},
+): Promise<FetchConversationsResult> {
   const params = new URLSearchParams()
   params.set("userKey", userKey)
   params.set("includeMessages", String(options.includeMessages ?? true))
@@ -306,7 +327,10 @@ export async function fetchConversationsFromServer(
     throw new Error(`Failed to fetch conversations: ${response.status}`)
   }
 
-  const payload = (await response.json()) as { rows?: ServerConversationRow[] }
+  const payload = (await response.json()) as {
+    rows?: ServerConversationRow[]
+    pagination?: ConversationPagination | null
+  }
   const rows = payload.rows ?? []
 
   const conversations = await Promise.all(
@@ -329,7 +353,10 @@ export async function fetchConversationsFromServer(
       }),
   )
 
-  return conversations.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+  return {
+    conversations: conversations.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
+    pagination: payload.pagination ?? null,
+  }
 }
 
 export async function deleteConversationFromServer(conversationId: string, userKey?: string | null): Promise<void> {
