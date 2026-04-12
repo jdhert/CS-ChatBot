@@ -142,6 +142,7 @@ graph TB
 - **회귀 검사**: 프론트 API 경로 검사 (`npm run check:api-routes`)로 운영 nginx 라우팅과 맞지 않는 `/api/chat`, `/api/search`, `/api/logs` 사용 방지
 - **레이어 캐시**: Registry cache (`ghcr.io` cache manifest) 활용으로 반복 빌드 가속
 - **배포 방식**: SSH → `docker pull` + `docker compose up -d` (이미지 교체만)
+- **배포 버전 표시**: deploy 단계에서 `APP_COMMIT_SHA`, `APP_BUILD_TIME`, `APP_GITHUB_RUN_ID`를 컨테이너에 주입하고 `/health`, `/logs`에서 확인
 - **단절 시간**: ~10초 (빌드 시간 VM 부담 없음)
 
 ## ✨ 주요 기능
@@ -195,6 +196,7 @@ graph TB
 - Embedding 커버리지 자동 알림 (`/health`, `/logs`에서 warning/critical 상태 확인)
 - 스트리밍 응답 타이밍 분석 (`/logs`에서 rewrite/TTFT/LLM stream/persistence 확인)
 - 관리자 로그 상세 드릴다운 (`/logs`에서 후보 Top3, vector/LLM 진단, 응답 미리보기 확인)
+- 배포 버전 확인 (`/health`, `/logs`에서 현재 commit SHA/build time/GitHub Actions run 확인)
 
 ## 🚀 성능 최적화
 
@@ -564,6 +566,7 @@ sequenceDiagram
 - [x] 스트리밍 응답 타이밍 세분화 — `/chat/stream`의 rewrite, TTFT, LLM stream, persistence 시간을 metadata로 기록
 - [x] 관리자 로그 상세 드릴다운 — `/logs`에서 후보 Top3와 vector/LLM 진단 정보 표시
 - [x] 대화 이력 UX 개선 — 제목 정제/직접 편집, 제목/내용 검색, 검색어 하이라이트, 더보기, 날짜 그룹핑, 삭제/동기화 상태 표시
+- [x] 배포 버전 표시 — GitHub Actions 배포 메타데이터를 `/health`, `/logs`에서 확인
 
 ### 완료 (2026-04-02 추가)
 - [x] nginx `depends_on` healthcheck 조건 추가 (502 재발 방지)
@@ -608,6 +611,7 @@ sequenceDiagram
 - ✅ **채팅 내보내기 포맷 개선** — 헤더 다운로드 메뉴에서 `.txt`, Markdown, PDF 저장용 인쇄 화면 선택 지원
 - ✅ **배포 후 운영 smoke 자동화** — GitHub Actions 배포 완료 후 공개 `/health`와 `production_smoke.seed.json` 대표 질문 자동 검증
 - ✅ **실패/싫어요 eval 후보 자동 추출** — `query_log`에서 실패, no-match, 싫어요, 저신뢰 질의를 `query_log_eval_candidates.latest.json`으로 생성
+- ✅ **배포 버전 표시 추가** — GitHub Actions commit/build time/run id를 컨테이너에 주입하고 `/health`, `/logs`에서 확인
 
 ### 2026-04-11
 - ✅ **운영 API 라우팅 규칙 고정** — nginx `/api/* → backend` 구조 기준으로 프론트 호출 경로 정리 (`/api/chat/stream`, `/api/retrieval/search`, `/api/admin/logs`)

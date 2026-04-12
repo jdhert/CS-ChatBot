@@ -15,6 +15,13 @@ services:
       - PORT=3101
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - REQUEST_TIMEOUT_MS=${REQUEST_TIMEOUT_MS:-30000}
+      # Build / deploy metadata
+      - APP_COMMIT_SHA=${APP_COMMIT_SHA:-unknown}
+      - APP_BUILD_TIME=${APP_BUILD_TIME:-}
+      - APP_BUILD_REF=${APP_BUILD_REF:-main}
+      - APP_GITHUB_RUN_ID=${APP_GITHUB_RUN_ID:-}
+      - APP_GITHUB_REPOSITORY=${APP_GITHUB_REPOSITORY:-jdhert/CS-ChatBot}
+      - APP_IMAGE_TAG=${APP_IMAGE_TAG:-latest}
       # Rate Limiting
       - TRUST_PROXY=${TRUST_PROXY:-true}
       - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}

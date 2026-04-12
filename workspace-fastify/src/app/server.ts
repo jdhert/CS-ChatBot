@@ -152,6 +152,24 @@ let embeddingCoverageCache: {
 } | null = null;
 let embeddingCoverageHealthProbeInFlight: Promise<EmbeddingCoverageSnapshot> | null = null;
 
+function getBuildInfo() {
+  const commitSha = process.env.APP_COMMIT_SHA?.trim() || process.env.GITHUB_SHA?.trim() || "unknown";
+  const buildTime = process.env.APP_BUILD_TIME?.trim() || null;
+  const refName = process.env.APP_BUILD_REF?.trim() || process.env.GITHUB_REF_NAME?.trim() || null;
+  const runId = process.env.APP_GITHUB_RUN_ID?.trim() || null;
+  const repository = process.env.APP_GITHUB_REPOSITORY?.trim() || null;
+  const imageTag = process.env.APP_IMAGE_TAG?.trim() || "latest";
+
+  return {
+    commitSha,
+    buildTime,
+    refName,
+    runId,
+    repository,
+    imageTag,
+  };
+}
+
 function buildConversationTitle(query: string): string {
   const normalized = query
     .replace(/\s+/g, " ")
@@ -1194,6 +1212,7 @@ export function buildServer(): FastifyInstance {
     return {
       status: "ok",
       service: "workspace-fastify",
+      build: getBuildInfo(),
       cache: getCacheStats(),
       queryEmbedding: getQueryEmbeddingRuntimeStatus(),
       embeddingCoverage: {
@@ -2076,6 +2095,7 @@ export function buildServer(): FastifyInstance {
         rateLimit: getRateLimitMonitoring(days),
         queryEmbedding: getQueryEmbeddingRuntimeStatus(),
         embeddingCoverage,
+        build: getBuildInfo(),
         rows: rowsResult.rows
       });
     } catch (error) {

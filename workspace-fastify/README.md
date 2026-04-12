@@ -90,6 +90,14 @@ curl -X POST https://csbotservice.com/api/retrieval/search \
 {
   "status": "ok",
   "service": "workspace-fastify",
+  "build": {
+    "commitSha": "8a38aab...",
+    "buildTime": "2026-04-12T12:00:00Z",
+    "refName": "main",
+    "runId": "123456789",
+    "repository": "jdhert/CS-ChatBot",
+    "imageTag": "latest"
+  },
   "embeddingCoverage": {
     "available": true,
     "minCoveragePct": 99.2,

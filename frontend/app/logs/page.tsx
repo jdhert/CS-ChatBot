@@ -9,6 +9,7 @@ import {
   BarChart3,
   CheckCircle2,
   Clock,
+  GitCommit,
   MessageCircleWarning,
   RefreshCw,
   Search,
@@ -103,7 +104,17 @@ interface LogsResponse {
   rateLimit: RateLimitSnapshot | null
   queryEmbedding: QueryEmbeddingSnapshot | null
   embeddingCoverage: EmbeddingCoverageSnapshot | null
+  build: BuildInfo | null
   rows: LogRow[]
+}
+
+interface BuildInfo {
+  commitSha: string
+  buildTime: string | null
+  refName: string | null
+  runId: string | null
+  repository: string | null
+  imageTag: string | null
 }
 
 interface LogSummary {
@@ -285,6 +296,11 @@ function formatDate(iso: string) {
   })
 }
 
+function shortCommit(commitSha: string | null | undefined): string {
+  if (!commitSha || commitSha === "unknown") return "unknown"
+  return commitSha.slice(0, 7)
+}
+
 function confidenceColor(v: number | null) {
   if (v === null) return "text-muted-foreground"
   if (v >= 0.7) return "text-emerald-600 dark:text-emerald-400"
@@ -381,6 +397,65 @@ function SummaryCard({
       <div className="mt-2 text-xl font-semibold tabular-nums text-foreground">{value}</div>
       {sub && <div className="mt-1 text-[11px] opacity-80">{sub}</div>}
     </div>
+  )
+}
+
+function BuildInfoMonitoring({ build }: { build: BuildInfo | null }) {
+  if (!build) return null
+
+  const commit = shortCommit(build.commitSha)
+  const githubRunUrl = build.repository && build.runId
+    ? `https://github.com/${build.repository}/actions/runs/${build.runId}`
+    : null
+
+  return (
+    <section className="mb-5 rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">배포 버전</h2>
+          <p className="text-xs text-muted-foreground">
+            현재 Oracle VM 백엔드 컨테이너에 주입된 배포 메타데이터입니다.
+          </p>
+        </div>
+        <GitCommit className="h-4 w-4 text-blue-500" />
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="rounded-xl bg-muted/40 p-3">
+          <div className="text-[11px] text-muted-foreground">Commit</div>
+          <div className="mt-1 font-mono text-sm font-semibold text-foreground">{commit}</div>
+          <div className="mt-1 truncate text-[11px] text-muted-foreground">{build.commitSha ?? "unknown"}</div>
+        </div>
+        <div className="rounded-xl bg-muted/40 p-3">
+          <div className="text-[11px] text-muted-foreground">Branch</div>
+          <div className="mt-1 text-sm font-semibold text-foreground">{build.refName ?? "-"}</div>
+          <div className="mt-1 text-[11px] text-muted-foreground">GitHub ref</div>
+        </div>
+        <div className="rounded-xl bg-muted/40 p-3">
+          <div className="text-[11px] text-muted-foreground">Build time</div>
+          <div className="mt-1 text-sm font-semibold text-foreground">
+            {build.buildTime ? formatDate(build.buildTime) : "-"}
+          </div>
+          <div className="mt-1 text-[11px] text-muted-foreground">UTC deploy script 기준</div>
+        </div>
+        <div className="rounded-xl bg-muted/40 p-3">
+          <div className="text-[11px] text-muted-foreground">Image / Run</div>
+          <div className="mt-1 text-sm font-semibold text-foreground">{build.imageTag ?? "latest"}</div>
+          {githubRunUrl ? (
+            <a
+              href={githubRunUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 block text-[11px] text-primary underline-offset-2 hover:underline"
+            >
+              Actions run {build.runId}
+            </a>
+          ) : (
+            <div className="mt-1 text-[11px] text-muted-foreground">Actions run 없음</div>
+          )}
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -1082,6 +1157,10 @@ export default function LogsPage() {
               tone={data.summary.slow_count > 0 ? "warning" : "neutral"}
             />
           </div>
+        )}
+
+        {data && (
+          <BuildInfoMonitoring build={data.build ?? null} />
         )}
 
         {data && (

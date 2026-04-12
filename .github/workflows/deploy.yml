@@ -90,6 +90,12 @@ jobs:
 
             echo "[2/3] Pull new images & restart..."
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            export APP_COMMIT_SHA="${{ github.sha }}"
+            export APP_BUILD_TIME="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+            export APP_BUILD_REF="${{ github.ref_name }}"
+            export APP_GITHUB_RUN_ID="${{ github.run_id }}"
+            export APP_GITHUB_REPOSITORY="${{ github.repository }}"
+            export APP_IMAGE_TAG="latest"
             docker compose --env-file .env pull
             docker compose --env-file .env up -d --no-build
 
