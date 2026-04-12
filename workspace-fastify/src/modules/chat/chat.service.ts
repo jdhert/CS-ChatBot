@@ -26,6 +26,7 @@ const DEFAULT_MANUAL_SEARCH_LIMIT = 5;
 const DEFAULT_MANUAL_RERANK_POOL_MULTIPLIER = 4;
 const DEFAULT_MANUAL_LEXICAL_SCAN_LIMIT = 240;
 const DEFAULT_MANUAL_PRIORITY_MIN_SCORE = 0.75;
+const DEFAULT_MANUAL_FALLBACK_MIN_SCORE = 0.75;
 const DEFAULT_MANUAL_PRIORITY_MIN_LEXICAL_COVERAGE = 0.12;
 const DEFAULT_VECTOR_SEARCH_LIMIT = 30;
 const DEFAULT_EMBEDDING_TIMEOUT_MS = 8000;
@@ -3728,6 +3729,10 @@ async function computeChatSearch(
     process.env.MANUAL_PRIORITY_MIN_SCORE,
     DEFAULT_MANUAL_PRIORITY_MIN_SCORE
   );
+  const manualFallbackMinScore = parseEnvNumber(
+    process.env.MANUAL_FALLBACK_MIN_SCORE,
+    DEFAULT_MANUAL_FALLBACK_MIN_SCORE
+  );
   const manualPriorityMinLexicalCoverage = parseEnvNumber(
     process.env.MANUAL_PRIORITY_MIN_LEXICAL_COVERAGE,
     DEFAULT_MANUAL_PRIORITY_MIN_LEXICAL_COVERAGE
@@ -3735,16 +3740,25 @@ async function computeChatSearch(
   const bestManualLexicalCoverage = bestManual && queryVariants.lexical.length > 0
     ? Math.max(...queryVariants.lexical.map((queryVariant) => computeLexicalCoverage(queryVariant, bestManual.previewText)))
     : 0;
+  const bestManualFocusCoverage = bestManual ? computeFocusCoverage(query, bestManual.previewText) : 0;
   const hasManualHowToPriority =
     isManualHowToPriorityEnabled() &&
     isManualHowToPriorityQuery(query, intent) &&
     bestManual !== null &&
     bestManual.score >= manualPriorityMinScore &&
     bestManualLexicalCoverage >= manualPriorityMinLexicalCoverage;
+  const hasManualDominantScore =
+    bestManual !== null &&
+    (bestManual.score >= confidence + 0.12 ||
+      (bestManual.score >= confidence + 0.015 && bestManualFocusCoverage >= 0.75) ||
+      (bestManual.score >= 0.92 && bestManualLexicalCoverage >= 0.35));
+  const hasManualFallbackScore =
+    bestManual !== null &&
+    bestManual.score >= (hasConfidentBest ? DEFAULT_SCORE_THRESHOLD : manualFallbackMinScore);
   const hasManualFallback =
     bestManual !== null &&
-    bestManual.score >= DEFAULT_SCORE_THRESHOLD &&
-    (!hasConfidentBest || hasManualHowToPriority);
+    hasManualFallbackScore &&
+    (!hasConfidentBest || (hasManualHowToPriority && hasManualDominantScore));
   const responseConfidence = hasManualFallback ? bestManual.score : confidence;
   const responseVectorUsed = vectorResult.vectorUsed || manualResult.manualUsed;
   const responseRetrievalMode = responseVectorUsed ? "hybrid" : "rule_only";

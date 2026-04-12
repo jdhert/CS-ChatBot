@@ -57,7 +57,8 @@ Backend RAG Pipeline:
 - 대상: 운영 VM repo 루트의 `manuals/user/**/*.docx` 사용자 매뉴얼만 적재
 - 관리자 매뉴얼은 MVP 범위에서 제외
 - 적재 테이블: `ai_core.manual_documents`, `ai_core.manual_chunks`, `ai_core.manual_chunk_embeddings`
-- `/chat` 응답에 `manualCandidates`를 추가하고, SCC 매칭이 없을 때 `answerSource=manual`로 매뉴얼 답변 폴백
+- `/chat` 응답에 `manualCandidates`를 추가하고, SCC 매칭이 없을 때 매뉴얼 후보 점수가 충분하면(`MANUAL_FALLBACK_MIN_SCORE`, 기본 0.75) `answerSource=manual`로 매뉴얼 답변 폴백
+- SCC 후보가 이미 충분한 경우 매뉴얼은 점수 우위와 focus coverage가 강할 때만 우선 적용
 - 보안 기본값: 원본 매뉴얼 다운로드 비활성화(`MANUAL_DOWNLOAD_ENABLED=false`)
 - 원본 다운로드를 명시적으로 켜면 브라우저 기준 `GET /api/manual/documents/:documentId` → 백엔드 `GET /manual/documents/:documentId`
 
@@ -426,6 +427,7 @@ npm run ingest:sync:user-manual -- --provider google --batch-size 50 --max-batch
 - 임베딩: `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `OPENAI_EMBEDDING_MODEL`, `GOOGLE_EMBEDDING_MODEL`, `EMBEDDING_MODEL_AUTO_ALIGN`, `EMBEDDING_MODEL_RESOLVE_TTL_MS`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`
 - 벡터 검색 모드: `PGVECTOR_SEARCH_ENABLED` (`true` 권장)
 - Google 임베딩 속도/재시도: `GOOGLE_EMBEDDING_MIN_INTERVAL_MS`, `GOOGLE_EMBEDDING_MAX_RETRIES`
+- 사용자 매뉴얼 우선순위: `MANUAL_PRIORITY_MIN_SCORE`, `MANUAL_FALLBACK_MIN_SCORE`, `MANUAL_PRIORITY_MIN_LEXICAL_COVERAGE`
 - 자동 인제스트 스케줄러:
   - `INGEST_AUTO_ENABLED` — `true` 시 서버 기동 시 자동 임베딩 동기화 활성 (기본: `false`)
   - `INGEST_INTERVAL_HOURS` — 실행 주기 (기본: `6`)
