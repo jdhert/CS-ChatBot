@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   BarChart3,
   CheckCircle2,
+  ChevronDown,
   Clock,
   GitCommit,
   MessageCircleWarning,
@@ -413,7 +414,39 @@ function SummaryCard({
   )
 }
 
-function BuildInfoMonitoring({ build }: { build: BuildInfo | null }) {
+function CollapsibleSection({
+  title,
+  description,
+  children,
+  defaultOpen = false,
+}: {
+  title: string
+  description: string
+  children: ReactNode
+  defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  return (
+    <section className="mb-5 rounded-2xl border border-border bg-card shadow-sm">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/30"
+        aria-expanded={open}
+      >
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+        </div>
+        <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+      {open && <div className="border-t border-border p-4">{children}</div>}
+    </section>
+  )
+}
+
+function BuildInfoMonitoring({ build, className = "mb-5" }: { build: BuildInfo | null; className?: string }) {
   if (!build) return null
 
   const commit = shortCommit(build.commitSha)
@@ -422,7 +455,7 @@ function BuildInfoMonitoring({ build }: { build: BuildInfo | null }) {
     : null
 
   return (
-    <section className="mb-5 rounded-2xl border border-border bg-card p-4 shadow-sm">
+    <section className={cn(className, "rounded-2xl border border-border bg-card p-4 shadow-sm")}>
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold text-foreground">배포 버전</h2>
@@ -475,20 +508,22 @@ function BuildInfoMonitoring({ build }: { build: BuildInfo | null }) {
 function FeedbackAnalysis({
   breakdown,
   topQueries,
+  className = "mb-5",
 }: {
   breakdown: FeedbackBreakdownRow[]
   topQueries: FeedbackTopQuery[]
+  className?: string
 }) {
   if (breakdown.length === 0 && topQueries.length === 0) {
     return (
-      <section className="mb-5 rounded-2xl border border-dashed border-border bg-card p-5 text-sm text-muted-foreground">
+      <section className={cn(className, "rounded-2xl border border-dashed border-border bg-card p-5 text-sm text-muted-foreground")}>
         선택한 기간에 수집된 사용자 피드백이 아직 없습니다.
       </section>
     )
   }
 
   return (
-    <section className="mb-5 grid gap-4 lg:grid-cols-[1fr_1.1fr]">
+    <section className={cn(className, "grid gap-4 lg:grid-cols-[1fr_1.1fr]")}>
       <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between gap-2">
           <div>
@@ -571,13 +606,13 @@ function FeedbackAnalysis({
   )
 }
 
-function RateLimitMonitoring({ snapshot }: { snapshot: RateLimitSnapshot | null }) {
+function RateLimitMonitoring({ snapshot, className = "mb-5" }: { snapshot: RateLimitSnapshot | null; className?: string }) {
   if (!snapshot) return null
 
   const windowSeconds = Math.round(snapshot.windowMs / 1000)
 
   return (
-    <section className="mb-5 rounded-2xl border border-border bg-card p-4 shadow-sm">
+    <section className={cn(className, "rounded-2xl border border-border bg-card p-4 shadow-sm")}>
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold text-foreground">Rate Limit 차단 현황</h2>
@@ -651,14 +686,14 @@ function RateLimitMonitoring({ snapshot }: { snapshot: RateLimitSnapshot | null 
   )
 }
 
-function QueryEmbeddingMonitoring({ snapshot }: { snapshot: QueryEmbeddingSnapshot | null }) {
+function QueryEmbeddingMonitoring({ snapshot, className = "mb-5" }: { snapshot: QueryEmbeddingSnapshot | null; className?: string }) {
   if (!snapshot) return null
 
   const activeCooldown = snapshot.activeCooldowns[0]
   const cooldownMinutes = activeCooldown ? Math.ceil(activeCooldown.remainingMs / 60_000) : 0
 
   return (
-    <section className="mb-5 rounded-2xl border border-border bg-card p-4 shadow-sm">
+    <section className={cn(className, "rounded-2xl border border-border bg-card p-4 shadow-sm")}>
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold text-foreground">Query Embedding 상태</h2>
@@ -711,12 +746,12 @@ function QueryEmbeddingMonitoring({ snapshot }: { snapshot: QueryEmbeddingSnapsh
   )
 }
 
-function EmbeddingCoverageMonitoring({ snapshot }: { snapshot: EmbeddingCoverageSnapshot | null }) {
+function EmbeddingCoverageMonitoring({ snapshot, className = "mb-5" }: { snapshot: EmbeddingCoverageSnapshot | null; className?: string }) {
   if (!snapshot) return null
 
   if (!snapshot.available) {
     return (
-      <section className="mb-5 rounded-2xl border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+      <section className={cn(className, "rounded-2xl border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300")}>
         <div className="flex items-center gap-2 font-semibold">
           <AlertTriangle className="h-4 w-4" />
           Embedding 커버리지 조회 실패
@@ -744,7 +779,7 @@ function EmbeddingCoverageMonitoring({ snapshot }: { snapshot: EmbeddingCoverage
         : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300"
 
   return (
-    <section className="mb-5 rounded-2xl border border-border bg-card p-4 shadow-sm">
+    <section className={cn(className, "rounded-2xl border border-border bg-card p-4 shadow-sm")}>
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold text-foreground">Embedding 커버리지</h2>
@@ -1173,26 +1208,30 @@ export default function LogsPage() {
         )}
 
         {data && (
-          <BuildInfoMonitoring build={data.build ?? null} />
+          <CollapsibleSection
+            title="운영 모니터링 상세"
+            description="배포 버전, Rate Limit, 쿼리 임베딩, 임베딩 커버리지를 필요할 때만 펼쳐봅니다."
+          >
+            <div className="grid gap-4 xl:grid-cols-2">
+              <BuildInfoMonitoring build={data.build ?? null} className="mb-0" />
+              <RateLimitMonitoring snapshot={data.rateLimit ?? null} className="mb-0" />
+              <QueryEmbeddingMonitoring snapshot={data.queryEmbedding ?? null} className="mb-0" />
+              <EmbeddingCoverageMonitoring snapshot={data.embeddingCoverage ?? null} className="mb-0" />
+            </div>
+          </CollapsibleSection>
         )}
 
         {data && (
-          <RateLimitMonitoring snapshot={data.rateLimit ?? null} />
-        )}
-
-        {data && (
-          <QueryEmbeddingMonitoring snapshot={data.queryEmbedding ?? null} />
-        )}
-
-        {data && (
-          <EmbeddingCoverageMonitoring snapshot={data.embeddingCoverage ?? null} />
-        )}
-
-        {data && (
-          <FeedbackAnalysis
-            breakdown={data.feedbackBreakdown ?? []}
-            topQueries={data.feedbackTopQueries ?? []}
-          />
+          <CollapsibleSection
+            title="피드백 분석"
+            description="답변 경로별 피드백과 싫어요 Top 질의를 펼쳐서 확인합니다."
+          >
+            <FeedbackAnalysis
+              breakdown={data.feedbackBreakdown ?? []}
+              topQueries={data.feedbackTopQueries ?? []}
+              className="mb-0"
+            />
+          </CollapsibleSection>
         )}
 
         <form
