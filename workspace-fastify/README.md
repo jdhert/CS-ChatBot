@@ -154,6 +154,7 @@ GitHub Actions 배포 workflow는 VM 재배포 후 별도 `Production Smoke` job
 
 평가 기준:
 - HTTP 200
+- `/health.build.commitSha`가 GitHub Actions 실행 commit SHA와 일치할 것
 - `NO_MATCH` 등 오류 응답이 아닐 것
 - 답변 본문이 최소 길이 이상일 것
 - 대표 질문에는 유사 이력 링크가 붙을 것

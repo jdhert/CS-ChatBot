@@ -143,6 +143,7 @@ graph TB
 - **레이어 캐시**: Registry cache (`ghcr.io` cache manifest) 활용으로 반복 빌드 가속
 - **배포 방식**: SSH → `docker pull` + `docker compose up -d` (이미지 교체만)
 - **배포 버전 표시**: deploy 단계에서 `APP_COMMIT_SHA`, `APP_BUILD_TIME`, `APP_GITHUB_RUN_ID`를 컨테이너에 주입하고 `/health`, `/logs`에서 확인
+- **배포 검증**: Production Smoke가 `/health.build.commitSha`와 GitHub Actions 실행 commit을 비교해 이전 컨테이너 잔존 여부 검증
 - **단절 시간**: ~10초 (빌드 시간 VM 부담 없음)
 
 ## ✨ 주요 기능
@@ -405,6 +406,7 @@ GitHub Actions 배포 workflow는 VM 재배포 후 `Production Smoke` job에서 
 
 평가 기준:
 - HTTP 200
+- `/health.build.commitSha`가 GitHub Actions 실행 commit SHA와 일치할 것
 - `NO_MATCH` 등 오류 응답이 아닐 것
 - 답변 본문이 최소 길이 이상일 것
 - 대표 질문에는 유사 이력 링크가 붙을 것
@@ -551,6 +553,7 @@ sequenceDiagram
 - [x] 운영 API 라우팅 규칙 문서화 및 CI 회귀 검사 (`check:api-routes`)
 - [x] 운영 smoke 평가 스크립트 (`npm run smoke:prod`)
 - [x] 배포 후 운영 smoke 자동화 — GitHub Actions에서 `/health`와 대표 질문 smoke 검증
+- [x] 배포 버전 smoke 검증 — `/health.build.commitSha`와 GitHub Actions 실행 commit 비교
 - [x] 실패/싫어요 케이스 eval 후보 자동 추출 — `query_log` 기반 수동 검토 후보 JSON 생성
 - [x] 대화 이력 DB hydrate 및 삭제 UX 안정화
 - [x] JSP AJAX `display` 응답 계약 문서화
@@ -612,6 +615,7 @@ sequenceDiagram
 - ✅ **배포 후 운영 smoke 자동화** — GitHub Actions 배포 완료 후 공개 `/health`와 `production_smoke.seed.json` 대표 질문 자동 검증
 - ✅ **실패/싫어요 eval 후보 자동 추출** — `query_log`에서 실패, no-match, 싫어요, 저신뢰 질의를 `query_log_eval_candidates.latest.json`으로 생성
 - ✅ **배포 버전 표시 추가** — GitHub Actions commit/build time/run id를 컨테이너에 주입하고 `/health`, `/logs`에서 확인
+- ✅ **배포 버전 smoke 검증 추가** — Production Smoke에서 `/health.build.commitSha`가 현재 GitHub Actions commit과 일치하는지 검증
 
 ### 2026-04-11
 - ✅ **운영 API 라우팅 규칙 고정** — nginx `/api/* → backend` 구조 기준으로 프론트 호출 경로 정리 (`/api/chat/stream`, `/api/retrieval/search`, `/api/admin/logs`)

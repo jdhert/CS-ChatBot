@@ -125,16 +125,22 @@ jobs:
           set -e
           for attempt in {1..12}; do
             if curl -fsS https://csbotservice.com/health > "$RUNNER_TEMP/health.json"; then
-              echo "[ok] Public health is reachable"
-              cat "$RUNNER_TEMP/health.json"
-              exit 0
+              actual_commit="$(sed -nE 's/.*"commitSha"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' "$RUNNER_TEMP/health.json" | head -n 1)"
+              if [ "$actual_commit" = "$GITHUB_SHA" ]; then
+                echo "[ok] Public health matches deployed commit ${GITHUB_SHA:0:7}"
+                cat "$RUNNER_TEMP/health.json"
+                exit 0
+              fi
+
+              echo "[wait] Public health is reachable but build commit is not current yet. expected=$GITHUB_SHA, actual=${actual_commit:-missing}"
             fi
 
-            echo "[wait] Public health not ready yet (${attempt}/12)"
+            echo "[wait] Public health/build version not ready yet (${attempt}/12)"
             sleep 10
           done
 
-          echo "[error] Public health check failed after retries"
+          echo "[error] Public health build version check failed after retries"
+          cat "$RUNNER_TEMP/health.json" || true
           exit 1
 
       - name: Run production smoke
