@@ -2089,6 +2089,9 @@ export function buildServer(): FastifyInstance {
     const qs = request.query as Record<string, string>;
     const clientSessionId = qs.clientSessionId?.trim() || null;
     const userKey = qs.userKey?.trim() || null;
+    const search = qs.search?.trim() || null;
+    const offset = Math.max(parseInt(qs.offset ?? "0", 10) || 0, 0);
+    const days = Math.min(Math.max(parseInt(qs.days ?? "0", 10) || 0, 0), 365);
     const limit = Math.min(Math.max(parseInt(qs.limit ?? "20", 10) || 20, 1), 100);
     const includeMessages = (qs.includeMessages ?? "").trim().toLowerCase() === "true";
     if (!clientSessionId && !userKey) {
@@ -2100,24 +2103,49 @@ export function buildServer(): FastifyInstance {
     const pool = getVectorPool();
     try {
       const conditions: string[] = [];
+      const identityConditions: string[] = [];
       const params: unknown[] = [];
       if (clientSessionId) {
         params.push(clientSessionId);
-        conditions.push(`client_session_id = $${params.length}`);
+        identityConditions.push(`cs.client_session_id = $${params.length}`);
       }
       if (userKey) {
         params.push(userKey);
-        conditions.push(`user_key = $${params.length}`);
+        identityConditions.push(`cs.user_key = $${params.length}`);
+      }
+      if (identityConditions.length > 0) {
+        conditions.push(`(${identityConditions.join(" or ")})`);
+      }
+      if (days > 0) {
+        params.push(days);
+        conditions.push(`cs.updated_at >= now() - ($${params.length}::int * interval '1 day')`);
+      }
+      if (search) {
+        params.push(`%${search}%`);
+        const searchParam = params.length;
+        conditions.push(`(
+          cs.title ilike $${searchParam}
+          or exists (
+            select 1
+              from ai_core.conversation_message cm
+             where cm.session_id = cs.session_id
+               and cm.content ilike $${searchParam}
+          )
+        )`);
       }
       params.push(limit);
-      const whereClause = conditions.length > 0 ? `where ${conditions.join(" or ")}` : "";
+      const limitParam = params.length;
+      params.push(offset);
+      const offsetParam = params.length;
+      const whereClause = conditions.length > 0 ? `where ${conditions.join(" and ")}` : "";
       const sessionResult = await pool.query(
         `select session_id, client_session_id, user_key, title, status, message_count,
                 last_message_at, created_at, updated_at
-           from ai_core.conversation_session
+           from ai_core.conversation_session cs
            ${whereClause}
-          order by updated_at desc
-          limit $${params.length}`,
+          order by cs.updated_at desc
+          limit $${limitParam}
+         offset $${offsetParam}`,
         params
       );
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { Loader2, MessageSquarePlus, Search, Trash2, X } from "lucide-react"
 import { groupConversationsByDate, type Conversation } from "@/lib/conversations"
 import { cn } from "@/lib/utils"
@@ -12,9 +12,13 @@ interface ConversationsPanelProps {
   isHydratingConversations?: boolean
   conversationSyncError?: string | null
   lastConversationSyncAt?: string | null
+  searchQuery?: string
+  isSearchingConversations?: boolean
+  conversationSearchError?: string | null
   onSelectConversation: (conversationId: string) => void
   onNewConversation: () => void
   onDeleteConversation: (conversationId: string) => void
+  onSearchQueryChange?: (query: string) => void
   onClose?: () => void
 }
 
@@ -25,19 +29,22 @@ export function ConversationsPanel({
   isHydratingConversations = false,
   conversationSyncError,
   lastConversationSyncAt,
+  searchQuery = "",
+  isSearchingConversations = false,
+  conversationSearchError,
   onSelectConversation,
   onNewConversation,
   onDeleteConversation,
+  onSearchQueryChange,
   onClose,
 }: ConversationsPanelProps) {
-  const [searchQuery, setSearchQuery] = useState("")
   const trimmedSearch = searchQuery.trim().toLowerCase()
   const filteredConversations = useMemo(() => {
     if (!trimmedSearch) return conversations
     return conversations.filter((conversation) => {
       const searchable = [
         conversation.title,
-        ...conversation.messages.slice(-6).map((message) => message.content),
+        ...conversation.messages.map((message) => message.content),
       ].join(" ").toLowerCase()
       return searchable.includes(trimmedSearch)
     })
@@ -82,14 +89,14 @@ export function ConversationsPanel({
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
             value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
+            onChange={(event) => onSearchQueryChange?.(event.target.value)}
             placeholder="대화 제목/내용 검색"
             className="h-9 w-full rounded-xl border border-border bg-background pl-8 pr-8 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary"
           />
           {searchQuery && (
             <button
               type="button"
-              onClick={() => setSearchQuery("")}
+              onClick={() => onSearchQueryChange?.("")}
               className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               aria-label="검색어 지우기"
             >
@@ -99,7 +106,14 @@ export function ConversationsPanel({
         </label>
         {trimmedSearch && (
           <div className="mt-2 text-[11px] text-muted-foreground">
-            {filteredConversations.length.toLocaleString()}개 대화가 검색되었습니다.
+            {isSearchingConversations
+              ? "서버 대화 이력까지 검색 중..."
+              : `${filteredConversations.length.toLocaleString()}개 대화가 검색되었습니다.`}
+          </div>
+        )}
+        {conversationSearchError && (
+          <div className="mt-1 line-clamp-2 text-[11px] text-amber-600 dark:text-amber-400">
+            서버 검색 실패: {conversationSearchError}
           </div>
         )}
       </div>

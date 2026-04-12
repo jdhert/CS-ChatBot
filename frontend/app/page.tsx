@@ -19,7 +19,11 @@ export default function ChatbotPage() {
     isHydratingConversations,
     conversationSyncError,
     lastConversationSyncAt,
+    conversationSearchQuery,
+    isSearchingConversations,
+    conversationSearchError,
     setCurrentMessages,
+    setConversationSearchQuery,
     startNewConversation,
     ensureConversation,
     selectConversation,
@@ -79,6 +83,9 @@ export default function ChatbotPage() {
           isHydratingConversations={isHydratingConversations}
           conversationSyncError={conversationSyncError}
           lastConversationSyncAt={lastConversationSyncAt}
+          searchQuery={conversationSearchQuery}
+          isSearchingConversations={isSearchingConversations}
+          conversationSearchError={conversationSearchError}
           onSelectConversation={(id) => {
             selectConversation(id)
             setIsSidebarOpen(false)
@@ -88,6 +95,7 @@ export default function ChatbotPage() {
             setIsSidebarOpen(false)
           }}
           onDeleteConversation={removeConversation}
+          onSearchQueryChange={setConversationSearchQuery}
           onClose={() => setIsSidebarOpen(false)}
         />
       </div>

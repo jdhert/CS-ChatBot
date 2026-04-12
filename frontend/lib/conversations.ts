@@ -44,6 +44,14 @@ const ACTIVE_SESSION_KEY = "covi_ai_active_session_v1"
 const BROWSER_USER_KEY = "covi_ai_browser_user_v1"
 const MAX_CONVERSATIONS = 50
 
+export interface FetchConversationsOptions {
+  search?: string
+  limit?: number
+  offset?: number
+  days?: number
+  includeMessages?: boolean
+}
+
 export function generateConversationId(): string {
   return `conv-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
 }
@@ -158,7 +166,11 @@ export function updateConversation(conversations: Conversation[], updatedConvers
   return updated.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
 }
 
-export function mergeConversations(localConversations: Conversation[], serverConversations: Conversation[]): Conversation[] {
+export function mergeConversations(
+  localConversations: Conversation[],
+  serverConversations: Conversation[],
+  maxConversations = MAX_CONVERSATIONS,
+): Conversation[] {
   const mergedById = new Map<string, Conversation>()
 
   for (const conv of localConversations) {
@@ -184,7 +196,7 @@ export function mergeConversations(localConversations: Conversation[], serverCon
 
   return Array.from(mergedById.values())
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-    .slice(0, MAX_CONVERSATIONS)
+    .slice(0, maxConversations)
 }
 
 export function deleteConversation(conversations: Conversation[], conversationId: string): Conversation[] {
@@ -267,8 +279,26 @@ async function fetchServerMessages(sessionId: string): Promise<Message[]> {
   return (payload.rows ?? []).map(mapServerMessage).filter((item): item is Message => item !== null)
 }
 
-export async function fetchConversationsFromServer(userKey: string): Promise<Conversation[]> {
-  const response = await fetch(`/api/conversations?userKey=${encodeURIComponent(userKey)}&includeMessages=true&limit=50`, {
+export async function fetchConversationsFromServer(
+  userKey: string,
+  options: FetchConversationsOptions = {},
+): Promise<Conversation[]> {
+  const params = new URLSearchParams()
+  params.set("userKey", userKey)
+  params.set("includeMessages", String(options.includeMessages ?? true))
+  params.set("limit", String(options.limit ?? 50))
+  if (options.offset && options.offset > 0) {
+    params.set("offset", String(options.offset))
+  }
+  if (options.days && options.days > 0) {
+    params.set("days", String(options.days))
+  }
+  const search = options.search?.trim()
+  if (search) {
+    params.set("search", search)
+  }
+
+  const response = await fetch(`/api/conversations?${params.toString()}`, {
     cache: "no-store",
   })
 

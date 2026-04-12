@@ -34,6 +34,9 @@ export function useConversations() {
   const [isHydratingConversations, setIsHydratingConversations] = useState(true)
   const [conversationSyncError, setConversationSyncError] = useState<string | null>(null)
   const [lastConversationSyncAt, setLastConversationSyncAt] = useState<string | null>(null)
+  const [conversationSearchQuery, setConversationSearchQuery] = useState("")
+  const [isSearchingConversations, setIsSearchingConversations] = useState(false)
+  const [conversationSearchError, setConversationSearchError] = useState<string | null>(null)
 
   const applyConversationSelection = useCallback((nextConversations: Conversation[], preferredId?: string | null) => {
     if (nextConversations.length === 0) {
@@ -104,6 +107,56 @@ export function useConversations() {
       cancelled = true
     }
   }, [applyConversationSelection])
+
+  useEffect(() => {
+    if (!browserUserKey) {
+      return
+    }
+
+    const search = conversationSearchQuery.trim()
+    if (search.length < 2) {
+      setConversationSearchError(null)
+      setIsSearchingConversations(false)
+      return
+    }
+
+    let cancelled = false
+    const timer = window.setTimeout(async () => {
+      setIsSearchingConversations(true)
+      setConversationSearchError(null)
+
+      try {
+        const serverConversations = await fetchConversationsFromServer(browserUserKey, {
+          search,
+          includeMessages: true,
+          limit: 100,
+        })
+        if (cancelled) return
+
+        setConversationSyncError(null)
+        setLastConversationSyncAt(new Date().toISOString())
+        setConversations((prev) => {
+          const next = mergeConversations(prev, serverConversations, 100)
+          saveConversations(next)
+          return next
+        })
+      } catch (error) {
+        console.warn("Failed to search conversations from server:", error)
+        if (!cancelled) {
+          setConversationSearchError(error instanceof Error ? error.message : "서버 대화 이력을 검색하지 못했습니다")
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSearchingConversations(false)
+        }
+      }
+    }, 350)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [browserUserKey, conversationSearchQuery])
 
   useEffect(() => {
     if (!activeConversationId || currentMessages.length === 0 || !isConversationSettled(currentMessages)) {
@@ -252,8 +305,12 @@ export function useConversations() {
     isHydratingConversations,
     conversationSyncError,
     lastConversationSyncAt,
+    conversationSearchQuery,
+    isSearchingConversations,
+    conversationSearchError,
     setCurrentMessages,
     setActiveConversationId,
+    setConversationSearchQuery,
     startNewConversation,
     ensureConversation,
     selectConversation,

@@ -7,12 +7,18 @@ export async function GET(request: NextRequest) {
   const clientSessionId = request.nextUrl.searchParams.get("clientSessionId")
   const userKey = request.nextUrl.searchParams.get("userKey")
   const limit = request.nextUrl.searchParams.get("limit")
+  const offset = request.nextUrl.searchParams.get("offset")
+  const days = request.nextUrl.searchParams.get("days")
+  const search = request.nextUrl.searchParams.get("search")
   const includeMessages = request.nextUrl.searchParams.get("includeMessages")
 
   const params = new URLSearchParams()
   if (clientSessionId) params.set("clientSessionId", clientSessionId)
   if (userKey) params.set("userKey", userKey)
   if (limit) params.set("limit", limit)
+  if (offset) params.set("offset", offset)
+  if (days) params.set("days", days)
+  if (search) params.set("search", search)
   if (includeMessages) params.set("includeMessages", includeMessages)
 
   try {

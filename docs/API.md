@@ -277,13 +277,18 @@ Content-Type: application/json
 #### 요청
 
 ```http
-GET /conversations?userKey=user-identifier&limit=20
+GET /conversations?userKey=user-identifier&limit=20&search=휴가신청&includeMessages=true
 ```
 
 | 파라미터 | 타입 | 설명 |
 |---|---|---|
 | `userKey` | string | 사용자 식별자 |
+| `clientSessionId` | string | 특정 클라이언트 세션 ID |
 | `limit` | number | 최대 반환 건수 (기본 20) |
+| `offset` | number | 페이지네이션 offset |
+| `days` | number | 최근 N일 이내 대화만 조회 (최대 365) |
+| `search` | string | 대화 제목 또는 메시지 본문 검색어 |
+| `includeMessages` | boolean | 메시지 본문 포함 여부 |
 
 #### 응답
 
