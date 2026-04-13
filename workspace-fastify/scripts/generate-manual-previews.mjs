@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-import "dotenv/config";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 import pg from "pg";
 
 const { Pool } = pg;
@@ -12,6 +12,11 @@ const { Pool } = pg;
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.dirname(scriptDir);
 const repoRoot = path.dirname(projectDir);
+
+// Load the deploy-level env first because production runs from repoRoot/workspace-fastify,
+// while the actual Oracle VM .env lives at repoRoot/.env.
+dotenv.config({ path: path.join(repoRoot, ".env"), quiet: true });
+dotenv.config({ path: path.join(projectDir, ".env"), quiet: true });
 
 const DEFAULT_SOURCE_DIR = path.join(repoRoot, "manuals", "user");
 const LEGACY_SOURCE_DIR = path.join(repoRoot, "stor", "stor", "manual", "user");
@@ -153,13 +158,21 @@ async function parseArgs(argv) {
 
 function getPool() {
   return new Pool({
-    host: process.env.VECTOR_DB_HOST ?? "DB_HOST_REMOVED",
+    host: requireEnv("VECTOR_DB_HOST"),
     port: parseIntSafe(process.env.VECTOR_DB_PORT, 5432),
-    database: process.env.VECTOR_DB_NAME ?? "ai2",
-    user: process.env.VECTOR_DB_USER ?? "novian",
-    password: process.env.VECTOR_DB_PASSWORD ?? "REMOVED",
+    database: requireEnv("VECTOR_DB_NAME"),
+    user: requireEnv("VECTOR_DB_USER"),
+    password: requireEnv("VECTOR_DB_PASSWORD"),
     ssl: process.env.VECTOR_DB_SSL === "true"
   });
+}
+
+function requireEnv(name) {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`${name} is required. Run from repo root/workspace-fastify with ../.env present or export ${name}.`);
+  }
+  return value;
 }
 
 function runCommand(command, args, options = {}) {
