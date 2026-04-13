@@ -156,6 +156,7 @@ const DOMAIN_SYNONYM_GROUPS = [
   ["날짜시간", "날짜", "시간", "줄바꿈", "배치"],
   ["예산품의", "지출결의서", "비용품의", "품의서"],
   ["금액표기", "금액", "표기", "포맷"],
+  ["전자결재", "워크플로", "workflow", "wf", "결재문서"],
   ["속도", "느림", "느려", "지연"]
 ];
 const DOMAIN_CORE_TOKENS = new Set([
@@ -1588,6 +1589,18 @@ function getManualDisplaySection(candidate: ManualCandidate): string {
   return normalizeText(source || candidate.sectionTitle || "");
 }
 
+function hasStrongManualQueryOverlap(query: string, candidateText: string): boolean {
+  const focusTokens = getFocusTokens(query);
+  if (focusTokens.length < 2) {
+    return false;
+  }
+
+  const hits = focusTokens.filter((token) =>
+    expandWithSynonyms(token).some((variant) => candidateText.includes(normalizeText(variant)))
+  ).length;
+  return hits / focusTokens.length >= 0.6;
+}
+
 function isGenericApprovalLineQuery(query: string): boolean {
   const normalized = normalizeText(query);
   if (!containsAny(normalized, MANUAL_APPROVAL_LINE_TRIGGERS)) {
@@ -1607,6 +1620,10 @@ function hasManualSectionConflict(query: string, candidate: ManualCandidate | nu
     `${candidate.product} ${candidate.title} ${candidate.sectionTitle ?? ""} ${candidate.sourceLabel ?? ""} ${candidate.previewText}`
   );
   if (!section) {
+    return false;
+  }
+
+  if (hasStrongManualQueryOverlap(query, candidateText)) {
     return false;
   }
 
@@ -2699,6 +2716,24 @@ function getManualProductBoost(query: string, candidate: ManualCandidate): numbe
       boost += 0.08;
     } else if (product === "mobile" && haystack.includes("자원예약")) {
       boost += 0.03;
+    }
+  }
+
+  if (containsAny(normalizedQuery, ["전자결재", "워크플로", "workflow"])) {
+    if (product === "workflow") {
+      boost += 0.34;
+    } else if (
+      product === "mobile" &&
+      !containsAny(normalizedQuery, ["모바일", "app", "앱"])
+    ) {
+      boost -= 0.28;
+    } else if (
+      product === "eaccounting" &&
+      !containsAny(normalizedQuery, ["경비", "비용", "비용업무함", "증빙", "전표"])
+    ) {
+      boost -= 0.26;
+    } else if (haystack.includes("전자결재") || haystack.includes("workflow")) {
+      boost += 0.1;
     }
   }
 
@@ -4017,7 +4052,6 @@ async function computeChatSearch(
     (!hasConfidentBest || (hasManualHowToPriority && hasManualDominantScore));
   const hasManualClarificationFallback =
     bestManual !== null &&
-    !hasConfidentBest &&
     bestManual.score >= manualFallbackMinScore &&
     manualClarification.required &&
     manualClarification.answerText !== null;
@@ -4140,7 +4174,7 @@ async function computeChatSearch(
       manualCandidates,
       manualCandidateCount: manualCandidates.length,
       manualUsed: manualResult.manualUsed,
-      manualError: manualResult.manualError,
+      manualError: hasManualClarificationFallback ? manualClarification.reason : manualResult.manualError,
       timings: {
         ...timingBase,
         retrievalMs: 0,

@@ -122,35 +122,69 @@ function hasScorePass(item, topManual) {
   return topManual !== null && topManual.score >= minScore;
 }
 
+function getExpectedBestChunkType(item) {
+  if (typeof item.expectedBestChunkType === "string") {
+    return item.expectedBestChunkType;
+  }
+  return item.answerable ? "manual" : null;
+}
+
+function hasExpectedClarificationReason(item, debug) {
+  if (!item.expectedClarificationReason) {
+    return true;
+  }
+  return debug.manualError === item.expectedClarificationReason;
+}
+
 function toCaseResult(item, debug) {
   const topManual = Array.isArray(debug.manualCandidates) && debug.manualCandidates.length > 0
     ? debug.manualCandidates[0]
     : null;
+  const expectedBestChunkType = getExpectedBestChunkType(item);
+  const bestChunkTypeHit = expectedBestChunkType === null
+    ? debug.bestChunkType === null
+    : debug.bestChunkType === expectedBestChunkType;
   const manualBestHit = debug.bestChunkType === "manual";
+  const clarificationHit = debug.bestChunkType === "manual_clarification";
   const manualCandidateHit = topManual !== null;
   const productHit = hasProductHit(item, topManual);
   const titleHit = hasTitleHit(item, topManual);
   const scorePass = hasScorePass(item, topManual);
-  const passed = item.answerable
-    ? manualBestHit && manualCandidateHit && productHit && titleHit && scorePass
-    : !manualBestHit;
+  const clarificationReasonHit = hasExpectedClarificationReason(item, debug);
+  const manualCasePass =
+    bestChunkTypeHit && manualCandidateHit && productHit && titleHit && scorePass;
+  const clarificationCasePass =
+    bestChunkTypeHit && manualCandidateHit && clarificationReasonHit;
+  const negativeCasePass =
+    bestChunkTypeHit && !manualBestHit && !clarificationHit;
+  const passed = expectedBestChunkType === "manual"
+    ? manualCasePass
+    : expectedBestChunkType === "manual_clarification"
+      ? clarificationCasePass
+      : negativeCasePass;
 
   return {
     id: item.id,
     query: item.query,
     passed,
     answerable: item.answerable,
+    expectedBestChunkType,
+    expectedClarificationReason: item.expectedClarificationReason ?? null,
     expectedProduct: item.expectedProduct ?? null,
     acceptedProducts: item.acceptedProducts ?? [],
     expectedTitleIncludes: item.expectedTitleIncludes ?? null,
     acceptedTitleIncludes: item.acceptedTitleIncludes ?? [],
+    bestChunkTypeHit,
     manualBestHit,
+    clarificationHit,
     manualCandidateHit,
     productHit,
     titleHit,
     scorePass,
+    clarificationReasonHit,
     actualBestChunkType: debug.bestChunkType,
     confidence: debug.confidence,
+    manualError: debug.manualError ?? null,
     manualCandidateCount: debug.manualCandidateCount ?? 0,
     topManual: topManual
       ? {
@@ -191,6 +225,8 @@ async function main() {
   }
 
   const answerable = results.filter((item) => item.answerable);
+  const manualExpected = results.filter((item) => item.expectedBestChunkType === "manual");
+  const clarificationExpected = results.filter((item) => item.expectedBestChunkType === "manual_clarification");
   const unanswerable = results.filter((item) => !item.answerable);
   const report = {
     generatedAt: new Date().toISOString(),
@@ -200,11 +236,13 @@ async function main() {
     unanswerable: unanswerable.length,
     metrics: {
       passed: `${results.filter((item) => item.passed).length}/${results.length} (${pct(results.filter((item) => item.passed).length, results.length)}%)`,
-      manualBestHit: `${answerable.filter((item) => item.manualBestHit).length}/${answerable.length} (${pct(answerable.filter((item) => item.manualBestHit).length, answerable.length)}%)`,
+      bestChunkTypeHit: `${results.filter((item) => item.bestChunkTypeHit).length}/${results.length} (${pct(results.filter((item) => item.bestChunkTypeHit).length, results.length)}%)`,
+      manualBestHit: `${manualExpected.filter((item) => item.manualBestHit).length}/${manualExpected.length} (${pct(manualExpected.filter((item) => item.manualBestHit).length, manualExpected.length)}%)`,
+      clarificationHit: `${clarificationExpected.filter((item) => item.clarificationHit).length}/${clarificationExpected.length} (${pct(clarificationExpected.filter((item) => item.clarificationHit).length, clarificationExpected.length)}%)`,
       manualCandidateHit: `${answerable.filter((item) => item.manualCandidateHit).length}/${answerable.length} (${pct(answerable.filter((item) => item.manualCandidateHit).length, answerable.length)}%)`,
-      productHit: `${answerable.filter((item) => item.productHit).length}/${answerable.length} (${pct(answerable.filter((item) => item.productHit).length, answerable.length)}%)`,
-      titleHit: `${answerable.filter((item) => item.titleHit).length}/${answerable.length} (${pct(answerable.filter((item) => item.titleHit).length, answerable.length)}%)`,
-      scorePass: `${answerable.filter((item) => item.scorePass).length}/${answerable.length} (${pct(answerable.filter((item) => item.scorePass).length, answerable.length)}%)`,
+      productHit: `${manualExpected.filter((item) => item.productHit).length}/${manualExpected.length} (${pct(manualExpected.filter((item) => item.productHit).length, manualExpected.length)}%)`,
+      titleHit: `${manualExpected.filter((item) => item.titleHit).length}/${manualExpected.length} (${pct(manualExpected.filter((item) => item.titleHit).length, manualExpected.length)}%)`,
+      scorePass: `${manualExpected.filter((item) => item.scorePass).length}/${manualExpected.length} (${pct(manualExpected.filter((item) => item.scorePass).length, manualExpected.length)}%)`,
       negativeCorrect: `${unanswerable.filter((item) => item.passed).length}/${unanswerable.length} (${pct(unanswerable.filter((item) => item.passed).length, unanswerable.length)}%)`
     },
     runtime: {

@@ -4,11 +4,11 @@
     "query": "결재선 지정 방법",
     "retrievalScope": "all",
     "answerable": true,
-    "expectedProduct": "eaccounting",
-    "expectedTitleIncludes": "EA RD MAN 사용자매뉴얼",
+    "expectedBestChunkType": "manual_clarification",
+    "expectedClarificationReason": "GENERIC_APPROVAL_LINE_QUERY",
     "minManualScore": 0.75,
-    "tags": ["howto", "approval-line", "eaccounting"],
-    "notes": "비용업무함에서 수신부서 결재선을 지정하는 매뉴얼 후보 확인"
+    "tags": ["howto", "approval-line", "ambiguous", "clarification"],
+    "notes": "결재선은 전자결재/경비결재/메일/모바일 등 도메인이 갈리므로 바로 특정 매뉴얼로 확정하지 않고 화면 기준 clarification을 기대"
   },
   {
     "id": "MEV-002",
@@ -175,5 +175,32 @@
     "minManualScore": 0.75,
     "tags": ["howto", "attendance", "schedule"],
     "notes": "근태/포탈의 근무일정 생성 후보 확인"
+  },
+  {
+    "id": "MEV-016",
+    "query": "전자결재 결재선 지정 방법",
+    "retrievalScope": "all",
+    "answerable": true,
+    "expectedBestChunkType": "manual",
+    "acceptedProducts": ["workflow", "approval", "eapproval", "WF"],
+    "acceptedTitleIncludes": [
+      "WF RD MAN 사용자매뉴얼",
+      "전자결재"
+    ],
+    "minManualScore": 0.65,
+    "tags": ["howto", "approval-line", "workflow"],
+    "notes": "전자결재 도메인이 명시된 결재선 질의는 clarification이 아니라 전자결재/워크플로 계열 매뉴얼 후보를 기대"
+  },
+  {
+    "id": "MEV-017",
+    "query": "증빙 조회 방법",
+    "retrievalScope": "all",
+    "answerable": true,
+    "expectedBestChunkType": "manual",
+    "expectedProduct": "eaccounting",
+    "expectedTitleIncludes": "EA RD MAN 사용자매뉴얼",
+    "minManualScore": 0.75,
+    "tags": ["howto", "evidence", "eaccounting"],
+    "notes": "증빙 조회처럼 섹션명이 질문과 일치하는 경우는 EA 매뉴얼 후보를 정상 답변으로 기대"
   }
 ]
