@@ -410,6 +410,7 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
   const isSecurityBlocked = !isUser && message.status === "SECURITY_BLOCKED"
   const isSearching = !isUser && message.status === "searching"
   const isGenerating = !isUser && !isSearching && (!message.content || message.status === "generating")
+  const isManualAnswer = !isUser && message.answerSource === "manual"
 
   const contentToDisplay = message.content
   const isError = !isUser && message.status === "error"
@@ -418,7 +419,7 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
   const showActions = !isUser && !isNoMatch && !isSecurityBlocked && !isGenerating && !isSearching
   const showCandidates = showActions && Array.isArray(message.top3Candidates) && message.top3Candidates.length > 1
   const showManualCandidates =
-    showActions && Array.isArray(message.manualCandidates) && message.manualCandidates.length > 0
+    showActions && isManualAnswer && Array.isArray(message.manualCandidates) && message.manualCandidates.length > 0
   const primaryManualPreviewCandidate = showManualCandidates
     ? message.manualCandidates!.find((candidate) => Boolean(candidate.previewImageUrl)) ?? null
     : null
