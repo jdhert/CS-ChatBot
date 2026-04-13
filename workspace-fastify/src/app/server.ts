@@ -664,6 +664,22 @@ function isManualActionLine(line: string): boolean {
   return /클릭|선택|입력|저장|추가|조회|신청|설정|지정|확인|표시|이동|등록|생성|수정|삭제|활성|비활성|변경|작성/u.test(line);
 }
 
+function isManualHeadingLine(line: string): boolean {
+  if (!line) {
+    return true;
+  }
+  if (/^<[^<>]{4,120}>$/u.test(line)) {
+    return true;
+  }
+  if (/^\d+(?:\s+\d+){2,}$/u.test(line)) {
+    return true;
+  }
+  if (/^(?:[가-힣A-Za-z0-9/()·\-\s]{2,40})(?:하기|구성|개요|영역|화면)$/u.test(line)) {
+    return true;
+  }
+  return false;
+}
+
 function getManualEvidenceScope(candidate: ManualCandidate): string[] {
   const rawLines = candidate.previewText
     .split(/\r?\n/)
@@ -671,7 +687,11 @@ function getManualEvidenceScope(candidate: ManualCandidate): string[] {
     .filter((line) => !isManualNoiseLine(line, candidate.title));
 
   const pathIndex = rawLines.findIndex(isManualPathLine);
-  return pathIndex >= 0 ? rawLines.slice(pathIndex, pathIndex + 24) : rawLines;
+  const screenIndex = rawLines.findIndex((line) => /^<[^<>]{4,120}>$/u.test(line));
+  const startIndex = pathIndex >= 0 ? pathIndex : screenIndex >= 0 ? screenIndex + 1 : 0;
+  return rawLines
+    .slice(startIndex, startIndex + 24)
+    .filter((line) => !isManualHeadingLine(line));
 }
 
 function buildManualEvidenceLines(candidate: ManualCandidate): string[] {
@@ -716,6 +736,7 @@ function extractManualScreenLabel(text: string): string | null {
 function buildManualProcedureLines(candidate: ManualCandidate, pathLine: string | undefined): string[] {
   const scopedLines = getManualEvidenceScope(candidate)
     .filter((line) => line !== pathLine)
+    .filter((line) => !isManualHeadingLine(line))
     .filter((line) => line.length >= 6 && line.length <= 180);
   const seen = new Set<string>();
   const actionLines: string[] = [];
@@ -735,7 +756,7 @@ function buildManualProcedureLines(candidate: ManualCandidate, pathLine: string 
   }
 
   const selected = actionLines.length > 0 ? actionLines : contextLines;
-  return selected.slice(0, 4).map((line) => (line.length > 150 ? `${line.slice(0, 150)}...` : line));
+  return selected.slice(0, 5).map((line) => (line.length > 150 ? `${line.slice(0, 150)}...` : line));
 }
 
 function buildManualAnswer(candidate: ManualCandidate | null): string | null {
@@ -749,17 +770,19 @@ function buildManualAnswer(candidate: ManualCandidate | null): string | null {
   const procedureLines = buildManualProcedureLines(candidate, pathLine);
   const parts = [
     "1) \uD575\uC2EC \uC548\uB0B4",
-    `사용자 매뉴얼 "${candidate.title}" 기준으로 확인한 절차입니다.`,
+    `질문과 가장 가까운 사용자 매뉴얼은 "${candidate.title}"입니다. 아래는 해당 매뉴얼 내용을 따라 하기 좋게 정리한 안내입니다.`,
     "",
-    "2) 확인 위치",
-    pathLine ? `- ${pathLine}` : `- 관련 화면: ${displaySection ?? candidate.sectionTitle ?? candidate.title}`,
+    "2) 메뉴/화면",
+    `- 관련 화면: ${displaySection ?? candidate.sectionTitle ?? candidate.title}`,
+    ...(pathLine ? [`- ${pathLine}`] : []),
     "",
-    "3) 진행 순서",
+    "3) 따라 하기",
     ...(procedureLines.length > 0
       ? procedureLines.map((line) => `- ${line}`)
       : ["- 매뉴얼 본문에서 관련 화면의 버튼명과 입력 항목을 확인해 주세요."]),
     "",
     "4) 확인 포인트",
+    `- 제품/버전: ${candidate.product}${candidate.version ? ` v${candidate.version}` : ""}`,
     "- 실제 화면에서는 사용자 권한과 사용 중인 제품 버전에 따라 메뉴명이나 버튼 위치가 일부 다를 수 있습니다.",
     candidate.previewImageUrl
       ? "- 답변 카드의 화면 미리보기를 함께 확인하면 절차를 더 빠르게 따라갈 수 있습니다."

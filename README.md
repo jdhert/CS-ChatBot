@@ -38,6 +38,7 @@ CoviAI는 사내 매뉴얼, 이력 데이터, FAQ 등을 기반으로 사용자 
 - **청크 타입**: issue, action, resolution, qa_pair
 - **검색 방식**: Hybrid (Rule-based + Vector Similarity)
 - **사용자 매뉴얼 MVP**: 로컬 `stor/stor/manual/user` 기준 `.docx` 30개 / 287개 청크 추출 확인. 운영 VM 권장 경로는 repo 루트 `manuals/user`
+- **매뉴얼 평가**: `npm run eval:manual` 기준 17/17 통과 (manual 16건 + clarification 1건, hybrid/vector 17건 사용)
 
 ### 평가 결과 (2026-04-11 기준)
 
@@ -180,6 +181,9 @@ graph TB
 - `/chat`은 기존 SCC 검색 결과를 유지하면서 `manualCandidates`를 함께 반환
 - SCC 유사 이력이 없고 매뉴얼 후보 점수가 충분하면(`MANUAL_FALLBACK_MIN_SCORE`, 기본 0.75) `answerSource=manual`로 사용자 매뉴얼 답변을 반환
 - SCC 후보가 이미 충분한 경우 매뉴얼은 점수 우위와 focus coverage가 강할 때만 우선 적용하여 운영 이력 답변을 불필요하게 덮지 않음
+- `결재선`처럼 전자결재/경비결재/메일/모바일 도메인이 갈리는 질의는 특정 매뉴얼로 바로 확정하지 않고 `answerSource=clarification`으로 제품/화면명을 재질문
+- `answerSource=manual` 답변은 매뉴얼 원문 chunk를 그대로 노출하지 않고 `핵심 안내 / 메뉴·화면 / 따라 하기 / 확인 포인트 / 참고 링크` 구조로 정리
+- 매뉴얼 검색 평가셋은 `npm run eval:manual` 기준 17/17 통과, hybrid/vector 17건 사용 확인
 - 매뉴얼 프리뷰를 켜면(`MANUAL_PREVIEW_ENABLED=true`) `manualCandidates[].previewImageUrl`을 통해 답변 카드에 화면 미리보기를 노출
 - 보안 기본값은 원본 매뉴얼 다운로드 비활성화(`MANUAL_DOWNLOAD_ENABLED=false`)이며, 챗봇 답변에는 매뉴얼 발췌/문서명만 제공합니다.
 - 원본 다운로드를 명시적으로 켜면 매뉴얼 링크는 브라우저 기준 `/api/manual/documents/:documentId`로 연결되며, nginx가 백엔드 `/manual/documents/:documentId`로 전달
@@ -610,6 +614,7 @@ sequenceDiagram
 - [x] **검색 결과 URL 공유** — `/search?q=` 쿼리스트링 반영
 - [x] **채팅 내보내기 토스트 알림** — 내보내기 완료/실패 피드백
 - [x] **채팅 내보내기 포맷 개선** — `.txt`, Markdown, PDF 저장용 인쇄 화면 지원
+- [x] **사용자 매뉴얼 답변 UX 개선** — 매뉴얼 원문 chunk를 화면/절차/확인 포인트 중심으로 정리하고 모호 질의 clarification 적용
 
 #### 🟢 낮은 우선순위 (코드 품질)
 - [ ] **page.tsx 커스텀 훅 분리** — `useChat`, `useConversations` 분리
@@ -617,6 +622,11 @@ sequenceDiagram
 - [x] **임베딩 커버리지 자동 알림** — 신규 SCC 적재/커버리지 하락 시 `/health`, `/logs` 경고 표시
 
 ## 📝 변경 이력
+
+### 2026-04-13
+- ✅ **사용자 매뉴얼 답변 UX 개선** — `answerSource=manual` 응답을 `핵심 안내 / 메뉴·화면 / 따라 하기 / 확인 포인트` 구조로 정리하고 화면 라벨 이후 절차만 추출
+- ✅ **매뉴얼 모호 질의 clarification 강화** — `결재선 지정 방법`처럼 도메인이 갈리는 질문은 특정 매뉴얼로 확정하지 않고 제품/화면명을 재질문
+- ✅ **매뉴얼 eval 기준 확장** — `expectedBestChunkType`, `manual_clarification`, `expectedClarificationReason` 기준을 추가하고 17건 매뉴얼 평가셋 100% 통과 확인
 
 ### 2026-04-12
 - ✅ **API Rate Limiting 적용** — `/chat/stream`, `/chat`, `/retrieval/search`, `/feedback`, `/admin/logs`, `/conversations*` 경로별 요청 제한과 429 응답 헤더 추가
