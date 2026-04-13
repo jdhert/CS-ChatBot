@@ -1733,6 +1733,7 @@ export function buildServer(): FastifyInstance {
               top3Candidates,
               manualCandidates: result.manualCandidates ?? [],
               manualCandidateCount: result.manualCandidateCount ?? 0,
+              manualError: result.manualError ?? null,
               queryRewritten: rewrite.rewriteUsed,
               rewrittenQuery: rewrite.rewriteUsed ? effectiveQuery : null,
               answerSourceReason,
@@ -2059,6 +2060,7 @@ export function buildServer(): FastifyInstance {
         top3Candidates,
         manualCandidates: result.manualCandidates ?? [],
         manualCandidateCount: result.manualCandidateCount ?? 0,
+        manualError: result.manualError ?? null,
         queryRewritten: rewrite.rewriteUsed,
         rewrittenQuery: rewrite.rewriteUsed ? effectiveQuery : null,
         vectorError: result.vectorError ?? null,
@@ -2288,6 +2290,8 @@ export function buildServer(): FastifyInstance {
       "slow",
       "hybrid",
       "rule_only",
+      "manual",
+      "clarification",
     ]);
     const activeFilter = allowedFilters.has(filter) ? filter : "all";
 
@@ -2311,6 +2315,8 @@ export function buildServer(): FastifyInstance {
       activeFilter === "slow"           ? "coalesce(total_ms, retrieval_ms, 0) >= 5000" :
       activeFilter === "hybrid"         ? "retrieval_mode = 'hybrid'" :
       activeFilter === "rule_only"      ? "retrieval_mode = 'rule_only'" :
+      activeFilter === "manual"         ? "answer_source = 'manual'" :
+      activeFilter === "clarification"  ? "answer_source = 'clarification'" :
       "";
 
     const rowConditions = [...baseConditions];
@@ -2376,6 +2382,8 @@ export function buildServer(): FastifyInstance {
             )::float as feedback_negative_rate_pct,
             count(*) filter (where retrieval_mode = 'hybrid')::int as hybrid_count,
             count(*) filter (where retrieval_mode = 'rule_only')::int as rule_only_count,
+            count(*) filter (where answer_source = 'manual')::int as manual_count,
+            count(*) filter (where answer_source = 'clarification')::int as clarification_count,
             count(*) filter (where coalesce(total_ms, retrieval_ms, 0) >= 5000)::int as slow_count,
             round(avg(confidence)::numeric, 4)::float as avg_confidence,
             round(avg(total_ms)::numeric, 0)::int as avg_total_ms,

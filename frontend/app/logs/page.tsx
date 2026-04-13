@@ -61,8 +61,25 @@ interface LogCandidate {
   linkUrl?: string | null
 }
 
+interface LogManualCandidate {
+  documentId?: string | null
+  chunkId?: string | null
+  score?: number | null
+  product?: string | null
+  title?: string | null
+  version?: string | null
+  sectionTitle?: string | null
+  sourceLabel?: string | null
+  previewText?: string | null
+  linkUrl?: string | null
+  previewImageUrl?: string | null
+}
+
 interface LogConversationMetadata {
   top3Candidates?: LogCandidate[] | null
+  manualCandidates?: LogManualCandidate[] | null
+  manualCandidateCount?: number | null
+  manualError?: string | null
   queryRewritten?: boolean | null
   rewrittenQuery?: string | null
   answerSourceReason?: string | null
@@ -130,6 +147,8 @@ interface LogSummary {
   feedback_negative_rate_pct: number | null
   hybrid_count: number
   rule_only_count: number
+  manual_count: number
+  clarification_count: number
   slow_count: number
   avg_confidence: number | null
   avg_total_ms: number | null
@@ -270,6 +289,8 @@ const FILTER_OPTIONS = [
   { value: "slow", label: "느린 쿼리" },
   { value: "hybrid", label: "하이브리드" },
   { value: "rule_only", label: "룰 전용" },
+  { value: "manual", label: "매뉴얼" },
+  { value: "clarification", label: "추가질문" },
 ] as const
 
 const DAY_OPTIONS = [
@@ -284,6 +305,8 @@ const ANSWER_SOURCE_LABEL: Record<string, string> = {
   deterministic_fallback: "결정형 안내",
   rule_only: "룰 기반",
   llm_stream: "스트리밍 LLM",
+  manual: "매뉴얼",
+  clarification: "추가질문",
 }
 
 const DIAGNOSTIC_LABEL: Record<string, string> = {
@@ -291,6 +314,8 @@ const DIAGNOSTIC_LABEL: Record<string, string> = {
   vectorStrategy: "벡터 전략",
   vectorModelTag: "벡터 모델",
   vectorCandidateCount: "벡터 후보 수",
+  manualCandidateCount: "매뉴얼 후보 수",
+  manualError: "매뉴얼 진단",
   llmError: "LLM 오류",
   llmSkipReason: "LLM 스킵 사유",
   answerSourceReason: "답변 출처 사유",
@@ -891,12 +916,15 @@ function LogRowCard({ row }: { row: LogRow }) {
     : null
   const metadata = row.conversation_metadata ?? {}
   const topCandidates = Array.isArray(metadata.top3Candidates) ? metadata.top3Candidates : []
+  const manualCandidates = Array.isArray(metadata.manualCandidates) ? metadata.manualCandidates : []
   const streamTimings = metadata.streamTimings ?? null
   const diagnostics = [
     ["vectorError", metadata.vectorError],
     ["vectorStrategy", metadata.vectorStrategy],
     ["vectorModelTag", metadata.vectorModelTag],
     ["vectorCandidateCount", metadata.vectorCandidateCount],
+    ["manualCandidateCount", metadata.manualCandidateCount],
+    ["manualError", metadata.manualError],
     ["llmError", metadata.llmError],
     ["llmSkipReason", metadata.llmSkipReason ?? row.llm_skip_reason],
     ["answerSourceReason", metadata.answerSourceReason],
@@ -951,6 +979,11 @@ function LogRowCard({ row }: { row: LogRow }) {
             {row.user_feedback && (
               <span className="text-[10px] text-muted-foreground">
                 {row.user_feedback === "up" ? "좋아요" : "싫어요"}
+              </span>
+            )}
+            {manualCandidates.length > 0 && (
+              <span className="text-[10px] text-muted-foreground">
+                매뉴얼 후보 {metadata.manualCandidateCount ?? manualCandidates.length}
               </span>
             )}
             <span className="ml-auto text-[10px] text-muted-foreground">{formatDate(row.created_at)}</span>
@@ -1021,6 +1054,47 @@ function LogRowCard({ row }: { row: LogRow }) {
                   </div>
                 ))}
               </dl>
+            </div>
+          )}
+
+          {manualCandidates.length > 0 && (
+            <div className="rounded-xl border border-blue-200/70 bg-blue-50/40 p-3 dark:border-blue-900/60 dark:bg-blue-950/20">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-semibold text-foreground">매뉴얼 후보</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    선택/차단 판단에 사용된 상위 매뉴얼 후보입니다.
+                  </div>
+                </div>
+                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                  {metadata.manualCandidateCount ?? manualCandidates.length}건
+                </span>
+              </div>
+              <div className="space-y-2">
+                {manualCandidates.slice(0, 3).map((candidate, index) => (
+                  <div key={`${candidate.documentId ?? "manual"}:${candidate.chunkId ?? index}`} className="rounded-lg bg-background/80 p-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-foreground">#{index + 1}</span>
+                      {candidate.product && <span className="text-muted-foreground">{candidate.product}</span>}
+                      <span className="text-muted-foreground">점수 {formatMaybeScore(candidate.score)}</span>
+                      {candidate.linkUrl && (
+                        <a href={candidate.linkUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                          매뉴얼 열기
+                        </a>
+                      )}
+                    </div>
+                    <div className="mt-1 line-clamp-1 font-medium text-foreground">
+                      {[candidate.title, candidate.sourceLabel ?? candidate.sectionTitle].filter(Boolean).join(" / ")}
+                    </div>
+                    {candidate.previewText && (
+                      <p className="mt-1 line-clamp-2 text-muted-foreground">{candidate.previewText}</p>
+                    )}
+                    {candidate.previewImageUrl && (
+                      <div className="mt-1 text-[11px] text-blue-600 dark:text-blue-400">프리뷰 이미지 있음</div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -1200,7 +1274,7 @@ export default function LogsPage() {
             <SummaryCard
               label="평균 응답 시간"
               value={data.summary.avg_total_ms ? `${data.summary.avg_total_ms.toLocaleString()}ms` : "-"}
-              sub={`느린 쿼리 ${data.summary.slow_count.toLocaleString()} · hybrid ${data.summary.hybrid_count.toLocaleString()}`}
+              sub={`느린 쿼리 ${data.summary.slow_count.toLocaleString()} · 매뉴얼 ${data.summary.manual_count.toLocaleString()} · 추가질문 ${data.summary.clarification_count.toLocaleString()}`}
               icon={<Clock className="h-4 w-4" />}
               tone={data.summary.slow_count > 0 ? "warning" : "neutral"}
             />
