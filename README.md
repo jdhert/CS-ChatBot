@@ -185,11 +185,12 @@ graph TB
 - `answerSource=manual` 답변은 매뉴얼 원문 chunk를 그대로 노출하지 않고 `핵심 안내 / 메뉴·화면 / 따라 하기 / 확인 포인트 / 참고 링크` 구조로 정리
 - 매뉴얼 검색 평가셋은 `npm run eval:manual` 기준 17/17 통과, hybrid/vector 17건 사용 확인
 - 매뉴얼 프리뷰를 켜면(`MANUAL_PREVIEW_ENABLED=true`) `manualCandidates[].previewImageUrl`을 통해 답변 카드에 화면 미리보기를 노출
+- 프리뷰 이미지는 `manuals/preview/manifest.json`의 chunk-page 매칭 점수가 `MANUAL_PREVIEW_MATCH_MIN_SCORE` 이상인 경우에만 노출하여 엉뚱한 화면 미리보기 노출을 방지
 - 보안 기본값은 원본 매뉴얼 다운로드 비활성화(`MANUAL_DOWNLOAD_ENABLED=false`)이며, 챗봇 답변에는 매뉴얼 발췌/문서명만 제공합니다.
 - 원본 다운로드를 명시적으로 켜면 매뉴얼 링크는 브라우저 기준 `/api/manual/documents/:documentId`로 연결되며, nginx가 백엔드 `/manual/documents/:documentId`로 전달
 - Docker Compose 기준 `./manuals/user`를 backend 컨테이너의 `/app/manuals/user`에 읽기 전용으로 마운트
 - Docker Compose 기준 프리뷰 이미지는 `./manuals/preview`를 backend 컨테이너의 `/app/manuals/preview`에 읽기 전용으로 마운트
-- 프리뷰 이미지는 운영 VM 호스트에서 `npm run manual:preview:generate -- --source-dir ../manuals/user --pdf-dir ../manuals/pdf --preview-dir ../manuals/preview`로 생성하고, coverage 리포트는 `workspace-fastify/docs/eval/manual_preview_coverage.latest.json`에 기록
+- 프리뷰 이미지는 운영 VM 호스트에서 `npm run manual:preview:generate -- --source-dir ../manuals/user --pdf-dir ../manuals/pdf --preview-dir ../manuals/preview`로 생성하고, coverage 리포트는 `workspace-fastify/docs/eval/manual_preview_coverage.latest.json`, 신뢰도 manifest는 `manuals/preview/manifest.json`에 기록
 
 ### 5. 사용자 편의 기능
 - 답변 복사 버튼 (클립보드)
@@ -615,6 +616,7 @@ sequenceDiagram
 - [x] **채팅 내보내기 토스트 알림** — 내보내기 완료/실패 피드백
 - [x] **채팅 내보내기 포맷 개선** — `.txt`, Markdown, PDF 저장용 인쇄 화면 지원
 - [x] **사용자 매뉴얼 답변 UX 개선** — 매뉴얼 원문 chunk를 화면/절차/확인 포인트 중심으로 정리하고 모호 질의 clarification 적용
+- [x] **사용자 매뉴얼 프리뷰 신뢰도 gate** — manifest 기반 chunk-page 매칭 점수로 저신뢰 화면 미리보기 숨김 처리
 
 #### 🟢 낮은 우선순위 (코드 품질)
 - [ ] **page.tsx 커스텀 훅 분리** — `useChat`, `useConversations` 분리
@@ -627,6 +629,7 @@ sequenceDiagram
 - ✅ **사용자 매뉴얼 답변 UX 개선** — `answerSource=manual` 응답을 `핵심 안내 / 메뉴·화면 / 따라 하기 / 확인 포인트` 구조로 정리하고 화면 라벨 이후 절차만 추출
 - ✅ **매뉴얼 모호 질의 clarification 강화** — `결재선 지정 방법`처럼 도메인이 갈리는 질문은 특정 매뉴얼로 확정하지 않고 제품/화면명을 재질문
 - ✅ **매뉴얼 eval 기준 확장** — `expectedBestChunkType`, `manual_clarification`, `expectedClarificationReason` 기준을 추가하고 17건 매뉴얼 평가셋 100% 통과 확인
+- ✅ **매뉴얼 프리뷰 신뢰도 gate 추가** — preview manifest의 chunk-page 매칭 점수와 상태를 기준으로 신뢰도 낮은 화면 이미지는 챗봇 응답에서 숨김 처리
 
 ### 2026-04-12
 - ✅ **API Rate Limiting 적용** — `/chat/stream`, `/chat`, `/retrieval/search`, `/feedback`, `/admin/logs`, `/conversations*` 경로별 요청 제한과 429 응답 헤더 추가

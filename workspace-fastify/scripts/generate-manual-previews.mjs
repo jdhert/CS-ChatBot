@@ -24,6 +24,7 @@ const DEFAULT_PDF_DIR = path.join(repoRoot, "manuals", "pdf");
 const DEFAULT_PREVIEW_DIR = path.join(repoRoot, "manuals", "preview");
 const DEFAULT_TMP_DIR = path.join(projectDir, "tmp", "manual-preview");
 const DEFAULT_REPORT_PATH = path.join(projectDir, "docs", "eval", "manual_preview_coverage.latest.json");
+const PREVIEW_MANIFEST_FILE = "manifest.json";
 const DEFAULT_MIN_SCORE = 0.12;
 const DEFAULT_LIMIT = 0;
 const DEFAULT_DPI = 120;
@@ -482,6 +483,15 @@ async function generatePreviews(pool, args, tools) {
   const totals = emptyTotals();
   totals.documents = documents.length;
   const details = [];
+  const manifest = {
+    generatedAt: new Date().toISOString(),
+    sourceDir: args.sourceDir,
+    pdfDir: args.pdfDir,
+    previewDir: args.previewDir,
+    minScore: args.minScore,
+    dpi: args.dpi,
+    entries: []
+  };
 
   for (const document of documents) {
     const detail = {
@@ -519,21 +529,35 @@ async function generatePreviews(pool, args, tools) {
 
       for (const chunk of chunks) {
         const targetPath = path.join(args.previewDir, document.document_id, `${chunk.chunk_id}.png`);
-        if (args.skipExisting && !args.force && (await pathExists(targetPath))) {
-          detail.skippedExisting += 1;
-          totals.skippedExisting += 1;
-          continue;
-        }
-
         const match = bestPageMatch(`${chunk.section_title ?? ""}\n${chunk.chunk_text}`, pages);
+        const manifestEntry = {
+          documentId: document.document_id,
+          chunkId: chunk.chunk_id,
+          title: document.title,
+          sectionTitle: chunk.section_title,
+          chunkSeq: chunk.chunk_seq,
+          pageNumber: match.pageIndex >= 0 ? pages[match.pageIndex]?.pageNumber ?? null : null,
+          score: Number(match.score.toFixed(4)),
+          status: "pending"
+        };
+
         if (match.pageIndex < 0) {
           detail.unmatched += 1;
           totals.unmatched += 1;
+          manifest.entries.push({ ...manifestEntry, status: "unmatched" });
           continue;
         }
         if (match.score < args.minScore) {
           detail.lowConfidence += 1;
           totals.lowConfidence += 1;
+          manifest.entries.push({ ...manifestEntry, status: "lowConfidence" });
+          continue;
+        }
+
+        if (args.skipExisting && !args.force && (await pathExists(targetPath))) {
+          detail.skippedExisting += 1;
+          totals.skippedExisting += 1;
+          manifest.entries.push({ ...manifestEntry, status: "existing" });
           continue;
         }
 
@@ -541,6 +565,7 @@ async function generatePreviews(pool, args, tools) {
           await fs.mkdir(path.dirname(targetPath), { recursive: true });
           await fs.copyFile(pages[match.pageIndex].imagePath, targetPath);
         }
+        manifest.entries.push({ ...manifestEntry, status: args.dryRun ? "dryRun" : "generated" });
         detail.generated += 1;
         totals.generated += 1;
       }
@@ -559,6 +584,11 @@ async function generatePreviews(pool, args, tools) {
   }
 
   const coverage = await listExistingPreviewCoverage(pool, args.previewDir, args);
+  await writeJson(path.join(args.previewDir, PREVIEW_MANIFEST_FILE), {
+    ...manifest,
+    totals,
+    coverage
+  });
   return { totals, coverage, details };
 }
 

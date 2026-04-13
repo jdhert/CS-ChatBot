@@ -73,6 +73,9 @@ interface LogManualCandidate {
   previewText?: string | null
   linkUrl?: string | null
   previewImageUrl?: string | null
+  previewImageConfidence?: "high" | "low" | null
+  previewImageReason?: string | null
+  previewPageNumber?: number | null
 }
 
 interface LogConversationMetadata {
@@ -1091,6 +1094,11 @@ function LogRowCard({ row }: { row: LogRow }) {
                     )}
                     {candidate.previewImageUrl && (
                       <div className="mt-1 text-[11px] text-blue-600 dark:text-blue-400">프리뷰 이미지 있음</div>
+                    )}
+                    {!candidate.previewImageUrl && candidate.previewImageConfidence === "low" && (
+                      <div className="mt-1 text-[11px] text-amber-600 dark:text-amber-300">
+                        프리뷰 숨김: {candidate.previewImageReason ?? "LOW_CONFIDENCE"}
+                      </div>
                     )}
                   </div>
                 ))}

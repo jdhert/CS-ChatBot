@@ -1,4 +1,6 @@
-﻿import { getVectorPool } from "../../platform/db/vectorClient.js";
+﻿import { readFileSync, statSync } from "node:fs";
+import { resolve } from "node:path";
+import { getVectorPool } from "../../platform/db/vectorClient.js";
 import type {
   ChatCandidate,
   ChatResponseBody,
@@ -28,6 +30,8 @@ const DEFAULT_MANUAL_LEXICAL_SCAN_LIMIT = 240;
 const DEFAULT_MANUAL_PRIORITY_MIN_SCORE = 0.75;
 const DEFAULT_MANUAL_FALLBACK_MIN_SCORE = 0.75;
 const DEFAULT_MANUAL_PRIORITY_MIN_LEXICAL_COVERAGE = 0.12;
+const DEFAULT_MANUAL_PREVIEW_MATCH_MIN_SCORE = 0.3;
+const MANUAL_PREVIEW_MANIFEST_FILE = "manifest.json";
 const DEFAULT_VECTOR_SEARCH_LIMIT = 30;
 const DEFAULT_EMBEDDING_TIMEOUT_MS = 8000;
 const COVISION_SERVICE_VIEW_BASE_URL =
@@ -2652,11 +2656,141 @@ function isManualPreviewEnabled(): boolean {
   return ["1", "true", "on", "yes"].includes(raw);
 }
 
-function toManualPreviewImageUrl(documentId: string, chunkId: string): string | null {
-  if (!isManualPreviewEnabled()) {
-    return null;
+interface ManualPreviewManifestEntry {
+  documentId: string;
+  chunkId: string;
+  pageNumber: number | null;
+  score: number;
+  status: string;
+}
+
+interface ManualPreviewManifestCache {
+  path: string | null;
+  loadedAt: number;
+  mtimeMs: number;
+  entries: Map<string, ManualPreviewManifestEntry>;
+}
+
+interface ManualPreviewImageInfo {
+  url: string | null;
+  confidence: "high" | "low" | null;
+  reason: string | null;
+  pageNumber: number | null;
+}
+
+let manualPreviewManifestCache: ManualPreviewManifestCache | null = null;
+
+function getManualPreviewManifestPath(): string | null {
+  const explicit = process.env.MANUAL_PREVIEW_MANIFEST_PATH?.trim();
+  if (explicit) {
+    return resolve(explicit);
   }
-  return `/api/manual/previews/${encodeURIComponent(documentId)}/${encodeURIComponent(chunkId)}`;
+  const root = process.env.MANUAL_PREVIEW_DIR?.trim();
+  return root ? resolve(root, MANUAL_PREVIEW_MANIFEST_FILE) : null;
+}
+
+function isManualPreviewManifestRequired(): boolean {
+  const raw = process.env.MANUAL_PREVIEW_REQUIRE_MANIFEST?.trim().toLowerCase();
+  if (!raw) {
+    return true;
+  }
+  return ["1", "true", "on", "yes"].includes(raw);
+}
+
+function getManualPreviewMatchMinScore(): number {
+  return clamp01(parseEnvNumber(process.env.MANUAL_PREVIEW_MATCH_MIN_SCORE, DEFAULT_MANUAL_PREVIEW_MATCH_MIN_SCORE));
+}
+
+function manualPreviewKey(documentId: string, chunkId: string): string {
+  return `${documentId}:${chunkId}`;
+}
+
+function loadManualPreviewManifest(): ManualPreviewManifestCache {
+  const manifestPath = getManualPreviewManifestPath();
+  const now = Date.now();
+  if (!manifestPath) {
+    return { path: null, loadedAt: now, mtimeMs: 0, entries: new Map() };
+  }
+
+  if (
+    manualPreviewManifestCache &&
+    manualPreviewManifestCache.path === manifestPath &&
+    manualPreviewManifestCache.mtimeMs === 0 &&
+    now - manualPreviewManifestCache.loadedAt < 30_000
+  ) {
+    return manualPreviewManifestCache;
+  }
+
+  try {
+    const manifestStat = statSync(manifestPath);
+    if (
+      manualPreviewManifestCache &&
+      manualPreviewManifestCache.path === manifestPath &&
+      manualPreviewManifestCache.mtimeMs === manifestStat.mtimeMs &&
+      now - manualPreviewManifestCache.loadedAt < 30_000
+    ) {
+      return manualPreviewManifestCache;
+    }
+
+    const payload = JSON.parse(readFileSync(manifestPath, "utf8")) as { entries?: ManualPreviewManifestEntry[] };
+    const entries = new Map<string, ManualPreviewManifestEntry>();
+    for (const entry of payload.entries ?? []) {
+      if (entry?.documentId && entry?.chunkId) {
+        const pageNumber = entry.pageNumber == null ? null : Number(entry.pageNumber);
+        entries.set(manualPreviewKey(entry.documentId, entry.chunkId), {
+          documentId: entry.documentId,
+          chunkId: entry.chunkId,
+          pageNumber: Number.isFinite(pageNumber) ? pageNumber : null,
+          score: Number.isFinite(Number(entry.score)) ? Number(entry.score) : 0,
+          status: entry.status ?? "unknown"
+        });
+      }
+    }
+
+    manualPreviewManifestCache = {
+      path: manifestPath,
+      loadedAt: now,
+      mtimeMs: manifestStat.mtimeMs,
+      entries
+    };
+    return manualPreviewManifestCache;
+  } catch {
+    manualPreviewManifestCache = {
+      path: manifestPath,
+      loadedAt: now,
+      mtimeMs: 0,
+      entries: new Map()
+    };
+    return manualPreviewManifestCache;
+  }
+}
+
+function getManualPreviewImageInfo(documentId: string, chunkId: string): ManualPreviewImageInfo {
+  if (!isManualPreviewEnabled()) {
+    return { url: null, confidence: null, reason: "MANUAL_PREVIEW_DISABLED", pageNumber: null };
+  }
+
+  const url = `/api/manual/previews/${encodeURIComponent(documentId)}/${encodeURIComponent(chunkId)}`;
+  if (!isManualPreviewManifestRequired()) {
+    return { url, confidence: null, reason: "MANIFEST_NOT_REQUIRED", pageNumber: null };
+  }
+
+  const manifest = loadManualPreviewManifest();
+  const entry = manifest.entries.get(manualPreviewKey(documentId, chunkId));
+  if (!entry) {
+    return { url: null, confidence: "low", reason: "MANIFEST_ENTRY_MISSING", pageNumber: null };
+  }
+
+  const usableStatus = ["generated", "existing", "skippedExisting"].includes(entry.status);
+  if (!usableStatus) {
+    return { url: null, confidence: "low", reason: `MANIFEST_${entry.status.toUpperCase()}`, pageNumber: entry.pageNumber };
+  }
+
+  if (entry.score < getManualPreviewMatchMinScore()) {
+    return { url: null, confidence: "low", reason: "LOW_PAGE_MATCH_SCORE", pageNumber: entry.pageNumber };
+  }
+
+  return { url, confidence: "high", reason: "PAGE_MATCH_CONFIRMED", pageNumber: entry.pageNumber };
 }
 
 function extractManualScreenLabel(text: string): string | null {
@@ -2670,6 +2804,7 @@ function toManualSourceLabel(title: string, sectionTitle: string | null, chunkTe
 }
 
 function toManualCandidate(row: ManualVectorCandidateRow): ManualCandidate {
+  const previewInfo = getManualPreviewImageInfo(row.documentId, row.chunkId);
   return {
     documentId: row.documentId,
     chunkId: row.chunkId,
@@ -2681,7 +2816,10 @@ function toManualCandidate(row: ManualVectorCandidateRow): ManualCandidate {
     previewText: truncate(row.chunkText, MANUAL_PREVIEW_TEXT_LENGTH),
     linkUrl: toManualLinkUrl(row.documentId),
     sourceLabel: toManualSourceLabel(row.title, row.sectionTitle, row.chunkText),
-    previewImageUrl: toManualPreviewImageUrl(row.documentId, row.chunkId)
+    previewImageUrl: previewInfo.url,
+    previewImageConfidence: previewInfo.confidence,
+    previewImageReason: previewInfo.reason,
+    previewPageNumber: previewInfo.pageNumber
   };
 }
 
@@ -2813,6 +2951,7 @@ function toManualLexicalCandidate(row: ManualLexicalCandidateRow, query: string)
   const titleCoverage = computeLexicalCoverage(query, `${row.product} ${row.title} ${row.sectionTitle ?? ""}`);
   const focusCoverage = computeFocusCoverage(query, haystack);
   const baseScore = clamp01(0.58 * lexicalCoverage + 0.24 * titleCoverage + 0.18 * focusCoverage);
+  const previewInfo = getManualPreviewImageInfo(row.documentId, row.chunkId);
 
   return {
     documentId: row.documentId,
@@ -2825,7 +2964,10 @@ function toManualLexicalCandidate(row: ManualLexicalCandidateRow, query: string)
     previewText: truncate(row.chunkText, MANUAL_PREVIEW_TEXT_LENGTH),
     linkUrl: toManualLinkUrl(row.documentId),
     sourceLabel: toManualSourceLabel(row.title, row.sectionTitle, row.chunkText),
-    previewImageUrl: toManualPreviewImageUrl(row.documentId, row.chunkId)
+    previewImageUrl: previewInfo.url,
+    previewImageConfidence: previewInfo.confidence,
+    previewImageReason: previewInfo.reason,
+    previewPageNumber: previewInfo.pageNumber
   };
 }
 

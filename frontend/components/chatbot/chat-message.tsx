@@ -27,6 +27,9 @@ export interface ManualCandidateCard {
   linkUrl?: string | null
   sourceLabel?: string | null
   previewImageUrl?: string | null
+  previewImageConfidence?: "high" | "low" | null
+  previewImageReason?: string | null
+  previewPageNumber?: number | null
 }
 
 export interface Message {
