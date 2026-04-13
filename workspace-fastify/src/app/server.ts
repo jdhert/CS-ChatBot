@@ -823,10 +823,17 @@ function buildDisplayPayload(args: {
   retrievalMode: ChatResponseBody["retrievalMode"];
 }): NonNullable<ChatResponseBody["display"]> {
   const isManual = args.answerSource === "manual";
+  const isClarification = args.answerSource === "clarification";
   const hasMatch = args.requireId !== null || isManual;
   return {
     status: hasMatch ? "matched" : "needs_more_info",
-    title: isManual ? "사용자 매뉴얼을 찾았습니다." : hasMatch ? "유사 처리 이력을 찾았습니다." : "추가 정보가 필요합니다.",
+    title: isManual
+      ? "사용자 매뉴얼을 찾았습니다."
+      : isClarification
+        ? "추가 정보가 필요합니다."
+        : hasMatch
+          ? "유사 처리 이력을 찾았습니다."
+          : "추가 정보가 필요합니다.",
     answerText: args.answerText,
     linkLabel: hasMatch && args.linkUrl ? (isManual ? "사용자 매뉴얼 열기" : "유사 이력 바로가기") : null,
     linkUrl: hasMatch ? args.linkUrl : null,
@@ -1554,8 +1561,10 @@ export function buildServer(): FastifyInstance {
       const retrievalMs = Date.now() - retrievalStartedAt;
       const selectedManualCandidate =
         result.bestChunkType === "manual" ? result.manualCandidates?.[0] ?? null : null;
+      const hasManualClarification =
+        result.bestChunkType === "manual_clarification" && result.bestAnswerText !== null;
       const hasManualMatch = selectedManualCandidate !== null && result.bestAnswerText !== null;
-      const hasRetrievalMatch = result.bestRequireId !== null || hasManualMatch;
+      const hasRetrievalMatch = result.bestRequireId !== null || hasManualMatch || hasManualClarification;
 
       // Log detailed timing breakdown for performance analysis
       request.log.info(
@@ -1589,6 +1598,10 @@ export function buildServer(): FastifyInstance {
       if (!hasRetrievalMatch) {
         llmSkipped = true;
         llmSkipReason = "NO_RETRIEVAL_MATCH";
+      } else if (hasManualClarification) {
+        llmSkipped = true;
+        llmSkipReason = "MANUAL_CLARIFICATION";
+        llmResultRaw.generatedAnswer = result.bestAnswerText;
       } else if (hasManualMatch) {
         llmSkipped = true;
         llmSkipReason = "MANUAL_CANDIDATE";
@@ -1604,12 +1617,12 @@ export function buildServer(): FastifyInstance {
       }
 
       const selectedRequireId = hasRetrievalMatch
-        ? hasManualMatch
+        ? hasManualMatch || hasManualClarification
           ? null
           : llmResultRaw.llmSelectedRequireId ?? result.bestRequireId
         : null;
       const selectedSccId =
-        !hasRetrievalMatch || hasManualMatch
+        !hasRetrievalMatch || hasManualMatch || hasManualClarification
           ? null
           : llmResultRaw.llmSelectedSccId ??
         (selectedRequireId
@@ -1631,6 +1644,7 @@ export function buildServer(): FastifyInstance {
       const shouldForceDeterministic =
         hasRetrievalMatch &&
         !hasManualMatch &&
+        !hasManualClarification &&
         result.bestAnswerText !== null &&
         result.confidence >= FALLBACK_MIN_CONFIDENCE &&
         (llmSkipped || !hasUsableLlmAnswer || (llmResultRaw.llmSelectedRequireId === null && !explanationRequired));
@@ -1641,6 +1655,8 @@ export function buildServer(): FastifyInstance {
       const answerSource =
         hasManualMatch
           ? "manual"
+          : hasManualClarification
+          ? "clarification"
           : fallbackAnswer !== null
           ? result.retrievalMode === "rule_only"
             ? "rule_only"
@@ -1653,6 +1669,8 @@ export function buildServer(): FastifyInstance {
       const answerSourceReason =
         hasManualMatch
           ? "MANUAL_CANDIDATE"
+          : hasManualClarification
+          ? "MANUAL_CLARIFICATION"
           : fallbackAnswer !== null
           ? llmSkipped
             ? llmSkipReason
@@ -1901,8 +1919,10 @@ export function buildServer(): FastifyInstance {
       const retrievalMs = Date.now() - retrievalStartedAt;
       const selectedManualCandidate =
         result.bestChunkType === "manual" ? result.manualCandidates?.[0] ?? null : null;
+      const hasManualClarification =
+        result.bestChunkType === "manual_clarification" && result.bestAnswerText !== null;
       const hasManualMatch = selectedManualCandidate !== null && result.bestAnswerText !== null;
-      const hasRetrievalMatch = result.bestRequireId !== null || hasManualMatch;
+      const hasRetrievalMatch = result.bestRequireId !== null || hasManualMatch || hasManualClarification;
 
       // Log detailed timing breakdown for performance analysis
       request.log.info(
@@ -2001,11 +2021,13 @@ export function buildServer(): FastifyInstance {
       // metadata를 먼저 전송해 프론트에서 링크와 상태를 즉시 표시할 수 있게 함
       const similarIssueUrl = hasManualMatch
         ? selectedManualCandidate.linkUrl
+        : hasManualClarification
+        ? null
         : result.bestRequireId
         ? `${COVISION_SERVICE_VIEW_BASE_URL}?req_id=${result.bestRequireId}&system=Menu01&alias=Menu01.Service.List&mnid=705`
         : null;
       // Top3 후보를 카드 표시용으로 정제 (previewText 100자 기준)
-      const top3Candidates = hasManualMatch
+      const top3Candidates = hasManualMatch || hasManualClarification
         ? []
         : result.candidates.slice(0, 3).map((c) => ({
             requireId: c.requireId,
@@ -2015,8 +2037,12 @@ export function buildServer(): FastifyInstance {
             previewText: (c.issuePreview ?? c.qaPairPreview ?? c.previewText ?? "").slice(0, 100),
             linkUrl: buildSimilarIssueUrl(c.requireId),
           }));
-      const streamAnswerSource = hasManualMatch ? "manual" : "llm_stream";
-      const streamAnswerText = hasManualMatch ? buildManualAnswer(selectedManualCandidate) ?? "" : "";
+      const streamAnswerSource = hasManualMatch ? "manual" : hasManualClarification ? "clarification" : "llm_stream";
+      const streamAnswerText = hasManualMatch
+        ? buildManualAnswer(selectedManualCandidate) ?? ""
+        : hasManualClarification
+          ? result.bestAnswerText ?? ""
+          : "";
 
       const metadata: Record<string, unknown> & { streamTimings: StreamTimingMetadata } = {
         logId: logUuid,
@@ -2053,11 +2079,11 @@ export function buildServer(): FastifyInstance {
         },
         display: buildDisplayPayload({
           answerText: streamAnswerText,
-          requireId: hasManualMatch ? null : result.bestRequireId,
-          sccId: hasManualMatch ? null : result.bestSccId,
+          requireId: hasManualMatch || hasManualClarification ? null : result.bestRequireId,
+          sccId: hasManualMatch || hasManualClarification ? null : result.bestSccId,
           linkUrl: similarIssueUrl,
           confidence: result.confidence,
-          answerSource: hasManualMatch ? "manual" : "llm",
+          answerSource: hasManualMatch ? "manual" : hasManualClarification ? "clarification" : "llm",
           retrievalMode: result.retrievalMode
         })
       };
@@ -2068,7 +2094,7 @@ export function buildServer(): FastifyInstance {
       let accumulatedText = "";
       let llmFirstTokenMs: number | null = null;
       const llmStartedAt = Date.now();
-      if (hasManualMatch) {
+      if (hasManualMatch || hasManualClarification) {
         accumulatedText = streamAnswerText;
         chunkCount = accumulatedText.length > 0 ? 1 : 0;
         llmFirstTokenMs = 0;
@@ -2085,7 +2111,7 @@ export function buildServer(): FastifyInstance {
           reply.raw.write(`data: ${JSON.stringify({ type: "chunk", data: chunk })}\n\n`);
         }
       }
-      const llmStreamMs = hasManualMatch ? 0 : Date.now() - llmStartedAt;
+      const llmStreamMs = hasManualMatch || hasManualClarification ? 0 : Date.now() - llmStartedAt;
       metadata.streamTimings = {
         ...metadata.streamTimings,
         llmFirstTokenMs,
@@ -2117,9 +2143,9 @@ export function buildServer(): FastifyInstance {
         vectorUsed: result.vectorUsed,
         retrievalMode: result.retrievalMode,
         answerSource: streamAnswerSource,
-        llmUsed: !hasManualMatch,
-        llmSkipped: hasManualMatch,
-        llmSkipReason: hasManualMatch ? "MANUAL_CANDIDATE" : undefined,
+        llmUsed: !hasManualMatch && !hasManualClarification,
+        llmSkipped: hasManualMatch || hasManualClarification,
+        llmSkipReason: hasManualMatch ? "MANUAL_CANDIDATE" : hasManualClarification ? "MANUAL_CLARIFICATION" : undefined,
         isNoMatch: false,
         ruleMs: result.timings?.ruleMs,
         embeddingMs: result.timings?.embeddingMs,
@@ -2140,8 +2166,8 @@ export function buildServer(): FastifyInstance {
             answerSource: streamAnswerSource,
             retrievalMode: result.retrievalMode,
             confidence: result.confidence,
-            bestRequireId: hasManualMatch ? null : result.bestRequireId,
-            bestSccId: hasManualMatch ? null : result.bestSccId,
+            bestRequireId: hasManualMatch || hasManualClarification ? null : result.bestRequireId,
+            bestSccId: hasManualMatch || hasManualClarification ? null : result.bestSccId,
             similarIssueUrl,
             logUuid,
             metadata
@@ -2677,4 +2703,3 @@ export function buildServer(): FastifyInstance {
 
   return app;
 }
-

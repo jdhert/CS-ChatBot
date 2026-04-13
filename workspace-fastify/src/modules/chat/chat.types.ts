@@ -1,6 +1,6 @@
 export type RetrievalScope = "all" | "manual" | "scc";
 export type RetrievalMode = "hybrid" | "rule_only";
-export type AnswerSource = "llm" | "deterministic_fallback" | "rule_only" | "manual";
+export type AnswerSource = "llm" | "deterministic_fallback" | "rule_only" | "manual" | "clarification";
 export type ChatViewStatus = "matched" | "needs_more_info";
 export type VectorStrategy =
   | "pgvector"

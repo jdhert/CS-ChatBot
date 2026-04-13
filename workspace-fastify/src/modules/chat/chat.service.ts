@@ -1446,6 +1446,12 @@ interface ManualSpecificitySignal {
   hasGap: boolean;
 }
 
+interface ManualClarificationDecision {
+  required: boolean;
+  reason: string | null;
+  answerText: string | null;
+}
+
 function canonicalizeManualSpecificityPhrases(query: string): string {
   let rewritten = normalizeText(query);
   const phraseRules: Array<[RegExp, string]> = [
@@ -1543,6 +1549,112 @@ function computeManualSpecificitySignal(query: string, candidate: ManualCandidat
       ? coverage < 0.6
       : tokens.some(isHighSpecificityManualToken) && coverage < 1;
   return { tokens, coverage, hasGap };
+}
+
+const MANUAL_APPROVAL_LINE_TRIGGERS = ["결재선", "결재라인", "승인선"];
+const MANUAL_APPROVAL_LINE_DOMAIN_HINTS = [
+  "전자결재",
+  "워크플로",
+  "workflow",
+  "경비",
+  "경비결재",
+  "비용",
+  "비용업무함",
+  "수신부서",
+  "전표",
+  "증빙",
+  "메일",
+  "승인메일",
+  "자동결재선",
+  "대리결재",
+  "모바일",
+  "앱"
+];
+const MANUAL_SECTION_CONFLICT_GROUPS = [
+  ["증빙", "영수증", "전표"],
+  ["첨부파일", "첨부"],
+  ["메일", "자동분류", "받은파일"],
+  ["일정", "달력"],
+  ["문서배포", "배포"],
+  ["자원예약", "자원"]
+];
+
+function containsAny(text: string, tokens: string[]): boolean {
+  return tokens.some((token) => text.includes(normalizeText(token)));
+}
+
+function getManualDisplaySection(candidate: ManualCandidate): string {
+  const source = candidate.sourceLabel?.split(" / ").pop()?.trim();
+  return normalizeText(source || candidate.sectionTitle || "");
+}
+
+function isGenericApprovalLineQuery(query: string): boolean {
+  const normalized = normalizeText(query);
+  if (!containsAny(normalized, MANUAL_APPROVAL_LINE_TRIGGERS)) {
+    return false;
+  }
+  return !containsAny(normalized, MANUAL_APPROVAL_LINE_DOMAIN_HINTS);
+}
+
+function hasManualSectionConflict(query: string, candidate: ManualCandidate | null): boolean {
+  if (!candidate) {
+    return false;
+  }
+
+  const normalizedQuery = normalizeText(query);
+  const section = getManualDisplaySection(candidate);
+  const candidateText = normalizeText(
+    `${candidate.product} ${candidate.title} ${candidate.sectionTitle ?? ""} ${candidate.sourceLabel ?? ""} ${candidate.previewText}`
+  );
+  if (!section) {
+    return false;
+  }
+
+  if (
+    containsAny(normalizedQuery, MANUAL_APPROVAL_LINE_TRIGGERS) &&
+    containsAny(normalizedQuery, MANUAL_APPROVAL_LINE_DOMAIN_HINTS) &&
+    containsAny(candidateText, MANUAL_APPROVAL_LINE_TRIGGERS)
+  ) {
+    return false;
+  }
+
+  return MANUAL_SECTION_CONFLICT_GROUPS.some((group) =>
+    containsAny(section, group) && !containsAny(normalizedQuery, group)
+  );
+}
+
+function buildManualClarificationAnswer(query: string, candidate: ManualCandidate | null): ManualClarificationDecision {
+  if (!candidate) {
+    return { required: false, reason: null, answerText: null };
+  }
+
+  if (isGenericApprovalLineQuery(query)) {
+    return {
+      required: true,
+      reason: "GENERIC_APPROVAL_LINE_QUERY",
+      answerText:
+        "결재선 지정은 사용하는 화면에 따라 절차가 달라집니다.\n\n" +
+        "어떤 화면 기준인지 한 번만 좁혀 주세요.\n\n" +
+        "- 전자결재 문서 결재선\n" +
+        "- 경비결재/비용업무함 결재선\n" +
+        "- 메일 승인용 자동 결재선\n" +
+        "- 모바일 경비결재 결재선\n\n" +
+        "예: \"비용업무함에서 결재선 지정 방법\" 또는 \"전자결재 결재선 지정 방법\"처럼 메뉴명을 함께 입력하면 해당 매뉴얼 기준으로 안내하겠습니다."
+    };
+  }
+
+  if (hasManualSectionConflict(query, candidate)) {
+    return {
+      required: true,
+      reason: "MANUAL_SECTION_QUERY_MISMATCH",
+      answerText:
+        "관련 매뉴얼 후보는 찾았지만, 질문한 기능과 후보 화면명이 완전히 일치하지 않습니다.\n\n" +
+        "정확한 화면 기준으로 안내하려면 메뉴명이나 제품명을 조금 더 구체적으로 입력해 주세요.\n\n" +
+        "예: \"전자결재 결재선 지정 방법\", \"비용업무함 결재선 지정 방법\"처럼 질문하면 잘못된 매뉴얼 화면을 줄일 수 있습니다."
+    };
+  }
+
+  return { required: false, reason: null, answerText: null };
 }
 
 function isSensitiveQuery(query: string): boolean {
@@ -3553,7 +3665,10 @@ async function computeChatSearch(
 
   if (rows.length === 0) {
     const bestManual = manualCandidates[0] ?? null;
-    const hasManualMatch = bestManual !== null && bestManual.score >= 0.45;
+    const manualClarification = buildManualClarificationAnswer(query, bestManual);
+    const hasManualClarification =
+      bestManual !== null && bestManual.score >= 0.75 && manualClarification.required && manualClarification.answerText !== null;
+    const hasManualMatch = bestManual !== null && bestManual.score >= 0.45 && !hasManualClarification;
     const timingBase = {
       ruleMs: ruleFetchResult.durationMs,
       embeddingMs: Math.max(vectorResult.embeddingMs, manualResult.embeddingMs),
@@ -3563,20 +3678,24 @@ async function computeChatSearch(
     const emptyResponse: ChatResponseBody = {
       bestRequireId: null,
       bestSccId: null,
-      confidence: hasManualMatch ? bestManual.score : 0,
-      bestChunkType: hasManualMatch ? "manual" : null,
-      bestAnswerText: hasManualMatch ? bestManual.previewText : null,
+      confidence: hasManualMatch || hasManualClarification ? bestManual.score : 0,
+      bestChunkType: hasManualClarification ? "manual_clarification" : hasManualMatch ? "manual" : null,
+      bestAnswerText: hasManualClarification ? manualClarification.answerText : hasManualMatch ? bestManual.previewText : null,
       bestIssueText: null,
       bestActionText: null,
       bestResolutionText: null,
       bestQaPairText: null,
-      message: hasManualMatch ? "사용자 매뉴얼에서 관련 내용을 찾았습니다." : "유사 처리이력을 찾지 못했습니다.",
+      message: hasManualClarification
+        ? "추가 정보가 필요합니다."
+        : hasManualMatch
+        ? "사용자 매뉴얼에서 관련 내용을 찾았습니다."
+        : "유사 처리이력을 찾지 못했습니다.",
       similarIssueUrl: hasManualMatch ? bestManual.linkUrl : null,
       candidates: [],
       manualCandidates,
       manualCandidateCount: manualCandidates.length,
       manualUsed: manualResult.manualUsed,
-      manualError: manualResult.manualError,
+      manualError: hasManualClarification ? manualClarification.reason : manualResult.manualError,
       vectorUsed: manualResult.manualUsed,
       retrievalMode: manualResult.manualUsed ? "hybrid" : "rule_only",
       vectorError: manualResult.manualError,
@@ -3608,8 +3727,8 @@ async function computeChatSearch(
         requireCount: 0,
         bestRequireId: null,
         bestSccId: null,
-        bestChunkType: hasManualMatch ? "manual" : null,
-        confidence: hasManualMatch ? bestManual.score : 0,
+        bestChunkType: hasManualClarification ? "manual_clarification" : hasManualMatch ? "manual" : null,
+        confidence: hasManualMatch || hasManualClarification ? bestManual.score : 0,
         vectorUsed: manualResult.manualUsed,
         retrievalMode: manualResult.manualUsed ? "hybrid" : "rule_only",
         vectorError: manualResult.manualError,
@@ -3625,7 +3744,7 @@ async function computeChatSearch(
         manualCandidates,
         manualCandidateCount: manualCandidates.length,
         manualUsed: manualResult.manualUsed,
-        manualError: manualResult.manualError
+        manualError: manualClarification.reason ?? manualResult.manualError
       },
       timingBase
     };
@@ -3871,11 +3990,13 @@ async function computeChatSearch(
     : "";
   const bestManualFocusCoverage = bestManual ? computeFocusCoverage(query, bestManualSearchText) : 0;
   const bestManualSpecificitySignal = computeManualSpecificitySignal(query, bestManual);
+  const manualClarification = buildManualClarificationAnswer(query, bestManual);
   const hasManualSpecificity = bestManual !== null && !bestManualSpecificitySignal.hasGap;
   const hasManualHowToPriority =
     isManualHowToPriorityEnabled() &&
     isManualHowToPriorityQuery(query, intent) &&
     bestManual !== null &&
+    !manualClarification.required &&
     bestManual.score >= manualPriorityMinScore &&
     bestManualLexicalCoverage >= manualPriorityMinLexicalCoverage;
   const hasManualDominantScore =
@@ -3890,10 +4011,17 @@ async function computeChatSearch(
     bestManual.score >= (hasConfidentBest ? DEFAULT_SCORE_THRESHOLD : manualFallbackMinScore);
   const hasManualFallback =
     bestManual !== null &&
+    !manualClarification.required &&
     hasManualFallbackScore &&
     !(hasConfidentBest && bestManualSpecificitySignal.hasGap) &&
     (!hasConfidentBest || (hasManualHowToPriority && hasManualDominantScore));
-  const responseConfidence = hasManualFallback ? bestManual.score : confidence;
+  const hasManualClarificationFallback =
+    bestManual !== null &&
+    !hasConfidentBest &&
+    bestManual.score >= manualFallbackMinScore &&
+    manualClarification.required &&
+    manualClarification.answerText !== null;
+  const responseConfidence = hasManualFallback || hasManualClarificationFallback ? bestManual.score : confidence;
   const responseVectorUsed = vectorResult.vectorUsed || manualResult.manualUsed;
   const responseRetrievalMode = responseVectorUsed ? "hybrid" : "rule_only";
   const responseVectorError = vectorResult.vectorError ?? manualResult.manualError;
@@ -3918,9 +4046,17 @@ async function computeChatSearch(
       bestRequireId: !hasManualFallback && hasConfidentBest ? best.requireId : null,
       bestSccId: !hasManualFallback && hasConfidentBest ? best.sccId : null,
       confidence: responseConfidence,
-      bestChunkType: hasManualFallback ? "manual" : hasConfidentBest ? best.chunkType : null,
+      bestChunkType: hasManualClarificationFallback
+        ? "manual_clarification"
+        : hasManualFallback
+        ? "manual"
+        : hasConfidentBest
+          ? best.chunkType
+          : null,
       bestAnswerText: hasManualFallback
         ? bestManual.previewText
+        : hasManualClarificationFallback
+          ? manualClarification.answerText
         : hasConfidentBest
           ? truncate(best.answerText, MAX_ANSWER_TEXT_LENGTH)
           : null,
@@ -3942,15 +4078,23 @@ async function computeChatSearch(
           : null,
       message: hasManualFallback
         ? "사용자 매뉴얼에서 관련 내용을 찾았습니다."
+        : hasManualClarificationFallback
+        ? "추가 정보가 필요합니다."
         : topRequireId
         ? "해당 이슈와 비슷한 처리이력 공유해드립니다."
         : "유사 처리이력을 찾지 못했습니다.",
-      similarIssueUrl: hasManualFallback ? bestManual.linkUrl : topRequireId ? buildSimilarIssueUrl(topRequireId) : null,
+      similarIssueUrl: hasManualClarificationFallback
+        ? null
+        : hasManualFallback
+        ? bestManual.linkUrl
+        : topRequireId
+          ? buildSimilarIssueUrl(topRequireId)
+          : null,
       candidates: candidates.map(toChatCandidate),
       manualCandidates,
       manualCandidateCount: manualCandidates.length,
       manualUsed: manualResult.manualUsed,
-      manualError: manualResult.manualError,
+      manualError: hasManualClarificationFallback ? manualClarification.reason : manualResult.manualError,
       vectorUsed: responseVectorUsed,
       retrievalMode: responseRetrievalMode,
       vectorError: responseVectorError,
@@ -3979,7 +4123,13 @@ async function computeChatSearch(
       requireCount: byRequire.size,
       bestRequireId: !hasManualFallback && hasConfidentBest ? best.requireId : null,
       bestSccId: !hasManualFallback && hasConfidentBest ? best.sccId : null,
-      bestChunkType: hasManualFallback ? "manual" : hasConfidentBest ? best.chunkType : null,
+      bestChunkType: hasManualClarificationFallback
+        ? "manual_clarification"
+        : hasManualFallback
+        ? "manual"
+        : hasConfidentBest
+          ? best.chunkType
+          : null,
       confidence: responseConfidence,
       vectorUsed: responseVectorUsed,
       retrievalMode: responseRetrievalMode,
