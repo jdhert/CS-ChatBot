@@ -413,6 +413,8 @@ npm run manual:preview:generate -- --source-dir ../manuals/user --pdf-dir ../man
 - Docker Compose 기준 기본 대상 경로는 컨테이너 내부 `/app/manuals/user`입니다.
 - Oracle VM에서는 repo 루트의 `./manuals/user`에 원본 `.docx`를 올리면 됩니다.
 - Oracle VM에서도 같은 경로에 원본 `.docx`가 있어야 `/manual/documents/:documentId` 다운로드가 동작합니다.
+- 매뉴얼 chunk는 화면 라벨(`<...>`), `경로:` 라인, 짧은 제목 라인을 boundary로 삼고 `MANUAL_CHUNK_CHARS=950` 기준으로 분할합니다.
+- chunk 분할 기준이 바뀌어 기존 chunk 구성과 달라지면 `ingest:sync:user-manual` 실행 시 문서 단위로 기존 manual chunk/embedding을 reset하고 새 chunk를 생성합니다.
 - 프리뷰 이미지는 repo 루트의 `./manuals/preview`를 컨테이너 내부 `/app/manuals/preview`로 읽기 전용 마운트합니다.
 - 프리뷰를 운영에서 노출하려면 `.env`에 `MANUAL_PREVIEW_ENABLED=true`, `MANUAL_PREVIEW_DIR=/app/manuals/preview`를 설정하고 해당 경로에 이미지 파일을 배치해야 합니다.
 - `manual:preview:generate`는 `.docx -> PDF -> page PNG`를 만든 뒤 DB의 `manual_chunks`와 PDF page text를 유사도 매칭해 `manuals/preview/{documentId}/{chunkId}.png`를 생성합니다.

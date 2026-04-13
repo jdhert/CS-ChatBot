@@ -40,6 +40,7 @@ CoviAI는 사내 매뉴얼, 이력 데이터, FAQ 등을 기반으로 사용자 
 - **사용자 매뉴얼 MVP**: 로컬 `stor/stor/manual/user` 기준 `.docx` 30개 / 287개 청크 추출 확인. 운영 VM 권장 경로는 repo 루트 `manuals/user`
 - **매뉴얼 평가**: `npm run eval:manual` 기준 17/17 통과 (manual 16건 + clarification 1건, hybrid/vector 17건 사용)
 - **매뉴얼 프리뷰 상태**: 운영 VM에서 `manual:preview:generate` 실행 후 `manuals/preview/manifest.json` 기준 신뢰도 gate 적용
+- **매뉴얼 재청킹 개선안**: 화면 라벨/경로/제목 boundary 기준으로 `MANUAL_CHUNK_CHARS=950` 적용. 로컬 dry-run 기준 `.docx` 30개 / 1,584개 청크 예상
 
 ### 평가 결과 (2026-04-11 기준)
 
@@ -193,6 +194,8 @@ graph TB
 - Docker Compose 기준 프리뷰 이미지는 `./manuals/preview`를 backend 컨테이너의 `/app/manuals/preview`에 읽기 전용으로 마운트
 - 프리뷰 이미지는 운영 VM 호스트에서 `npm run manual:preview:generate -- --source-dir ../manuals/user --pdf-dir ../manuals/pdf --preview-dir ../manuals/preview`로 생성하고, coverage 리포트는 `workspace-fastify/docs/eval/manual_preview_coverage.latest.json`, 신뢰도 manifest는 `manuals/preview/manifest.json`에 기록
 - 운영 배포 후 프리뷰 이미지를 노출하려면 VM에서 위 `manual:preview:generate` 명령을 다시 실행해 manifest를 최신화해야 함
+- 매뉴얼 청크 분할은 화면 라벨(`<전자결재 – 결재선 지정창>`), `경로:` 라인, 짧은 제목 라인을 boundary로 사용하며, 재청킹 시 기존 chunk 구성이 달라지면 문서 단위로 기존 manual chunk/embedding을 reset 후 재생성
+- 운영 반영 순서: `ingest:sync:user-manual -- --source-dir ../manuals/user --batch-size 50 --max-batches N`으로 chunk/embedding 재동기화 후 `manual:preview:generate`를 다시 실행
 
 ### 5. 사용자 편의 기능
 - 답변 복사 버튼 (클립보드)
@@ -633,6 +636,7 @@ sequenceDiagram
 - ✅ **매뉴얼 eval 기준 확장** — `expectedBestChunkType`, `manual_clarification`, `expectedClarificationReason` 기준을 추가하고 17건 매뉴얼 평가셋 100% 통과 확인
 - ✅ **매뉴얼 프리뷰 신뢰도 gate 추가** — preview manifest의 chunk-page 매칭 점수와 상태를 기준으로 신뢰도 낮은 화면 이미지는 챗봇 응답에서 숨김 처리
 - ✅ **운영 VM 프리뷰 후처리 절차 정리** — 배포 후 `npm run manual:preview:generate -- --source-dir ../manuals/user --pdf-dir ../manuals/pdf --preview-dir ../manuals/preview` 실행으로 manifest 최신화
+- ✅ **매뉴얼 chunk 분할 품질 개선** — 화면 라벨/경로/제목 boundary와 `MANUAL_CHUNK_CHARS=950` 기준으로 절차 단위 chunk를 더 촘촘하게 생성하도록 동기화 스크립트 개선
 
 ### 2026-04-12
 - ✅ **API Rate Limiting 적용** — `/chat/stream`, `/chat`, `/retrieval/search`, `/feedback`, `/admin/logs`, `/conversations*` 경로별 요청 제한과 429 응답 헤더 추가

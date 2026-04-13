@@ -18,7 +18,7 @@ const DEFAULT_MAX_BATCHES = 4;
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_GOOGLE_MIN_INTERVAL_MS = 1500;
 const DEFAULT_GOOGLE_MAX_RETRIES = 8;
-const DEFAULT_CHUNK_CHARS = 1600;
+const DEFAULT_CHUNK_CHARS = 950;
 const MIN_CHUNK_CHARS = 80;
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -218,12 +218,67 @@ function splitLongParagraph(paragraph, maxChars) {
   return chunks;
 }
 
+function normalizeManualLine(line) {
+  return line
+    .replace(/\s+/g, " ")
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .trim();
+}
+
+function isManualLayoutNoiseLine(line) {
+  return (
+    /^\d+(?:\s+\d+){1,}$/u.test(line) ||
+    /^[①-⑳⓵-⓾\d\s\-–—.,]+$/u.test(line) ||
+    /^페이지\s*\d+$/iu.test(line)
+  );
+}
+
+function isManualScreenLabelLine(line) {
+  return /^<\s*[^<>]{4,120}\s*>$/u.test(line);
+}
+
+function isManualPathLine(line) {
+  return /^경로\s*[:：]/u.test(line) || /^[가-힣A-Za-z0-9/()\s·_-]+\s*>\s*[^>]{2,}$/u.test(line);
+}
+
+function isManualActionLikeLine(line) {
+  return /클릭|선택|입력|저장|추가|조회|신청|설정|지정|확인|표시|이동|등록|생성|수정|삭제|활성|비활성|변경|작성/u.test(line);
+}
+
+function normalizeSectionTitle(line, fallbackTitle) {
+  const screenMatch = line.match(/^<\s*([^<>]{4,120})\s*>$/u);
+  if (screenMatch?.[1]) {
+    return screenMatch[1].replace(/\s+/g, " ").trim();
+  }
+  return line.replace(/^경로\s*[:：]\s*/u, "").trim() || fallbackTitle;
+}
+
+function isLikelyManualHeadingLine(line) {
+  if (line.length < 2 || line.length > 72) {
+    return false;
+  }
+  if (isManualPathLine(line) || isManualScreenLabelLine(line)) {
+    return true;
+  }
+  if (isManualActionLikeLine(line) && line.length > 18) {
+    return false;
+  }
+  if (/[.!?。]$/u.test(line)) {
+    return false;
+  }
+  return (
+    /^\d+(?:\.\d+)*\.?\s*[가-힣A-Za-z][\p{L}\p{N}/()·\-\s]{1,60}$/u.test(line) ||
+    /^[가-힣A-Za-z][\p{L}\p{N}/()·\-\s]{1,60}(?:하기|관리|설정|조회|등록|신청|작성|구성|화면|팝업|목록|현황)$/u.test(line)
+  );
+}
+
 function chunkManualText(title, text) {
   const maxChars = parseIntSafe(process.env.MANUAL_CHUNK_CHARS, DEFAULT_CHUNK_CHARS);
-  const paragraphs = normalizeText(text)
+  const lines = normalizeText(text)
     .split(/\n+/)
-    .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter((line) => line.length > 0);
+    .map(normalizeManualLine)
+    .filter((line) => line.length > 0)
+    .filter((line) => !isManualLayoutNoiseLine(line));
   const chunks = [];
   let current = "";
   let sectionTitle = title;
@@ -236,12 +291,16 @@ function chunkManualText(title, text) {
     current = "";
   }
 
-  for (const paragraph of paragraphs) {
-    if (paragraph.length <= 80 && /[0-9]+\.|[가-힣A-Za-z]/.test(paragraph)) {
-      sectionTitle = paragraph;
+  for (const line of lines) {
+    const isBoundary = isManualScreenLabelLine(line) || isManualPathLine(line) || isLikelyManualHeadingLine(line);
+    if (isBoundary && current.trim().length >= MIN_CHUNK_CHARS) {
+      flush();
+    }
+    if (isBoundary) {
+      sectionTitle = normalizeSectionTitle(line, title);
     }
 
-    const parts = paragraph.length > maxChars ? splitLongParagraph(paragraph, maxChars) : [paragraph];
+    const parts = line.length > maxChars ? splitLongParagraph(line, maxChars) : [line];
     for (const part of parts) {
       if ((current + "\n" + part).trim().length > maxChars) {
         flush();
@@ -262,6 +321,38 @@ async function extractDocxText(filePath) {
   return normalizeText(result.value ?? "");
 }
 
+async function resetDocumentChunksIfNeeded(pool, documentId, nextChunks) {
+  const result = await pool.query(
+    `
+    select chunk_id::text as chunk_id, chunk_seq, text_hash
+    from ai_core.manual_chunks
+    where document_id = $1::uuid
+    order by chunk_seq
+    `,
+    [documentId]
+  );
+  if (result.rows.length === 0) {
+    return false;
+  }
+  if (result.rows.length !== nextChunks.length) {
+    await pool.query("delete from ai_core.manual_chunks where document_id = $1::uuid", [documentId]);
+    return true;
+  }
+  for (let index = 0; index < nextChunks.length; index += 1) {
+    const current = result.rows[index];
+    const next = nextChunks[index];
+    if (
+      current.chunk_id !== next.chunkId ||
+      Number(current.chunk_seq) !== next.chunkSeq ||
+      current.text_hash !== next.textHash
+    ) {
+      await pool.query("delete from ai_core.manual_chunks where document_id = $1::uuid", [documentId]);
+      return true;
+    }
+  }
+  return false;
+}
+
 async function upsertDocumentAndChunks(pool, sourceDir, filePath) {
   const stat = await fs.stat(filePath);
   const rawText = await extractDocxText(filePath);
@@ -279,72 +370,84 @@ async function upsertDocumentAndChunks(pool, sourceDir, filePath) {
     tokenEstimate: Math.ceil(chunk.text.length / 3)
   }));
 
-  await pool.query(
-    `
-    insert into ai_core.manual_documents (
-      document_id, audience, product, title, version, file_ext, source_path, source_rel_path,
-      file_size, file_mtime, text_hash, extracted_at, updated_at
-    ) values (
-      $1::uuid, 'user', $2, $3, $4, $5, $6, $7, $8, $9::timestamptz, $10, now(), now()
-    )
-    on conflict (document_id) do update set
-      audience = excluded.audience,
-      product = excluded.product,
-      title = excluded.title,
-      version = excluded.version,
-      file_ext = excluded.file_ext,
-      source_path = excluded.source_path,
-      source_rel_path = excluded.source_rel_path,
-      file_size = excluded.file_size,
-      file_mtime = excluded.file_mtime,
-      text_hash = excluded.text_hash,
-      extracted_at = now(),
-      updated_at = now()
-    `,
-    [
-      documentId,
-      product,
-      title,
-      inferVersion(path.basename(filePath)),
-      path.extname(filePath).toLowerCase(),
-      filePath,
-      sourceRelPath,
-      stat.size,
-      stat.mtime.toISOString(),
-      textHash
-    ]
-  );
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const resetChunks = await resetDocumentChunksIfNeeded(client, documentId, chunks);
 
-  for (const chunk of chunks) {
-    await pool.query(
+    await client.query(
       `
-      insert into ai_core.manual_chunks (
-        chunk_id, document_id, audience, product, chunk_seq, chunk_type, section_title,
-        chunk_text, text_hash, token_estimate, updated_at
+      insert into ai_core.manual_documents (
+        document_id, audience, product, title, version, file_ext, source_path, source_rel_path,
+        file_size, file_mtime, text_hash, extracted_at, updated_at
       ) values (
-        $1::uuid, $2::uuid, 'user', $3, $4, 'manual', $5, $6, $7, $8, now()
+        $1::uuid, 'user', $2, $3, $4, $5, $6, $7, $8, $9::timestamptz, $10, now(), now()
       )
-      on conflict (chunk_id) do update set
-        document_id = excluded.document_id,
+      on conflict (document_id) do update set
         audience = excluded.audience,
         product = excluded.product,
-        chunk_seq = excluded.chunk_seq,
-        section_title = excluded.section_title,
-        chunk_text = excluded.chunk_text,
+        title = excluded.title,
+        version = excluded.version,
+        file_ext = excluded.file_ext,
+        source_path = excluded.source_path,
+        source_rel_path = excluded.source_rel_path,
+        file_size = excluded.file_size,
+        file_mtime = excluded.file_mtime,
         text_hash = excluded.text_hash,
-        token_estimate = excluded.token_estimate,
+        extracted_at = now(),
         updated_at = now()
       `,
-      [chunk.chunkId, documentId, product, chunk.chunkSeq, chunk.sectionTitle, chunk.chunkText, chunk.textHash, chunk.tokenEstimate]
+      [
+        documentId,
+        product,
+        title,
+        inferVersion(path.basename(filePath)),
+        path.extname(filePath).toLowerCase(),
+        filePath,
+        sourceRelPath,
+        stat.size,
+        stat.mtime.toISOString(),
+        textHash
+      ]
     );
+
+    for (const chunk of chunks) {
+      await client.query(
+        `
+        insert into ai_core.manual_chunks (
+          chunk_id, document_id, audience, product, chunk_seq, chunk_type, section_title,
+          chunk_text, text_hash, token_estimate, updated_at
+        ) values (
+          $1::uuid, $2::uuid, 'user', $3, $4, 'manual', $5, $6, $7, $8, now()
+        )
+        on conflict (chunk_id) do update set
+          document_id = excluded.document_id,
+          audience = excluded.audience,
+          product = excluded.product,
+          chunk_seq = excluded.chunk_seq,
+          section_title = excluded.section_title,
+          chunk_text = excluded.chunk_text,
+          text_hash = excluded.text_hash,
+          token_estimate = excluded.token_estimate,
+          updated_at = now()
+        `,
+        [chunk.chunkId, documentId, product, chunk.chunkSeq, chunk.sectionTitle, chunk.chunkText, chunk.textHash, chunk.tokenEstimate]
+      );
+    }
+
+    await client.query(
+      `delete from ai_core.manual_chunks where document_id = $1::uuid and not (chunk_id = any($2::uuid[]))`,
+      [documentId, chunks.map((chunk) => chunk.chunkId)]
+    );
+
+    await client.query("commit");
+    return { documentId, title, product, chunkCount: chunks.length, resetChunks };
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
   }
-
-  await pool.query(
-    `delete from ai_core.manual_chunks where document_id = $1::uuid and not (chunk_id = any($2::uuid[]))`,
-    [documentId, chunks.map((chunk) => chunk.chunkId)]
-  );
-
-  return { documentId, title, product, chunkCount: chunks.length };
 }
 
 async function createOpenAiEmbeddings(inputs, model, apiKey, timeoutMs) {
@@ -582,7 +685,7 @@ async function main() {
       const result = await upsertDocumentAndChunks(pool, args.sourceDir, filePath);
       totalDocuments += 1;
       totalChunks += result.chunkCount;
-      console.log(`[doc] ${result.product}/${result.title} chunks=${result.chunkCount}`);
+      console.log(`[doc] ${result.product}/${result.title} chunks=${result.chunkCount}${result.resetChunks ? " reset=true" : ""}`);
     }
 
     for (let batchIndex = 1; batchIndex <= args.maxBatches; batchIndex += 1) {
