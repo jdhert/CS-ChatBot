@@ -1,9 +1,16 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
-import { Bot, Download, Menu, Moon, ScrollText, Search, Sun } from "lucide-react"
+import { Bot, Download, Menu, Moon, MoreHorizontal, ScrollText, Search, Sun } from "lucide-react"
 import { getChatExportFormatLabel, type ChatExportFormat } from "@/lib/chat-export"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 interface ChatHeaderProps {
   isDarkMode: boolean
@@ -15,13 +22,6 @@ interface ChatHeaderProps {
 const exportFormats: ChatExportFormat[] = ["txt", "md", "pdf"]
 
 export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenSidebar }: ChatHeaderProps) {
-  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false)
-
-  const handleExport = (format: ChatExportFormat) => {
-    setIsExportMenuOpen(false)
-    onExportChat?.(format)
-  }
-
   return (
     <header className="flex shrink-0 items-center justify-between border-b border-border bg-card px-3 py-3 md:px-6 md:py-4">
       <div className="flex min-w-0 items-center gap-2 md:gap-3">
@@ -62,56 +62,93 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
           <Search className="h-5 w-5" />
         </Link>
 
-        <Link
-          href="/logs"
-          className="hidden h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground min-[421px]:flex md:h-9 md:w-9 md:rounded-lg"
-          aria-label="로그 대시보드"
-          title="로그 대시보드"
-        >
-          <ScrollText className="h-5 w-5" />
-        </Link>
+        <div className="hidden items-center gap-2 md:flex">
+          <Link
+            href="/logs"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            aria-label="로그 대시보드"
+            title="로그 대시보드"
+          >
+            <ScrollText className="h-5 w-5" />
+          </Link>
 
-        {onExportChat && (
-          <div className="relative hidden min-[421px]:block">
-            <button
-              onClick={() => setIsExportMenuOpen((open) => !open)}
-              className="flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:h-9 md:w-9 md:rounded-lg"
-              aria-label="대화 내보내기"
-              aria-expanded={isExportMenuOpen}
-              title="대화 내보내기"
-              type="button"
-            >
-              <Download className="h-5 w-5" />
-            </button>
-            {isExportMenuOpen && (
-              <div className="absolute right-0 top-11 z-50 w-44 overflow-hidden rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg">
+          {onExportChat && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                  aria-label="대화 내보내기"
+                  title="대화 내보내기"
+                  type="button"
+                >
+                  <Download className="h-5 w-5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuLabel>대화 내보내기</DropdownMenuLabel>
+                <DropdownMenuSeparator />
                 {exportFormats.map((format) => (
-                  <button
-                    key={format}
-                    onClick={() => handleExport(format)}
-                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors hover:bg-accent hover:text-accent-foreground"
-                    type="button"
-                  >
+                  <DropdownMenuItem key={format} onClick={() => onExportChat(format)}>
                     <span>{getChatExportFormatLabel(format)}</span>
-                    <span className="text-[10px] uppercase text-muted-foreground">
+                    <span className="ml-auto text-[10px] uppercase text-muted-foreground">
                       {format === "pdf" ? "print" : format}
                     </span>
-                  </button>
+                  </DropdownMenuItem>
                 ))}
-              </div>
-            )}
-          </div>
-        )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
-        <button
-          onClick={onToggleDarkMode}
-          className="flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:h-9 md:w-9 md:rounded-lg"
-          aria-label="다크 모드 전환"
-          title={isDarkMode ? "라이트 모드로 전환" : "다크 모드로 전환"}
-          type="button"
-        >
-          {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-        </button>
+          <button
+            onClick={onToggleDarkMode}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            aria-label="다크 모드 전환"
+            title={isDarkMode ? "라이트 모드로 전환" : "다크 모드로 전환"}
+            type="button"
+          >
+            {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          </button>
+        </div>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:hidden"
+              aria-label="더보기 메뉴"
+              title="더보기 메뉴"
+              type="button"
+            >
+              <MoreHorizontal className="h-5 w-5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuLabel>빠른 메뉴</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/logs" className="flex w-full items-center gap-2">
+                <ScrollText className="h-4 w-4" />
+                <span>로그 대시보드</span>
+              </Link>
+            </DropdownMenuItem>
+            {onExportChat ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>대화 내보내기</DropdownMenuLabel>
+                {exportFormats.map((format) => (
+                  <DropdownMenuItem key={format} onClick={() => onExportChat(format)}>
+                    <Download className="h-4 w-4" />
+                    <span>{getChatExportFormatLabel(format)}</span>
+                  </DropdownMenuItem>
+                ))}
+              </>
+            ) : null}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onToggleDarkMode}>
+              {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              <span>{isDarkMode ? "라이트 모드" : "다크 모드"}</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   )

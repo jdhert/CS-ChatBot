@@ -12,6 +12,7 @@ import {
   Info,
   Layers3,
   Link2,
+  Maximize2,
   Pencil,
   RotateCcw,
   ScrollText,
@@ -23,7 +24,15 @@ import {
 } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 
 export interface CandidateCard {
@@ -363,8 +372,40 @@ function AnswerMetaPills({
 
 function StructuredAnswerSections({ content }: { content: string }) {
   const sections = parseStructuredAnswerSections(content)
+  const [expandedTitles, setExpandedTitles] = useState<Set<string>>(
+    () => new Set(sections.slice(0, 1).map((section) => section.title)),
+  )
+
+  useEffect(() => {
+    if (sections.length === 0) {
+      setExpandedTitles(new Set())
+      return
+    }
+
+    setExpandedTitles((current) => {
+      const titles = new Set(sections.map((section) => section.title))
+      const next = new Set([...current].filter((title) => titles.has(title)))
+      if (next.size === 0) {
+        next.add(sections[0]!.title)
+      }
+      return next
+    })
+  }, [sections])
+
   if (sections.length === 0) {
     return <BotMessageContent content={content} />
+  }
+
+  const toggleSection = (title: string) => {
+    setExpandedTitles((current) => {
+      const next = new Set(current)
+      if (next.has(title)) {
+        next.delete(title)
+      } else {
+        next.add(title)
+      }
+      return next
+    })
   }
 
   return (
@@ -372,16 +413,39 @@ function StructuredAnswerSections({ content }: { content: string }) {
       {sections.map((section, index) => {
         const tone = getSectionTone(section.title)
         const Icon = tone.icon
+        const isExpanded = expandedTitles.has(section.title)
 
         return (
           <section key={`${section.title}-${index}`} className={cn("rounded-2xl border px-3 py-3", tone.cardClassName)}>
-            <div className={cn("mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em]", tone.titleClassName)}>
-              <Icon className="h-3.5 w-3.5" />
-              <span>{section.title}</span>
-            </div>
-            <div className="text-sm leading-relaxed">
-              <BotMessageContent content={section.body} />
-            </div>
+            <button
+              type="button"
+              onClick={() => toggleSection(section.title)}
+              className="flex w-full items-center gap-2 text-left"
+            >
+              <div
+                className={cn(
+                  "flex min-w-0 flex-1 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em]",
+                  tone.titleClassName,
+                )}
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{section.title}</span>
+              </div>
+              {isExpanded ? (
+                <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+              )}
+            </button>
+            {isExpanded ? (
+              <div className="mt-2 text-sm leading-relaxed">
+                <BotMessageContent content={section.body} />
+              </div>
+            ) : (
+              <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+                {section.body.replace(/\s+/g, " ").trim()}
+              </p>
+            )}
           </section>
         )
       })}
@@ -425,6 +489,53 @@ function ManualAnswerHero({ candidate }: { candidate: ManualCandidateCard }) {
         ) : null}
       </div>
     </div>
+  )
+}
+
+function ManualPreviewDialog({
+  candidate,
+  triggerClassName,
+  children,
+}: {
+  candidate: ManualCandidateCard
+  triggerClassName?: string
+  children?: React.ReactNode
+}) {
+  if (!candidate.previewImageUrl) return null
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        {children ?? (
+          <button
+            type="button"
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full border border-sky-500/20 bg-background px-3 py-1.5 text-[11px] font-medium text-sky-700 transition-colors hover:bg-sky-500/10 dark:text-sky-300",
+              triggerClassName,
+            )}
+          >
+            크게 보기
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </DialogTrigger>
+      <DialogContent className="max-h-[90dvh] max-w-4xl overflow-hidden p-0">
+        <DialogHeader className="border-b border-border px-5 pb-3 pt-5">
+          <DialogTitle className="truncate text-base">{candidate.title}</DialogTitle>
+          <DialogDescription className="flex flex-wrap items-center gap-2 text-xs">
+            <span>{candidate.sourceLabel ?? candidate.sectionTitle ?? "매뉴얼 화면 미리보기"}</span>
+            {typeof candidate.previewPageNumber === "number" ? <span>p.{candidate.previewPageNumber}</span> : null}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="overflow-auto bg-black/90 p-4">
+          <img
+            src={candidate.previewImageUrl}
+            alt={`${candidate.title} 매뉴얼 확대 미리보기`}
+            className="mx-auto max-h-[calc(90dvh-8rem)] w-auto max-w-full rounded-xl bg-white object-contain"
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -554,19 +665,23 @@ function ManualCandidateCards({ candidates }: { candidates: ManualCandidateCard[
                     <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{candidate.sectionTitle}</p>
                   ) : null}
                   {candidate.previewImageUrl && !hiddenPreviewIds.has(candidate.chunkId) ? (
-                    <img
-                      src={candidate.previewImageUrl}
-                      alt={`${candidate.title} 매뉴얼 미리보기`}
-                      className="mt-2 max-h-40 w-full rounded-xl border border-border object-contain bg-background"
-                      loading="lazy"
-                      onError={() =>
-                        setHiddenPreviewIds((current) => {
-                          const next = new Set(current)
-                          next.add(candidate.chunkId)
-                          return next
-                        })
-                      }
-                    />
+                    <ManualPreviewDialog candidate={candidate}>
+                      <button type="button" className="mt-2 block w-full text-left">
+                        <img
+                          src={candidate.previewImageUrl}
+                          alt={`${candidate.title} 매뉴얼 미리보기`}
+                          className="max-h-40 w-full rounded-xl border border-border object-contain bg-background"
+                          loading="lazy"
+                          onError={() =>
+                            setHiddenPreviewIds((current) => {
+                              const next = new Set(current)
+                              next.add(candidate.chunkId)
+                              return next
+                            })
+                          }
+                        />
+                      </button>
+                    </ManualPreviewDialog>
                   ) : null}
                   <p className="mt-0.5 line-clamp-2 break-words text-muted-foreground">{candidate.previewText}</p>
                 </div>
@@ -616,32 +731,39 @@ function ManualPreviewCallout({ candidate }: { candidate: ManualCandidateCard })
           </p>
         </div>
         {candidate.linkUrl ? (
-          <a
-            href={candidate.linkUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-sky-500/10 px-2 py-1 text-[10px] font-medium text-sky-600 transition-colors hover:bg-sky-500/20 dark:text-sky-300"
-          >
-            원문 열기
-            <ExternalLink className="h-3 w-3" />
-          </a>
-        ) : null}
+          <div className="flex shrink-0 items-center gap-2">
+            <ManualPreviewDialog candidate={candidate} triggerClassName="hidden sm:inline-flex" />
+            <a
+              href={candidate.linkUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-1 text-[10px] font-medium text-sky-600 transition-colors hover:bg-sky-500/20 dark:text-sky-300"
+            >
+              원문 열기
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        ) : (
+          <ManualPreviewDialog candidate={candidate} triggerClassName="hidden sm:inline-flex" />
+        )}
       </div>
-      <a
-        href={candidate.previewImageUrl}
-        target="_blank"
-        rel="noreferrer"
-        className="block bg-background/70 p-2 transition-colors hover:bg-background"
-        title="미리보기 이미지를 새 창으로 열기"
-      >
-        <img
-          src={candidate.previewImageUrl}
-          alt={`${candidate.title} 매뉴얼 화면 미리보기`}
-          className="max-h-72 w-full rounded-lg object-contain"
-          loading="lazy"
-          onError={() => setIsHidden(true)}
-        />
-      </a>
+      <div className="bg-background/70 p-2">
+        <ManualPreviewDialog candidate={candidate}>
+          <button
+            type="button"
+            className="block w-full transition-colors hover:bg-background"
+            title="미리보기 이미지를 크게 보기"
+          >
+            <img
+              src={candidate.previewImageUrl}
+              alt={`${candidate.title} 매뉴얼 화면 미리보기`}
+              className="max-h-72 w-full rounded-lg object-contain"
+              loading="lazy"
+              onError={() => setIsHidden(true)}
+            />
+          </button>
+        </ManualPreviewDialog>
+      </div>
       <div className="border-t border-sky-500/15 px-3 py-2 text-[10px] text-muted-foreground">
         {candidate.previewImageConfidence === "high"
           ? "질문과 가까운 화면을 우선 노출합니다."
