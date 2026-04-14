@@ -33,6 +33,15 @@ export function ChatArea({
   inputPrefill,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const recentQuestions = Array.from(
+    new Set(
+      [...messages]
+        .reverse()
+        .filter((message) => message.sender === "user")
+        .map((message) => message.content.trim())
+        .filter((content) => content.length > 0),
+    ),
+  ).slice(0, 3)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -100,7 +109,12 @@ export function ChatArea({
         </div>
       </div>
 
-      <ChatInput onSend={onSendMessage} disabled={isTyping} prefill={inputPrefill} />
+      <ChatInput
+        onSend={onSendMessage}
+        disabled={isTyping}
+        prefill={inputPrefill}
+        recentQuestions={recentQuestions}
+      />
     </div>
   )
 }

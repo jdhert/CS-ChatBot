@@ -74,6 +74,7 @@ export function generateConversationTitle(firstMessage: string): string {
   const normalized = firstMessage
     .replace(/\s+/g, " ")
     .replace(/^(안녕하세요|안녕|혹시|저기|음|어|그|저)\s*[,.:!?]?\s*/i, "")
+    .replace(/(해주세요|부탁해요|부탁드립니다|알려줘요|알려주세요)\s*$/i, "")
     .trim()
   const titleSource = normalized || firstMessage.trim() || "새 대화"
   return titleSource.length > 28 ? `${titleSource.slice(0, 28)}...` : titleSource

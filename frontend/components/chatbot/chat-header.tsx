@@ -25,7 +25,7 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
   return (
     <header className="flex shrink-0 items-center justify-between border-b border-border bg-card px-3 py-3 md:px-6 md:py-4">
       <div className="flex min-w-0 items-center gap-2 md:gap-3">
-        {onOpenSidebar && (
+        {onOpenSidebar ? (
           <button
             onClick={onOpenSidebar}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:hidden"
@@ -34,7 +34,7 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
           >
             <Menu className="h-5 w-5" />
           </button>
-        )}
+        ) : null}
 
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-blue-400 text-white shadow-lg">
           <Bot className="h-5 w-5" />
@@ -72,7 +72,7 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
             <ScrollText className="h-5 w-5" />
           </Link>
 
-          {onExportChat && (
+          {onExportChat ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -97,7 +97,7 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-          )}
+          ) : null}
 
           <button
             onClick={onToggleDarkMode}

@@ -1,16 +1,17 @@
 "use client"
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react"
-import { Paperclip, Send } from "lucide-react"
+import { History, Paperclip, Send } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface ChatInputProps {
   onSend: (message: string) => void
   disabled?: boolean
   prefill?: { value: string; seq: number }
+  recentQuestions?: string[]
 }
 
-export function ChatInput({ onSend, disabled, prefill }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, prefill, recentQuestions = [] }: ChatInputProps) {
   const [message, setMessage] = useState("")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -42,6 +43,24 @@ export function ChatInput({ onSend, disabled, prefill }: ChatInputProps) {
 
   return (
     <div className="shrink-0 border-t border-border bg-card px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 md:p-4">
+      {recentQuestions.length > 0 ? (
+        <div className="mb-2">
+          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+            {recentQuestions.map((question) => (
+              <button
+                key={question}
+                type="button"
+                onClick={() => setMessage(question)}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <History className="h-3.5 w-3.5" />
+                <span className="max-w-[220px] truncate">{question}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex items-end gap-2 rounded-2xl border border-border bg-background p-2 transition-all focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 md:gap-3">
         <button
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:h-9 md:w-9 md:rounded-lg"
@@ -77,9 +96,10 @@ export function ChatInput({ onSend, disabled, prefill }: ChatInputProps) {
           <Send className="h-4 w-4" />
         </button>
       </div>
-      <p className="mt-2 hidden text-center text-xs text-muted-foreground md:block">
-        Shift + Enter로 줄바꿈 가능합니다.
-      </p>
+      <div className="mt-2 flex items-center justify-between gap-2 px-1">
+        <p className="text-[11px] text-muted-foreground md:text-xs">오류 문구, 메뉴 경로, 제품명을 함께 적으면 더 정확해집니다.</p>
+        <p className="hidden text-xs text-muted-foreground md:block">Shift + Enter로 줄바꿈 가능합니다.</p>
+      </div>
     </div>
   )
 }

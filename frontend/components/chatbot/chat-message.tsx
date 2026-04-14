@@ -5,6 +5,8 @@ import {
   Bot,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   ClipboardCheck,
   Copy,
@@ -24,7 +26,7 @@ import {
 } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -86,6 +88,8 @@ interface ChatMessageProps {
   onEditQuestion?: (query: string) => void
   originalQuery?: string
 }
+
+const LOW_CONFIDENCE_THRESHOLD = 0.62
 
 function formatTimestamp(timestamp: Date | string): string {
   const date = typeof timestamp === "string" ? new Date(timestamp) : timestamp
@@ -453,6 +457,55 @@ function StructuredAnswerSections({ content }: { content: string }) {
   )
 }
 
+function LowConfidenceCard({
+  confidence,
+  originalQuery,
+  onEditQuestion,
+}: {
+  confidence?: number | null
+  originalQuery?: string
+  onEditQuestion?: (query: string) => void
+}) {
+  const prompts = [
+    "제품명이나 서비스명을 포함해 주세요",
+    "메뉴 경로나 버튼명을 같이 적어 주세요",
+    "오류 문구를 그대로 붙여 넣어 주세요",
+    "발생 화면과 직전 동작을 함께 적어 주세요",
+  ]
+
+  return (
+    <div className="mb-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-3">
+      <div className="flex items-start gap-2">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+            답변 정확도를 높이려면 질문을 조금 더 구체화해 주세요.
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            {typeof confidence === "number"
+              ? `현재 응답은 참고 수준입니다. 신뢰도는 약 ${Math.round(confidence * 100)}%입니다.`
+              : "현재 응답은 참고 수준일 수 있습니다. 제품명, 메뉴 경로, 오류 문구가 있으면 훨씬 정확해집니다."}
+          </p>
+          {onEditQuestion ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {prompts.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => onEditQuestion([originalQuery?.trim(), prompt].filter(Boolean).join("\n"))}
+                  className="rounded-full border border-amber-500/20 bg-background px-3 py-1.5 text-[11px] font-medium text-amber-700 transition-colors hover:bg-amber-500/10 dark:text-amber-300"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ManualAnswerHero({ candidate }: { candidate: ManualCandidateCard }) {
   return (
     <div className="mb-3 rounded-2xl border border-sky-500/20 bg-sky-500/6 p-3">
@@ -493,15 +546,39 @@ function ManualAnswerHero({ candidate }: { candidate: ManualCandidateCard }) {
 }
 
 function ManualPreviewDialog({
-  candidate,
+  candidates,
+  initialIndex = 0,
   triggerClassName,
   children,
 }: {
-  candidate: ManualCandidateCard
+  candidates: ManualCandidateCard[]
+  initialIndex?: number
   triggerClassName?: string
   children?: React.ReactNode
 }) {
-  if (!candidate.previewImageUrl) return null
+  const previewCandidates = useMemo(
+    () => candidates.filter((candidate) => Boolean(candidate.previewImageUrl)),
+    [candidates],
+  )
+  const [activeIndex, setActiveIndex] = useState(initialIndex)
+
+  useEffect(() => {
+    setActiveIndex(initialIndex)
+  }, [initialIndex])
+
+  if (previewCandidates.length === 0) return null
+
+  const safeIndex = Math.min(activeIndex, previewCandidates.length - 1)
+  const activeCandidate = previewCandidates[safeIndex]!
+
+  const move = (direction: number) => {
+    setActiveIndex((current) => {
+      const next = current + direction
+      if (next < 0) return previewCandidates.length - 1
+      if (next >= previewCandidates.length) return 0
+      return next
+    })
+  }
 
   return (
     <Dialog>
@@ -521,18 +598,77 @@ function ManualPreviewDialog({
       </DialogTrigger>
       <DialogContent className="max-h-[90dvh] max-w-4xl overflow-hidden p-0">
         <DialogHeader className="border-b border-border px-5 pb-3 pt-5">
-          <DialogTitle className="truncate text-base">{candidate.title}</DialogTitle>
+          <DialogTitle className="truncate text-base">{activeCandidate.title}</DialogTitle>
           <DialogDescription className="flex flex-wrap items-center gap-2 text-xs">
-            <span>{candidate.sourceLabel ?? candidate.sectionTitle ?? "매뉴얼 화면 미리보기"}</span>
-            {typeof candidate.previewPageNumber === "number" ? <span>p.{candidate.previewPageNumber}</span> : null}
+            <span>{activeCandidate.sourceLabel ?? activeCandidate.sectionTitle ?? "매뉴얼 화면 미리보기"}</span>
+            {typeof activeCandidate.previewPageNumber === "number" ? (
+              <span>p.{activeCandidate.previewPageNumber}</span>
+            ) : null}
+            {previewCandidates.length > 1 ? <span>{safeIndex + 1} / {previewCandidates.length}</span> : null}
           </DialogDescription>
         </DialogHeader>
-        <div className="overflow-auto bg-black/90 p-4">
-          <img
-            src={candidate.previewImageUrl}
-            alt={`${candidate.title} 매뉴얼 확대 미리보기`}
-            className="mx-auto max-h-[calc(90dvh-8rem)] w-auto max-w-full rounded-xl bg-white object-contain"
-          />
+        <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_240px]">
+          <div className="relative overflow-auto bg-black/90 p-4">
+            {previewCandidates.length > 1 ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => move(-1)}
+                  className="absolute left-4 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white transition-colors hover:bg-black/80"
+                  aria-label="이전 화면"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => move(1)}
+                  className="absolute right-4 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white transition-colors hover:bg-black/80"
+                  aria-label="다음 화면"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              </>
+            ) : null}
+            <img
+              src={activeCandidate.previewImageUrl!}
+              alt={`${activeCandidate.title} 매뉴얼 확대 미리보기`}
+              className="mx-auto max-h-[calc(90dvh-8rem)] w-auto max-w-full rounded-xl bg-white object-contain"
+            />
+          </div>
+          {previewCandidates.length > 1 ? (
+            <div className="border-l border-border bg-card p-3">
+              <p className="mb-2 text-xs font-semibold text-foreground">관련 화면</p>
+              <div className="space-y-2 overflow-auto md:max-h-[calc(90dvh-8rem)]">
+                {previewCandidates.map((candidate, index) => (
+                  <button
+                    key={candidate.chunkId}
+                    type="button"
+                    onClick={() => setActiveIndex(index)}
+                    className={cn(
+                      "flex w-full items-start gap-2 rounded-xl border p-2 text-left transition-colors",
+                      index === safeIndex
+                        ? "border-sky-500/40 bg-sky-500/10"
+                        : "border-border bg-background hover:bg-accent",
+                    )}
+                  >
+                    <img
+                      src={candidate.previewImageUrl!}
+                      alt={candidate.title}
+                      className="h-14 w-14 shrink-0 rounded-lg border border-border bg-background object-cover"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-2 text-xs font-medium text-foreground">
+                        {candidate.sectionTitle ?? candidate.title}
+                      </p>
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        {typeof candidate.previewPageNumber === "number" ? `p.${candidate.previewPageNumber}` : "미리보기"}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>
@@ -623,6 +759,7 @@ function CandidateCards({ candidates }: { candidates: CandidateCard[] }) {
 function ManualCandidateCards({ candidates }: { candidates: ManualCandidateCard[] }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [hiddenPreviewIds, setHiddenPreviewIds] = useState<Set<string>>(new Set())
+  const previewCandidates = candidates.filter((candidate) => candidate.previewImageUrl)
 
   if (candidates.length === 0) return null
 
@@ -641,6 +778,7 @@ function ManualCandidateCards({ candidates }: { candidates: ManualCandidateCard[
       {isExpanded && (
         <div className="mt-2 flex flex-col gap-2">
           {candidates.map((candidate, index) => {
+            const previewIndex = previewCandidates.findIndex((item) => item.chunkId === candidate.chunkId)
             const content = (
               <>
                 <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sky-500/10 text-[10px] font-bold text-sky-500">
@@ -664,11 +802,11 @@ function ManualCandidateCards({ candidates }: { candidates: ManualCandidateCard[
                   {candidate.sectionTitle ? (
                     <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{candidate.sectionTitle}</p>
                   ) : null}
-                  {candidate.previewImageUrl && !hiddenPreviewIds.has(candidate.chunkId) ? (
-                    <ManualPreviewDialog candidate={candidate}>
+                  {candidate.previewImageUrl && !hiddenPreviewIds.has(candidate.chunkId) && previewIndex >= 0 ? (
+                    <ManualPreviewDialog candidates={previewCandidates} initialIndex={previewIndex}>
                       <button type="button" className="mt-2 block w-full text-left">
                         <img
-                          src={candidate.previewImageUrl}
+                          src={candidate.previewImageUrl!}
                           alt={`${candidate.title} 매뉴얼 미리보기`}
                           className="max-h-40 w-full rounded-xl border border-border object-contain bg-background"
                           loading="lazy"
@@ -716,10 +854,24 @@ function ManualCandidateCards({ candidates }: { candidates: ManualCandidateCard[
   )
 }
 
-function ManualPreviewCallout({ candidate }: { candidate: ManualCandidateCard }) {
+function ManualPreviewCallout({ candidates }: { candidates: ManualCandidateCard[] }) {
+  const previewCandidates = candidates.filter((candidate) => candidate.previewImageUrl)
   const [isHidden, setIsHidden] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(0)
 
-  if (!candidate.previewImageUrl || isHidden) return null
+  if (previewCandidates.length === 0 || isHidden) return null
+
+  const safeIndex = Math.min(activeIndex, previewCandidates.length - 1)
+  const activeCandidate = previewCandidates[safeIndex]!
+
+  const move = (direction: number) => {
+    setActiveIndex((current) => {
+      const next = current + direction
+      if (next < 0) return previewCandidates.length - 1
+      if (next >= previewCandidates.length) return 0
+      return next
+    })
+  }
 
   return (
     <div className="mt-3 overflow-hidden rounded-xl border border-sky-500/25 bg-sky-500/5">
@@ -727,14 +879,19 @@ function ManualPreviewCallout({ candidate }: { candidate: ManualCandidateCard })
         <div className="min-w-0">
           <p className="text-[11px] font-semibold text-sky-600 dark:text-sky-300">화면 미리보기</p>
           <p className="truncate text-[10px] text-muted-foreground">
-            {candidate.sourceLabel ?? candidate.sectionTitle ?? candidate.title}
+            {activeCandidate.sourceLabel ?? activeCandidate.sectionTitle ?? activeCandidate.title}
           </p>
         </div>
-        {candidate.linkUrl ? (
-          <div className="flex shrink-0 items-center gap-2">
-            <ManualPreviewDialog candidate={candidate} triggerClassName="hidden sm:inline-flex" />
+        <div className="flex shrink-0 items-center gap-2">
+          {previewCandidates.length > 1 ? (
+            <span className="hidden rounded-full border border-sky-500/15 bg-background px-2 py-1 text-[10px] text-muted-foreground sm:inline-flex">
+              {safeIndex + 1} / {previewCandidates.length}
+            </span>
+          ) : null}
+          <ManualPreviewDialog candidates={previewCandidates} initialIndex={safeIndex} triggerClassName="hidden sm:inline-flex" />
+          {activeCandidate.linkUrl ? (
             <a
-              href={candidate.linkUrl}
+              href={activeCandidate.linkUrl}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-1 text-[10px] font-medium text-sky-600 transition-colors hover:bg-sky-500/20 dark:text-sky-300"
@@ -742,32 +899,67 @@ function ManualPreviewCallout({ candidate }: { candidate: ManualCandidateCard })
               원문 열기
               <ExternalLink className="h-3 w-3" />
             </a>
-          </div>
-        ) : (
-          <ManualPreviewDialog candidate={candidate} triggerClassName="hidden sm:inline-flex" />
-        )}
+          ) : null}
+        </div>
       </div>
       <div className="bg-background/70 p-2">
-        <ManualPreviewDialog candidate={candidate}>
+        <ManualPreviewDialog candidates={previewCandidates} initialIndex={safeIndex}>
           <button
             type="button"
             className="block w-full transition-colors hover:bg-background"
             title="미리보기 이미지를 크게 보기"
           >
             <img
-              src={candidate.previewImageUrl}
-              alt={`${candidate.title} 매뉴얼 화면 미리보기`}
+              src={activeCandidate.previewImageUrl!}
+              alt={`${activeCandidate.title} 매뉴얼 화면 미리보기`}
               className="max-h-72 w-full rounded-lg object-contain"
               loading="lazy"
               onError={() => setIsHidden(true)}
             />
           </button>
         </ManualPreviewDialog>
+        {previewCandidates.length > 1 ? (
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => move(-1)}
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-3 py-1.5 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              이전 화면
+            </button>
+            <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto px-1">
+              {previewCandidates.map((candidate, index) => (
+                <button
+                  key={candidate.chunkId}
+                  type="button"
+                  onClick={() => setActiveIndex(index)}
+                  className={cn(
+                    "shrink-0 rounded-full border px-2.5 py-1 text-[10px] transition-colors",
+                    index === safeIndex
+                      ? "border-sky-500/30 bg-sky-500/15 text-sky-700 dark:text-sky-300"
+                      : "border-border bg-background text-muted-foreground hover:bg-accent",
+                  )}
+                >
+                  {typeof candidate.previewPageNumber === "number" ? `p.${candidate.previewPageNumber}` : `화면 ${index + 1}`}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => move(1)}
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-3 py-1.5 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
+            >
+              다음 화면
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : null}
       </div>
       <div className="border-t border-sky-500/15 px-3 py-2 text-[10px] text-muted-foreground">
-        {candidate.previewImageConfidence === "high"
+        {activeCandidate.previewImageConfidence === "high"
           ? "질문과 가까운 화면을 우선 노출합니다."
-          : candidate.previewImageReason ?? "미리보기 이미지는 참고용으로 제공됩니다."}
+          : activeCandidate.previewImageReason ?? "미리보기 이미지는 참고용으로 제공됩니다."}
       </div>
     </div>
   )
@@ -790,10 +982,17 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
   const showManualCandidates =
     showActions && isManualAnswer && Array.isArray(message.manualCandidates) && message.manualCandidates.length > 0
   const primaryManualCandidate = showManualCandidates ? message.manualCandidates?.[0] ?? null : null
-  const primaryManualPreviewCandidate = showManualCandidates
-    ? message.manualCandidates!.find((candidate) => Boolean(candidate.previewImageUrl)) ?? null
-    : null
+  const previewManualCandidates = showManualCandidates
+    ? message.manualCandidates!.filter((candidate) => Boolean(candidate.previewImageUrl))
+    : []
   const showSuggestions = showCandidates && onSuggestedQuestion != null
+  const isLowConfidence = !isUser && typeof message.confidence === "number" && message.confidence < LOW_CONFIDENCE_THRESHOLD
+  const shouldShowLowConfidenceGuide =
+    !isUser &&
+    !isGenerating &&
+    !isSearching &&
+    !isSecurityBlocked &&
+    (message.answerSource === "clarification" || message.answerSource === "proxy_error" || isLowConfidence)
 
   return (
     <div className={cn("flex gap-2.5 md:gap-3", isUser ? "flex-row-reverse" : "flex-row")}>
@@ -875,6 +1074,13 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
                 retrievalMode={message.retrievalMode}
                 confidence={message.confidence}
               />
+              {shouldShowLowConfidenceGuide ? (
+                <LowConfidenceCard
+                  confidence={message.confidence}
+                  originalQuery={originalQuery}
+                  onEditQuestion={onEditQuestion}
+                />
+              ) : null}
               {primaryManualCandidate ? <ManualAnswerHero candidate={primaryManualCandidate} /> : null}
               <StructuredAnswerSections content={contentToDisplay} />
             </>
@@ -907,7 +1113,7 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
             </div>
           ) : null}
 
-          {primaryManualPreviewCandidate ? <ManualPreviewCallout candidate={primaryManualPreviewCandidate} /> : null}
+          {previewManualCandidates.length > 0 ? <ManualPreviewCallout candidates={previewManualCandidates} /> : null}
           {showCandidates && <CandidateCards candidates={message.top3Candidates!} />}
           {showManualCandidates && <ManualCandidateCards candidates={message.manualCandidates!} />}
           {showSuggestions && <SuggestedQuestions candidates={message.top3Candidates!} onSelect={onSuggestedQuestion!} />}
