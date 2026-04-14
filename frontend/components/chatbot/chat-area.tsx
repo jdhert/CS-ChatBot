@@ -39,7 +39,7 @@ export function ChatArea({
   }, [messages, isTyping])
 
   return (
-    <div className="flex h-full flex-1 flex-col overflow-hidden bg-background">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
       <ChatHeader
         isDarkMode={isDarkMode}
         onToggleDarkMode={onToggleDarkMode}
@@ -47,11 +47,11 @@ export function ChatArea({
         onOpenSidebar={onOpenSidebar}
       />
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="flex flex-col gap-4 p-6">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="flex flex-col gap-4 px-4 py-5 md:p-6">
           {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-blue-400 text-white shadow-xl">
+            <div className="flex flex-col items-center justify-center py-8 text-center md:py-12">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-[1.75rem] bg-gradient-to-br from-primary to-blue-400 text-white shadow-xl">
                 <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
@@ -61,10 +61,13 @@ export function ChatArea({
                   />
                 </svg>
               </div>
-              <h2 className="mb-2 text-xl font-semibold text-foreground">코비전 CS Bot</h2>
-              <p className="mb-6 max-w-md text-sm leading-relaxed text-muted-foreground">
-                증상이나 오류 메시지를 입력하면 유사 처리 이력과 안내 답변을 함께 찾아드립니다.
-              </p>
+              <div className="rounded-3xl border border-border/70 bg-card/80 px-5 py-5 shadow-sm backdrop-blur">
+                <h2 className="mb-2 text-xl font-semibold text-foreground">코비전 CS Bot</h2>
+                <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
+                  증상이나 오류 메시지, 메뉴명, 매뉴얼 기준 작업명을 입력하면
+                  <br className="hidden md:block" /> 유사 처리 이력과 매뉴얼 안내를 함께 찾아드립니다.
+                </p>
+              </div>
             </div>
           )}
 

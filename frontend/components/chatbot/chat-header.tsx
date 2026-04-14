@@ -23,12 +23,12 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
   }
 
   return (
-    <header className="flex items-center justify-between border-b border-border bg-card px-4 py-4 md:px-6">
-      <div className="flex items-center gap-3">
+    <header className="flex shrink-0 items-center justify-between border-b border-border bg-card px-3 py-3 md:px-6 md:py-4">
+      <div className="flex min-w-0 items-center gap-2 md:gap-3">
         {onOpenSidebar && (
           <button
             onClick={onOpenSidebar}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:hidden"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:hidden"
             aria-label="대화 목록 열기"
             type="button"
           >
@@ -36,12 +36,12 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
           </button>
         )}
 
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary to-blue-400 text-white shadow-lg">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-blue-400 text-white shadow-lg">
           <Bot className="h-5 w-5" />
         </div>
 
-        <div>
-          <h1 className="text-sm font-semibold text-foreground md:text-base">코비전 CS Bot</h1>
+        <div className="min-w-0">
+          <h1 className="truncate text-sm font-semibold text-foreground md:text-base">코비전 CS Bot</h1>
           <div className="flex items-center gap-1.5">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
@@ -52,10 +52,10 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1 md:gap-2">
         <Link
           href="/search"
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:h-9 md:w-9 md:rounded-lg"
           aria-label="검색"
           title="검색"
         >
@@ -64,7 +64,7 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
 
         <Link
           href="/logs"
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="hidden h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground min-[421px]:flex md:h-9 md:w-9 md:rounded-lg"
           aria-label="로그 대시보드"
           title="로그 대시보드"
         >
@@ -72,10 +72,10 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
         </Link>
 
         {onExportChat && (
-          <div className="relative">
+          <div className="relative hidden min-[421px]:block">
             <button
               onClick={() => setIsExportMenuOpen((open) => !open)}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:h-9 md:w-9 md:rounded-lg"
               aria-label="대화 내보내기"
               aria-expanded={isExportMenuOpen}
               title="대화 내보내기"
@@ -105,7 +105,7 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
 
         <button
           onClick={onToggleDarkMode}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:h-9 md:w-9 md:rounded-lg"
           aria-label="다크 모드 전환"
           title={isDarkMode ? "라이트 모드로 전환" : "다크 모드로 전환"}
           type="button"

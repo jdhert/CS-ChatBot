@@ -66,10 +66,10 @@ export default function ChatbotPage() {
   }, [isDarkMode])
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-background">
+    <div className="flex h-dvh w-full overflow-hidden bg-background">
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 z-20 bg-black/50 md:hidden"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[1px] md:hidden"
           onClick={() => setIsSidebarOpen(false)}
           aria-hidden="true"
         />
@@ -77,8 +77,8 @@ export default function ChatbotPage() {
 
       <div
         className={[
-          "fixed inset-y-0 left-0 z-30 w-64 border-r border-border bg-card transition-transform duration-200",
-          "md:relative md:translate-x-0 md:z-auto",
+          "fixed inset-y-0 left-0 z-50 w-[min(88vw,20rem)] border-r border-border bg-card shadow-2xl transition-transform duration-200 ease-out",
+          "md:relative md:z-auto md:w-64 md:translate-x-0 md:shadow-none",
           isSidebarOpen ? "translate-x-0" : "-translate-x-full",
         ].join(" ")}
       >
@@ -112,7 +112,7 @@ export default function ChatbotPage() {
         />
       </div>
 
-      <main className="flex-1 overflow-hidden">
+      <main className="min-w-0 flex-1 overflow-hidden">
         <ChatArea
           messages={currentMessages}
           isTyping={isTyping}

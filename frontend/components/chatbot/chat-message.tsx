@@ -1,6 +1,26 @@
 ﻿"use client"
 
-import { Bot, Check, ChevronDown, ChevronUp, Copy, ExternalLink, Info, Pencil, RotateCcw, ShieldAlert, ThumbsDown, ThumbsUp, User } from "lucide-react"
+import {
+  BookOpen,
+  Bot,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  ClipboardCheck,
+  Copy,
+  ExternalLink,
+  Info,
+  Layers3,
+  Link2,
+  Pencil,
+  RotateCcw,
+  ScrollText,
+  ShieldAlert,
+  Sparkles,
+  ThumbsDown,
+  ThumbsUp,
+  User,
+} from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { useState } from "react"
@@ -189,6 +209,225 @@ const CHUNK_TYPE_LABEL: Record<string, string> = {
   qa_pair: "Q&A",
 }
 
+const ANSWER_SOURCE_LABEL: Record<string, string> = {
+  llm: "LLM 답변",
+  deterministic_fallback: "이력 기반",
+  rule_only: "규칙 기반",
+  manual: "매뉴얼 기반",
+  clarification: "추가 확인 필요",
+  no_match: "유사 이력 없음",
+  proxy_error: "연결 오류",
+}
+
+const RETRIEVAL_MODE_LABEL: Record<string, string> = {
+  hybrid: "하이브리드 검색",
+  rule_only: "규칙 검색",
+  manual: "매뉴얼 검색",
+}
+
+interface ParsedAnswerSection {
+  title: string
+  body: string
+}
+
+function getAnswerSourceLabel(answerSource: string | null | undefined): string | null {
+  if (!answerSource) return null
+  return ANSWER_SOURCE_LABEL[answerSource] ?? answerSource
+}
+
+function getRetrievalModeLabel(retrievalMode: string | null | undefined): string | null {
+  if (!retrievalMode) return null
+  return RETRIEVAL_MODE_LABEL[retrievalMode] ?? retrievalMode
+}
+
+function parseStructuredAnswerSections(content: string): ParsedAnswerSection[] {
+  const normalized = content.replace(/\r\n/g, "\n").trim()
+  if (!normalized) return []
+
+  const lines = normalized.split("\n")
+  const sections: ParsedAnswerSection[] = []
+  let currentTitle: string | null = null
+  let currentBody: string[] = []
+
+  const flush = () => {
+    if (!currentTitle) return
+    const body = currentBody.join("\n").trim()
+    sections.push({ title: currentTitle, body })
+    currentTitle = null
+    currentBody = []
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    const headingMatch = trimmed.match(/^(\d+)[.)]\s+(.+)$/)
+    if (headingMatch) {
+      flush()
+      currentTitle = headingMatch[2].trim()
+      continue
+    }
+
+    if (!currentTitle) {
+      currentTitle = "핵심 안내"
+    }
+    currentBody.push(line)
+  }
+
+  flush()
+
+  if (sections.length <= 1) {
+    return []
+  }
+
+  return sections.filter((section) => section.body.length > 0)
+}
+
+function getSectionTone(title: string): {
+  icon: typeof Sparkles
+  titleClassName: string
+  cardClassName: string
+} {
+  const normalized = title.replace(/\s+/g, "")
+
+  if (/핵심|요약|안내|답변/.test(normalized)) {
+    return {
+      icon: Sparkles,
+      titleClassName: "text-primary",
+      cardClassName: "border-primary/15 bg-primary/5",
+    }
+  }
+  if (/적용|방법|절차|순서|경로/.test(normalized)) {
+    return {
+      icon: Layers3,
+      titleClassName: "text-sky-600 dark:text-sky-300",
+      cardClassName: "border-sky-500/15 bg-sky-500/5",
+    }
+  }
+  if (/확인|포인트|체크/.test(normalized)) {
+    return {
+      icon: ClipboardCheck,
+      titleClassName: "text-emerald-600 dark:text-emerald-300",
+      cardClassName: "border-emerald-500/15 bg-emerald-500/5",
+    }
+  }
+  if (/참고|링크|출처/.test(normalized)) {
+    return {
+      icon: Link2,
+      titleClassName: "text-violet-600 dark:text-violet-300",
+      cardClassName: "border-violet-500/15 bg-violet-500/5",
+    }
+  }
+
+  return {
+    icon: ScrollText,
+    titleClassName: "text-foreground",
+    cardClassName: "border-border bg-muted/40",
+  }
+}
+
+function AnswerMetaPills({
+  answerSource,
+  retrievalMode,
+  confidence,
+}: {
+  answerSource?: string | null
+  retrievalMode?: string | null
+  confidence?: number | null
+}) {
+  const sourceLabel = getAnswerSourceLabel(answerSource)
+  const retrievalLabel = getRetrievalModeLabel(retrievalMode)
+  const confidenceLabel =
+    typeof confidence === "number" && Number.isFinite(confidence) ? `신뢰도 ${Math.round(confidence * 100)}%` : null
+
+  if (!sourceLabel && !retrievalLabel && !confidenceLabel) return null
+
+  return (
+    <div className="mb-3 flex flex-wrap gap-1.5">
+      {sourceLabel ? (
+        <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary">
+          {sourceLabel}
+        </span>
+      ) : null}
+      {retrievalLabel ? (
+        <span className="rounded-full border border-border bg-muted/60 px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
+          {retrievalLabel}
+        </span>
+      ) : null}
+      {confidenceLabel ? (
+        <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
+          {confidenceLabel}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+function StructuredAnswerSections({ content }: { content: string }) {
+  const sections = parseStructuredAnswerSections(content)
+  if (sections.length === 0) {
+    return <BotMessageContent content={content} />
+  }
+
+  return (
+    <div className="space-y-2.5">
+      {sections.map((section, index) => {
+        const tone = getSectionTone(section.title)
+        const Icon = tone.icon
+
+        return (
+          <section key={`${section.title}-${index}`} className={cn("rounded-2xl border px-3 py-3", tone.cardClassName)}>
+            <div className={cn("mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em]", tone.titleClassName)}>
+              <Icon className="h-3.5 w-3.5" />
+              <span>{section.title}</span>
+            </div>
+            <div className="text-sm leading-relaxed">
+              <BotMessageContent content={section.body} />
+            </div>
+          </section>
+        )
+      })}
+    </div>
+  )
+}
+
+function ManualAnswerHero({ candidate }: { candidate: ManualCandidateCard }) {
+  return (
+    <div className="mb-3 rounded-2xl border border-sky-500/20 bg-sky-500/6 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="mb-1 flex flex-wrap items-center gap-1.5">
+            <span className="rounded-full bg-sky-500/12 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-600 dark:text-sky-300">
+              매뉴얼 기준
+            </span>
+            <span className="rounded-full bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground">
+              {candidate.product}
+            </span>
+            {typeof candidate.previewPageNumber === "number" ? (
+              <span className="rounded-full bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground">
+                p.{candidate.previewPageNumber}
+              </span>
+            ) : null}
+          </div>
+          <p className="truncate text-sm font-semibold text-foreground">{candidate.title}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {candidate.sourceLabel ?? candidate.sectionTitle ?? "관련 절차를 기준으로 안내합니다."}
+          </p>
+        </div>
+        {candidate.linkUrl ? (
+          <a
+            href={candidate.linkUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-sky-500/20 bg-background px-3 py-1.5 text-[11px] font-medium text-sky-700 transition-colors hover:bg-sky-500/10 dark:text-sky-300"
+          >
+            매뉴얼 열기
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 function SuggestedQuestions({ candidates, onSelect }: { candidates: CandidateCard[]; onSelect: (q: string) => void }) {
   const suggestions = candidates
     .slice(1, 3)
@@ -203,12 +442,12 @@ function SuggestedQuestions({ candidates, onSelect }: { candidates: CandidateCar
   return (
     <div className="mt-3">
       <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">관련 질문</p>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 md:flex-wrap md:overflow-visible">
         {suggestions.map((text, index) => (
           <button
             key={index}
             onClick={() => onSelect(text)}
-            className="rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs text-foreground transition-colors hover:border-primary/50 hover:bg-primary/10"
+            className="shrink-0 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs text-foreground transition-colors hover:border-primary/50 hover:bg-primary/10"
             type="button"
           >
             {text}
@@ -237,14 +476,14 @@ function CandidateCards({ candidates }: { candidates: CandidateCard[] }) {
       </button>
 
       {isExpanded && (
-        <div className="mt-2 flex flex-col gap-1.5">
+        <div className="mt-2 flex flex-col gap-2">
           {candidates.map((candidate, index) => (
             <a
               key={candidate.requireId}
               href={candidate.linkUrl}
               target="_blank"
               rel="noreferrer"
-              className="group flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs transition-colors hover:bg-muted"
+              className="group flex items-start gap-2 rounded-xl border border-border bg-muted/40 px-3 py-3 text-xs transition-colors hover:bg-muted"
             >
               <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
                 {index + 1}
@@ -289,7 +528,7 @@ function ManualCandidateCards({ candidates }: { candidates: ManualCandidateCard[
       </button>
 
       {isExpanded && (
-        <div className="mt-2 flex flex-col gap-1.5">
+        <div className="mt-2 flex flex-col gap-2">
           {candidates.map((candidate, index) => {
             const content = (
               <>
@@ -318,7 +557,7 @@ function ManualCandidateCards({ candidates }: { candidates: ManualCandidateCard[
                     <img
                       src={candidate.previewImageUrl}
                       alt={`${candidate.title} 매뉴얼 미리보기`}
-                      className="mt-2 max-h-36 w-full rounded-md border border-border object-contain bg-background"
+                      className="mt-2 max-h-40 w-full rounded-xl border border-border object-contain bg-background"
                       loading="lazy"
                       onError={() =>
                         setHiddenPreviewIds((current) => {
@@ -343,14 +582,14 @@ function ManualCandidateCards({ candidates }: { candidates: ManualCandidateCard[
                 href={candidate.linkUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="group flex items-start gap-2 rounded-lg border border-border bg-sky-500/5 px-3 py-2 text-xs transition-colors hover:bg-sky-500/10"
+                className="group flex items-start gap-2 rounded-xl border border-border bg-sky-500/5 px-3 py-3 text-xs transition-colors hover:bg-sky-500/10"
               >
                 {content}
               </a>
             ) : (
               <div
                 key={candidate.chunkId}
-                className="group flex items-start gap-2 rounded-lg border border-border bg-sky-500/5 px-3 py-2 text-xs"
+                className="group flex items-start gap-2 rounded-xl border border-border bg-sky-500/5 px-3 py-3 text-xs"
               >
                 {content}
               </div>
@@ -403,6 +642,11 @@ function ManualPreviewCallout({ candidate }: { candidate: ManualCandidateCard })
           onError={() => setIsHidden(true)}
         />
       </a>
+      <div className="border-t border-sky-500/15 px-3 py-2 text-[10px] text-muted-foreground">
+        {candidate.previewImageConfidence === "high"
+          ? "질문과 가까운 화면을 우선 노출합니다."
+          : candidate.previewImageReason ?? "미리보기 이미지는 참고용으로 제공됩니다."}
+      </div>
     </div>
   )
 }
@@ -423,16 +667,17 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
   const showCandidates = showActions && Array.isArray(message.top3Candidates) && message.top3Candidates.length > 1
   const showManualCandidates =
     showActions && isManualAnswer && Array.isArray(message.manualCandidates) && message.manualCandidates.length > 0
+  const primaryManualCandidate = showManualCandidates ? message.manualCandidates?.[0] ?? null : null
   const primaryManualPreviewCandidate = showManualCandidates
     ? message.manualCandidates!.find((candidate) => Boolean(candidate.previewImageUrl)) ?? null
     : null
   const showSuggestions = showCandidates && onSuggestedQuestion != null
 
   return (
-    <div className={cn("flex gap-3", isUser ? "flex-row-reverse" : "flex-row")}>
+    <div className={cn("flex gap-2.5 md:gap-3", isUser ? "flex-row-reverse" : "flex-row")}>
       <div
         className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full md:h-9 md:w-9",
           isUser
             ? "bg-muted text-muted-foreground"
             : isSecurityBlocked
@@ -453,10 +698,10 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
         )}
       </div>
 
-      <div className="flex max-w-[78%] flex-col gap-1">
+      <div className="flex max-w-[85%] flex-col gap-1 md:max-w-[78%]">
         <div
           className={cn(
-            "rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm",
+            "rounded-2xl px-3.5 py-3 text-sm leading-relaxed shadow-sm md:px-4",
             isUser
               ? "rounded-tr-sm bg-muted text-foreground"
               : isSecurityBlocked
@@ -482,35 +727,62 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
           ) : null}
 
           {isSearching ? (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary" />
-              <span className="text-xs">유사 이력을 검색하고 있습니다...</span>
+            <div className="rounded-2xl border border-primary/15 bg-primary/5 px-3 py-3">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary" />
+                <span className="text-xs">유사 이력을 검색하고 있습니다...</span>
+              </div>
             </div>
           ) : isGenerating ? (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary" />
-              <span className="text-xs">답변을 생성하고 있습니다...</span>
+            <div className="rounded-2xl border border-primary/15 bg-primary/5 px-3 py-3">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary" />
+                <span className="text-xs">답변을 생성하고 있습니다...</span>
+              </div>
             </div>
           ) : isUser ? (
             <p className="whitespace-pre-wrap break-words">{contentToDisplay}</p>
           ) : (
-            <BotMessageContent content={contentToDisplay} />
+            <>
+              <AnswerMetaPills
+                answerSource={message.answerSource}
+                retrievalMode={message.retrievalMode}
+                confidence={message.confidence}
+              />
+              {primaryManualCandidate ? <ManualAnswerHero candidate={primaryManualCandidate} /> : null}
+              <StructuredAnswerSections content={contentToDisplay} />
+            </>
           )}
 
           {!isUser && message.linkUrl ? (
-            <a
-              href={message.linkUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-3 inline-flex items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
-            >
-              {message.linkLabel ?? "유사 이력 바로가기"}
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <a
+                href={message.linkUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+              >
+                {message.linkLabel ?? "유사 이력 바로가기"}
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+              {isManualAnswer &&
+              primaryManualCandidate?.linkUrl &&
+              primaryManualCandidate.linkUrl !== message.linkUrl ? (
+                <a
+                  href={primaryManualCandidate.linkUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 rounded-full border border-sky-500/20 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-700 transition-colors hover:bg-sky-500/15 dark:text-sky-300"
+                >
+                  원문 매뉴얼 열기
+                  <BookOpen className="h-3.5 w-3.5" />
+                </a>
+              ) : null}
+            </div>
           ) : null}
 
           {primaryManualPreviewCandidate ? <ManualPreviewCallout candidate={primaryManualPreviewCandidate} /> : null}

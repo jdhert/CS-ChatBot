@@ -165,8 +165,8 @@ export function ConversationsPanel({
   }
 
   return (
-    <div className="flex h-full flex-col bg-card">
-      <div className="flex items-center justify-between border-b border-border p-4">
+    <div className="flex h-full min-h-0 flex-col bg-card">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-4 pb-4 pt-[calc(env(safe-area-inset-top)+1rem)] md:pt-4">
         <div className="flex items-center gap-2">
           {onClose && (
             <button
@@ -190,7 +190,7 @@ export function ConversationsPanel({
         </button>
       </div>
 
-      <div className="border-b border-border p-3">
+      <div className="shrink-0 border-b border-border p-3">
         <label className="relative block">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -224,7 +224,7 @@ export function ConversationsPanel({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
         {conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <MessageSquarePlus className="mb-3 h-12 w-12 text-muted-foreground opacity-50" />
@@ -382,7 +382,7 @@ export function ConversationsPanel({
         )}
       </div>
 
-      <div className="border-t border-border bg-card px-4 py-3">
+      <div className="shrink-0 border-t border-border bg-card px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 md:py-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="relative flex h-2 w-2">
             {isHydratingConversations && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />}
