@@ -289,6 +289,18 @@ interface ParsedAnswerSection {
   body: string
 }
 
+const STRUCTURED_SECTION_TITLES = [
+  "핵심 답변",
+  "핵심 안내",
+  "적용 방법",
+  "진행 방법",
+  "확인 포인트",
+  "체크 포인트",
+  "참고 링크",
+  "참고 사항",
+  "주요 내용",
+] as const
+
 function getAnswerSourceLabel(answerSource: string | null | undefined): string | null {
   if (!answerSource) return null
   return ANSWER_SOURCE_LABEL[answerSource] ?? answerSource
@@ -316,12 +328,39 @@ function parseStructuredAnswerSections(content: string): ParsedAnswerSection[] {
     currentBody = []
   }
 
+  const parseHeadingLine = (line: string): { title: string; inlineBody: string } | null => {
+    const headingMatch = line.match(/^(\d+)[.)]\s*(.+)$/)
+    if (!headingMatch) return null
+
+    const rest = headingMatch[2].trim()
+    for (const candidateTitle of STRUCTURED_SECTION_TITLES) {
+      if (rest.startsWith(candidateTitle)) {
+        const inlineBody = rest
+          .slice(candidateTitle.length)
+          .replace(/^[:：\-]\s*/, "")
+          .trim()
+        return {
+          title: candidateTitle,
+          inlineBody,
+        }
+      }
+    }
+
+    return {
+      title: rest,
+      inlineBody: "",
+    }
+  }
+
   for (const line of lines) {
     const trimmed = line.trim()
-    const headingMatch = trimmed.match(/^(\d+)[.)]\s+(.+)$/)
-    if (headingMatch) {
+    const parsedHeading = parseHeadingLine(trimmed)
+    if (parsedHeading) {
       flush()
-      currentTitle = headingMatch[2].trim()
+      currentTitle = parsedHeading.title
+      if (parsedHeading.inlineBody) {
+        currentBody.push(parsedHeading.inlineBody)
+      }
       continue
     }
 
@@ -470,7 +509,7 @@ function StructuredAnswerSections({ content }: { content: string }) {
             <button
               type="button"
               onClick={() => toggleSection(section.title)}
-              className="flex w-full items-center gap-2 text-left"
+              className="flex w-full items-start gap-2 text-left"
             >
               <div
                 className={cn(
@@ -479,7 +518,7 @@ function StructuredAnswerSections({ content }: { content: string }) {
                 )}
               >
                 <Icon className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{section.title}</span>
+                <span className="line-clamp-2 break-words pr-2">{section.title}</span>
               </div>
               {isExpanded ? (
                 <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
