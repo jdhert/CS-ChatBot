@@ -5,6 +5,7 @@ import { toast } from "@/hooks/use-toast"
 import {
   exportChatMessages,
   getChatExportFormatLabel,
+  getChatExportScopeLabel,
   getChatExportTemplateLabel,
   type ChatExportFormat,
   type ChatExportRequest,
@@ -105,8 +106,8 @@ export function useChat(args: {
   const handleExportChat = useCallback((request: ChatExportRequest = { format: "txt", template: "user" }) => {
     if (currentMessages.length === 0) {
       toast({
-        title: "내보낼 대화가 없습니다",
-        description: "메시지가 쌓인 뒤 다시 시도해 주세요.",
+        title: "\uB0B4\uBCF4\uB0BC \uB300\uD654\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4",
+        description: "\uBA54\uC2DC\uC9C0\uAC00 \uC313\uC778 \uB4A4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.",
         variant: "destructive",
       })
       return
@@ -115,16 +116,22 @@ export function useChat(args: {
     try {
       const format: ChatExportFormat = request.format
       const template = request.template ?? "user"
+      const scope = request.scope ?? (template === "report" ? "latest_exchange" : "all")
       const result = exportChatMessages(currentMessages, request)
       const label = `${getChatExportTemplateLabel(template)} ${getChatExportFormatLabel(format)}`
+      const scopeLabel = getChatExportScopeLabel(scope)
       toast({
-        title: format === "pdf" ? "PDF 저장 화면을 열었습니다" : "대화를 내보냈습니다",
-        description: format === "pdf" ? "인쇄 대화상자에서 PDF로 저장을 선택해 주세요." : `${label}: ${result}`,
+        title:
+          format === "pdf"
+            ? "PDF \uC778\uC1C4 \uD654\uBA74\uC744 \uC5F4\uC5C8\uC2B5\uB2C8\uB2E4"
+            : "\uB300\uD654\uB97C \uB0B4\uBCF4\uB0C8\uC2B5\uB2C8\uB2E4",
+        description: format === "pdf" ? `${label} · ${scopeLabel}` : `${label} · ${scopeLabel}: ${result}`,
       })
     } catch (error) {
       toast({
-        title: "대화를 내보내지 못했습니다",
-        description: error instanceof Error ? error.message : "잠시 후 다시 시도해 주세요.",
+        title: "\uB300\uD654 \uB0B4\uBCF4\uB0B4\uAE30\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4",
+        description:
+          error instanceof Error ? error.message : "\uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.",
         variant: "destructive",
       })
     }

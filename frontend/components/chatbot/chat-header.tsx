@@ -4,10 +4,12 @@ import Link from "next/link"
 import { Bot, Download, Menu, Moon, MoreHorizontal, ScrollText, Search, Sun } from "lucide-react"
 import {
   getChatExportFormatLabel,
+  getChatExportScopeLabel,
   getChatExportTemplateDescription,
   getChatExportTemplateLabel,
   type ChatExportFormat,
   type ChatExportRequest,
+  type ChatExportScope,
   type ChatExportTemplate,
 } from "@/lib/chat-export"
 import {
@@ -28,26 +30,64 @@ interface ChatHeaderProps {
 
 const exportFormats: ChatExportFormat[] = ["txt", "md", "pdf"]
 const exportTemplates: ChatExportTemplate[] = ["user", "operator", "report"]
+const exportScopes: ChatExportScope[] = ["all", "latest_exchange", "latest_answer"]
+
+const quickExportPresets: Array<{ label: string; description: string; request: ChatExportRequest }> = [
+  {
+    label: "최근 응답 PDF",
+    description: "마지막 질의/응답만 PDF로 저장",
+    request: { format: "pdf", template: "user", scope: "latest_exchange" },
+  },
+  {
+    label: "운영 진단 PDF",
+    description: "전체 대화 + 진단 정보 포함",
+    request: { format: "pdf", template: "operator", scope: "all", includeDiagnostics: true },
+  },
+  {
+    label: "공유용 보고 PDF",
+    description: "최근 응답만 브리핑 문서로 저장",
+    request: { format: "pdf", template: "report", scope: "latest_exchange" },
+  },
+]
 
 function ExportMenuItems({ onExportChat }: { onExportChat: (request: ChatExportRequest) => void }) {
   return (
     <>
+      <DropdownMenuLabel>빠른 내보내기</DropdownMenuLabel>
+      {quickExportPresets.map((preset) => (
+        <DropdownMenuItem key={preset.label} onClick={() => onExportChat(preset.request)}>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span>{preset.label}</span>
+            <span className="text-[10px] text-muted-foreground">{preset.description}</span>
+          </div>
+        </DropdownMenuItem>
+      ))}
       {exportTemplates.map((template, templateIndex) => (
         <div key={template}>
-          {templateIndex > 0 ? <DropdownMenuSeparator /> : null}
+          <DropdownMenuSeparator />
           <DropdownMenuLabel>{getChatExportTemplateLabel(template)}</DropdownMenuLabel>
           <div className="px-2 pb-1 text-[11px] text-muted-foreground">
             {getChatExportTemplateDescription(template)}
           </div>
-          {exportFormats.map((format) => (
-            <DropdownMenuItem key={`${template}-${format}`} onClick={() => onExportChat({ format, template })}>
-              <div className="flex w-full items-center gap-3">
-                <span>{getChatExportFormatLabel(format)}</span>
-                <span className="ml-auto text-[10px] uppercase text-muted-foreground">
-                  {format === "pdf" ? "print" : format}
-                </span>
+          {exportScopes.map((scope) => (
+            <div key={`${template}-${scope}`} className="pb-1">
+              <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                {getChatExportScopeLabel(scope)}
               </div>
-            </DropdownMenuItem>
+              {exportFormats.map((format) => (
+                <DropdownMenuItem
+                  key={`${template}-${scope}-${format}`}
+                  onClick={() => onExportChat({ format, template, scope })}
+                >
+                  <div className="flex w-full items-center gap-3">
+                    <span>{getChatExportFormatLabel(format)}</span>
+                    <span className="ml-auto text-[10px] uppercase text-muted-foreground">
+                      {format === "pdf" ? "print" : format}
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+              ))}
+            </div>
           ))}
         </div>
       ))}

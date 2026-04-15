@@ -2,10 +2,24 @@ import type { CandidateCard, ManualCandidateCard, Message } from "@/components/c
 
 export type ChatExportFormat = "txt" | "md" | "pdf"
 export type ChatExportTemplate = "user" | "operator" | "report"
+export type ChatExportScope = "all" | "latest_exchange" | "latest_answer"
 
 export interface ChatExportRequest {
   format: ChatExportFormat
   template?: ChatExportTemplate
+  scope?: ChatExportScope
+  includeSources?: boolean
+  includeDiagnostics?: boolean
+  includeManualPreviews?: boolean
+}
+
+interface NormalizedChatExportRequest {
+  format: ChatExportFormat
+  template: ChatExportTemplate
+  scope: ChatExportScope
+  includeSources: boolean
+  includeDiagnostics: boolean
+  includeManualPreviews: boolean
 }
 
 const FORMAT_LABEL: Record<ChatExportFormat, string> = {
@@ -24,6 +38,12 @@ const TEMPLATE_DESCRIPTION: Record<ChatExportTemplate, string> = {
   user: "\uC9C8\uBB38\uACFC \uB2F5\uBCC0 \uC911\uC2EC",
   operator: "\uCD9C\uCC98\uC640 \uC9C4\uB2E8 \uC815\uBCF4 \uD3EC\uD568",
   report: "\uACF5\uC720\uC6A9 \uC694\uC57D \uD3EC\uB9F7",
+}
+
+const SCOPE_LABEL: Record<ChatExportScope, string> = {
+  all: "\uC804\uCCB4 \uB300\uD654",
+  latest_exchange: "\uCD5C\uADFC \uC9C8\uC758/\uC751\uB2F5",
+  latest_answer: "\uCD5C\uC885 \uB2F5\uBCC0",
 }
 
 const TEMPLATE_HEADLINE: Record<ChatExportTemplate, string> = {
@@ -69,6 +89,10 @@ interface ExportContext {
   template: ChatExportTemplate
   exportedAt: string
   conversationTitle: string
+  scope: ChatExportScope
+  includeSources: boolean
+  includeDiagnostics: boolean
+  includeManualPreviews: boolean
 }
 
 interface ExportStats {
@@ -78,14 +102,49 @@ interface ExportStats {
   manualReferences: number
 }
 
-function normalizeChatExportRequest(request: ChatExportFormat | ChatExportRequest = "txt"): Required<ChatExportRequest> {
-  if (typeof request === "string") {
-    return { format: request, template: "user" }
+function getDefaultExportOptions(template: ChatExportTemplate): Omit<NormalizedChatExportRequest, "format" | "template"> {
+  if (template === "operator") {
+    return {
+      scope: "all",
+      includeSources: true,
+      includeDiagnostics: true,
+      includeManualPreviews: true,
+    }
+  }
+
+  if (template === "report") {
+    return {
+      scope: "latest_exchange",
+      includeSources: true,
+      includeDiagnostics: false,
+      includeManualPreviews: true,
+    }
   }
 
   return {
+    scope: "all",
+    includeSources: true,
+    includeDiagnostics: false,
+    includeManualPreviews: true,
+  }
+}
+
+function normalizeChatExportRequest(request: ChatExportFormat | ChatExportRequest = "txt"): NormalizedChatExportRequest {
+  if (typeof request === "string") {
+    const defaults = getDefaultExportOptions("user")
+    return { format: request, template: "user", ...defaults }
+  }
+
+  const template = request.template ?? "user"
+  const defaults = getDefaultExportOptions(template)
+
+  return {
     format: request.format,
-    template: request.template ?? "user",
+    template,
+    scope: request.scope ?? defaults.scope,
+    includeSources: request.includeSources ?? defaults.includeSources,
+    includeDiagnostics: request.includeDiagnostics ?? defaults.includeDiagnostics,
+    includeManualPreviews: request.includeManualPreviews ?? defaults.includeManualPreviews,
   }
 }
 
@@ -152,6 +211,44 @@ function getConversationTitle(messages: Message[]): string {
   return trimConversationTitle(firstUserMessage.content)
 }
 
+function getLatestExchangeMessages(messages: Message[]): Message[] {
+  const lastUserIndex = [...messages]
+    .map((message, index) => ({ message, index }))
+    .reverse()
+    .find(({ message }) => message.sender === "user")?.index
+
+  if (lastUserIndex === undefined) {
+    return messages.slice(-1)
+  }
+
+  return messages.slice(lastUserIndex)
+}
+
+function getLatestAnswerMessages(messages: Message[]): Message[] {
+  const lastBotIndex = [...messages]
+    .map((message, index) => ({ message, index }))
+    .reverse()
+    .find(({ message }) => message.sender === "bot")?.index
+
+  if (lastBotIndex === undefined) {
+    return getLatestExchangeMessages(messages)
+  }
+
+  return messages.slice(lastBotIndex, lastBotIndex + 1)
+}
+
+function resolveExportMessages(messages: Message[], scope: ChatExportScope): Message[] {
+  if (scope === "latest_answer") {
+    return getLatestAnswerMessages(messages)
+  }
+
+  if (scope === "latest_exchange") {
+    return getLatestExchangeMessages(messages)
+  }
+
+  return messages
+}
+
 function getAnswerSourceLabel(answerSource: string | null | undefined): string | null {
   if (!answerSource) return null
   return ANSWER_SOURCE_LABEL[answerSource] ?? answerSource
@@ -165,6 +262,18 @@ function getRetrievalModeLabel(retrievalMode: string | null | undefined): string
 function formatConfidence(confidence: number | null | undefined): string | null {
   if (typeof confidence !== "number" || !Number.isFinite(confidence)) return null
   return `${Math.round(confidence * 100)}%`
+}
+
+function getScopeLabel(scope: ChatExportScope): string {
+  return SCOPE_LABEL[scope]
+}
+
+function getSectionTone(title: string): "core" | "howto" | "checkpoint" | "reference" | "general" {
+  if (title.includes("\uD575\uC2EC")) return "core"
+  if (title.includes("\uC801\uC6A9") || title.includes("\uC9C4\uD589")) return "howto"
+  if (title.includes("\uD655\uC778") || title.includes("\uCCB4\uD06C")) return "checkpoint"
+  if (title.includes("\uCC38\uACE0")) return "reference"
+  return "general"
 }
 
 function parseStructuredAnswerSections(content: string): ParsedAnswerSection[] {
@@ -235,16 +344,26 @@ function parseStructuredAnswerSections(content: string): ParsedAnswerSection[] {
   return sections.filter((section) => section.body.length > 0)
 }
 
-function collectMessageMeta(message: Message, template: ChatExportTemplate): string[] {
+function collectMessageMeta(message: Message, context: ExportContext): string[] {
+  if (message.sender === "user") return []
+
+  const template = context.template
   const meta: string[] = []
   const answerSource = getAnswerSourceLabel(message.answerSource)
   const retrievalMode = getRetrievalModeLabel(message.retrievalMode)
   const confidence = formatConfidence(message.confidence)
 
+  if (template === "report") {
+    if (answerSource) meta.push(`\uB2F5\uBCC0 \uCD9C\uCC98: ${answerSource}`)
+    return meta
+  }
+
   if (answerSource) meta.push(`\uB2F5\uBCC0 \uCD9C\uCC98: ${answerSource}`)
-  if (retrievalMode) meta.push(`\uAC80\uC0C9 \uBC29\uC2DD: ${retrievalMode}`)
   if (confidence) meta.push(`\uC2E0\uB8B0\uB3C4: ${confidence}`)
-  if (template === "operator" && message.logId) meta.push(`\uB85C\uADF8 ID: ${message.logId}`)
+  if (template === "operator" || context.includeDiagnostics) {
+    if (retrievalMode) meta.push(`\uAC80\uC0C9 \uBC29\uC2DD: ${retrievalMode}`)
+    if (message.logId) meta.push(`\uB85C\uADF8 ID: ${message.logId}`)
+  }
 
   return meta
 }
@@ -295,6 +414,7 @@ function buildPlainText(messages: Message[], context: ExportContext): string {
     "=== \uCF54\uBE44\uC804 CS AI Core \uB300\uD654 \uB0B4\uBCF4\uB0B4\uAE30 ===",
     `\uB300\uD654 \uC81C\uBAA9: ${context.conversationTitle}`,
     `\uD15C\uD50C\uB9BF: ${getChatExportTemplateLabel(context.template)} (${TEMPLATE_DESCRIPTION[context.template]})`,
+    `\uBC94\uC704: ${getScopeLabel(context.scope)}`,
     `\uB0B4\uBCF4\uB0B8 \uC2DC\uAC01: ${context.exportedAt}`,
     `\uBA54\uC2DC\uC9C0 \uC218: ${messages.length}`,
     "",
@@ -304,21 +424,21 @@ function buildPlainText(messages: Message[], context: ExportContext): string {
     lines.push(`[${formatMessageTime(message.timestamp)}] ${formatSender(message, context.template)}`)
     lines.push(...renderStructuredSectionsAsPlainText(message.content))
 
-    const meta = collectMessageMeta(message, context.template)
+    const meta = collectMessageMeta(message, context)
     if (meta.length > 0) {
       lines.push("")
       lines.push("\uCD9C\uCC98 \uC815\uBCF4")
       lines.push(...meta.map((item) => `- ${item}`))
     }
 
-    const manualLines = collectManualSourceLines(message.manualCandidates, context.template)
+    const manualLines = context.includeSources ? collectManualSourceLines(message.manualCandidates, context.template) : []
     if (manualLines.length > 0) {
       lines.push("")
       lines.push("\uB9E4\uB274\uC5BC \uCC38\uACE0")
       lines.push(...manualLines.map((item) => `- ${item}`))
     }
 
-    if (context.template === "operator") {
+    if (context.includeDiagnostics && context.template === "operator") {
       const candidateLines = collectTopCandidateLines(message.top3Candidates)
       if (candidateLines.length > 0) {
         lines.push("")
@@ -344,6 +464,7 @@ function buildMarkdown(messages: Message[], context: ExportContext): string {
     "",
     `- \uB300\uD654 \uC81C\uBAA9: ${context.conversationTitle}`,
     `- \uD15C\uD50C\uB9BF: ${getChatExportTemplateLabel(context.template)} (${TEMPLATE_DESCRIPTION[context.template]})`,
+    `- \uBC94\uC704: ${getScopeLabel(context.scope)}`,
     `- \uB0B4\uBCF4\uB0B8 \uC2DC\uAC01: ${context.exportedAt}`,
     `- \uBA54\uC2DC\uC9C0 \uC218: ${messages.length}`,
     "",
@@ -366,7 +487,7 @@ function buildMarkdown(messages: Message[], context: ExportContext): string {
       lines.push("")
     }
 
-    const meta = collectMessageMeta(message, context.template)
+    const meta = collectMessageMeta(message, context)
     if (meta.length > 0) {
       lines.push("### \uCD9C\uCC98 \uC815\uBCF4")
       lines.push("")
@@ -374,7 +495,7 @@ function buildMarkdown(messages: Message[], context: ExportContext): string {
       lines.push("")
     }
 
-    const manualLines = collectManualSourceLines(message.manualCandidates, context.template)
+    const manualLines = context.includeSources ? collectManualSourceLines(message.manualCandidates, context.template) : []
     if (manualLines.length > 0) {
       lines.push("### \uB9E4\uB274\uC5BC \uCC38\uACE0")
       lines.push("")
@@ -382,7 +503,7 @@ function buildMarkdown(messages: Message[], context: ExportContext): string {
       lines.push("")
     }
 
-    if (context.template === "operator") {
+    if (context.includeDiagnostics && context.template === "operator") {
       const candidateLines = collectTopCandidateLines(message.top3Candidates)
       if (candidateLines.length > 0) {
         lines.push("### \uC0C1\uC704 \uD6C4\uBCF4")
@@ -401,13 +522,16 @@ function buildMarkdown(messages: Message[], context: ExportContext): string {
   return lines.join("\n")
 }
 
-function renderMetaChips(message: Message, template: ChatExportTemplate): string {
-  return collectMessageMeta(message, template)
+function renderMetaChips(message: Message, context: ExportContext): string {
+  return collectMessageMeta(message, context)
     .map((item) => `<span class="chip">${escapeHtml(item)}</span>`)
     .join("")
 }
 
-function renderManualSources(message: Message, template: ChatExportTemplate): string {
+function renderManualSources(message: Message, context: ExportContext): string {
+  if (!context.includeSources) return ""
+
+  const template = context.template
   const candidates = Array.isArray(message.manualCandidates)
     ? message.manualCandidates.slice(0, getManualCandidateLimit(template))
     : []
@@ -429,7 +553,7 @@ function renderManualSources(message: Message, template: ChatExportTemplate): st
             ${link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noreferrer">\uC6D0\uBB38 \uB9C1\uD06C</a>` : ""}
           </div>
           <div class="source-preview">${escapeHtml(candidate.previewText)}</div>
-          ${previewImage ? `<img class="manual-preview" src="${escapeHtml(previewImage)}" alt="${escapeHtml(candidate.title)} \uBBF8\uB9AC\uBCF4\uAE30" />` : ""}
+          ${context.includeManualPreviews && previewImage ? `<img class="manual-preview" src="${escapeHtml(previewImage)}" alt="${escapeHtml(candidate.title)} \uBBF8\uB9AC\uBCF4\uAE30" />` : ""}
         </li>
       `
     })
@@ -443,7 +567,9 @@ function renderManualSources(message: Message, template: ChatExportTemplate): st
   `
 }
 
-function renderTopCandidates(message: Message): string {
+function renderTopCandidates(message: Message, context: ExportContext): string {
+  if (!context.includeDiagnostics) return ""
+
   const candidates = Array.isArray(message.top3Candidates) ? message.top3Candidates.slice(0, 3) : []
   if (candidates.length === 0) return ""
 
@@ -468,24 +594,119 @@ function renderTopCandidates(message: Message): string {
   `
 }
 
-function renderMessageContentHtml(message: Message): string {
+function renderOperatorDiagnostics(message: Message, context: ExportContext): string {
+  if (!context.includeDiagnostics || message.sender !== "bot") return ""
+
+  const rows = [
+    message.answerSource ? [`\uB2F5\uBCC0 \uCD9C\uCC98`, getAnswerSourceLabel(message.answerSource) ?? message.answerSource] : null,
+    message.retrievalMode ? [`\uAC80\uC0C9 \uBAA8\uB4DC`, getRetrievalModeLabel(message.retrievalMode) ?? message.retrievalMode] : null,
+    formatConfidence(message.confidence) ? [`\uC2E0\uB8B0\uB3C4`, formatConfidence(message.confidence)] : null,
+    message.logId ? [`\uB85C\uADF8 ID`, message.logId] : null,
+  ].filter((row): row is [string, string] => Array.isArray(row) && typeof row[1] === "string")
+
+  if (rows.length === 0) return ""
+
+  return `
+    <section class="diagnostic-block">
+      <h4>\uC9C4\uB2E8 \uC694\uC57D</h4>
+      <dl class="diagnostic-grid">
+        ${rows
+          .map(
+            ([label, value]) => `
+              <div class="diagnostic-item">
+                <dt>${escapeHtml(label)}</dt>
+                <dd>${escapeHtml(value)}</dd>
+              </div>
+            `,
+          )
+          .join("")}
+      </dl>
+    </section>
+  `
+}
+
+function renderManualSpotlight(message: Message, context: ExportContext): string {
+  if (!context.includeSources || message.sender !== "bot") return ""
+  const candidate = Array.isArray(message.manualCandidates) ? message.manualCandidates[0] : null
+  if (!candidate) return ""
+
+  const previewImage = context.includeManualPreviews ? absoluteUrl(candidate.previewImageUrl) : null
+  const link = absoluteUrl(candidate.linkUrl)
+
+  return `
+    <section class="manual-spotlight">
+      <div class="manual-spotlight-copy">
+        <div class="manual-spotlight-label">\uCD94\uCC9C \uD654\uBA74</div>
+        <h4>${escapeHtml(candidate.title)}</h4>
+        <p>${escapeHtml(candidate.previewText)}</p>
+        <div class="manual-spotlight-meta">
+          ${candidate.product ? `<span>${escapeHtml(candidate.product)}</span>` : ""}
+          ${candidate.sectionTitle ? `<span>${escapeHtml(candidate.sectionTitle)}</span>` : ""}
+          ${typeof candidate.previewPageNumber === "number" ? `<span>p.${candidate.previewPageNumber}</span>` : ""}
+          ${link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noreferrer">\uC6D0\uBB38 \uBCF4\uAE30</a>` : ""}
+        </div>
+      </div>
+      ${previewImage ? `<img class="manual-spotlight-image" src="${escapeHtml(previewImage)}" alt="${escapeHtml(candidate.title)} \uBBF8\uB9AC\uBCF4\uAE30" />` : ""}
+    </section>
+  `
+}
+
+function renderReportBrief(message: Message): string {
+  if (message.sender !== "bot") return ""
+
+  const sections = parseStructuredAnswerSections(message.content)
+  if (sections.length === 0) return ""
+
+  const core = sections[0]
+  const supporting = sections.slice(1, 4)
+
+  return `
+    <section class="brief-block">
+      <div class="brief-label">\uD575\uC2EC \uC694\uC57D</div>
+      <div class="brief-core">${escapeHtml(core.body).replace(/\n/g, "<br />")}</div>
+      ${
+        supporting.length > 0
+          ? `<ul class="brief-points">
+              ${supporting
+                .map(
+                  (section) => `
+                    <li><strong>${escapeHtml(section.title)}</strong> ${escapeHtml(section.body)}</li>
+                  `,
+                )
+                .join("")}
+            </ul>`
+          : ""
+      }
+    </section>
+  `
+}
+
+function renderMessageContentHtml(message: Message, context: ExportContext): string {
   const sections = parseStructuredAnswerSections(message.content)
   if (sections.length === 0) {
     return `<div class="content raw">${escapeHtml(message.content).replace(/\n/g, "<br />")}</div>`
   }
 
+  const visibleSections =
+    context.template === "report"
+      ? sections.slice(0, Math.min(sections.length, 3))
+      : context.template === "user"
+        ? sections.slice(0, Math.min(sections.length, 4))
+        : sections
+
   return `
     <div class="content structured">
-      ${sections
+      ${visibleSections
         .map(
           (section, index) => `
-            <section class="answer-section">
+            <section class="answer-section tone-${getSectionTone(section.title)}">
               <div class="answer-section-title">${index + 1}. ${escapeHtml(section.title)}</div>
               <div class="answer-section-body">${escapeHtml(section.body).replace(/\n/g, "<br />")}</div>
             </section>
           `,
         )
         .join("")}
+      ${context.template === "report" && sections.length > visibleSections.length ? `<div class="answer-overflow-note">\uB098\uBA38\uC9C0 \uC138\uBD80 \uC808\uCC28\uB294 \uC6B4\uC601\uC790\uC6A9 \uB610\uB294 \uC0AC\uC6A9\uC790\uC6A9 \uB0B4\uBCF4\uB0B4\uAE30\uC5D0\uC11C \uD655\uC778\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.</div>` : ""}
     </div>
   `
 }
@@ -523,9 +744,9 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
             <span class="helper">\uB2F5\uBCC0\uC5D0 \uC5F0\uACB0\uB41C \uCC38\uACE0 \uCE74\uB4DC \uC218</span>
           </article>
           <article class="summary-card accent-slate">
-            <span class="label">\uB0B4\uBCF4\uB0B8 \uC2DC\uAC01</span>
-            <strong>${escapeHtml(context.exportedAt)}</strong>
-            <span class="helper">\uC6B4\uC601 \uC810\uAC80\uC6A9 \uC2A4\uB0C5\uC0F7</span>
+            <span class="label">\uBC94\uC704 / \uC2DC\uAC01</span>
+            <strong>${escapeHtml(getScopeLabel(context.scope))}</strong>
+            <span class="helper">${escapeHtml(context.exportedAt)}</span>
           </article>
         </div>
       </section>
@@ -541,7 +762,7 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
         <div class="summary-strip">
           <div><strong>\uB300\uD654 \uC81C\uBAA9</strong><span>${escapeHtml(context.conversationTitle)}</span></div>
           <div><strong>\uC694\uC57D</strong><span>\uC9C8\uC758 ${stats.userMessages}\uAC74 / \uC751\uB2F5 ${stats.botMessages}\uAC74</span></div>
-          <div><strong>\uB0B4\uBCF4\uB0B8 \uC2DC\uAC01</strong><span>${escapeHtml(context.exportedAt)}</span></div>
+          <div><strong>\uBC94\uC704</strong><span>${escapeHtml(getScopeLabel(context.scope))}</span></div>
         </div>
       </section>
     `
@@ -564,9 +785,9 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
           <span class="helper">\uC774\uBC88 \uC0C1\uB2F4\uC5D0 \uD3EC\uD568\uB41C \uC804\uCCB4 \uBA54\uC2DC\uC9C0</span>
         </article>
         <article class="summary-card">
-          <span class="label">\uB0B4\uBCF4\uB0B8 \uC2DC\uAC01</span>
-          <strong>${escapeHtml(context.exportedAt)}</strong>
-          <span class="helper">PDF \uC800\uC7A5 \uAE30\uC900 \uC2DC\uAC01</span>
+          <span class="label">\uBC94\uC704</span>
+          <strong>${escapeHtml(getScopeLabel(context.scope))}</strong>
+          <span class="helper">${escapeHtml(context.exportedAt)}</span>
         </article>
       </div>
     </section>
@@ -575,9 +796,15 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
 
 function renderPrintableMessage(message: Message, context: ExportContext): string {
   const link = absoluteUrl(message.linkUrl)
-  const manualBlock = renderManualSources(message, context.template)
-  const candidateBlock = context.template === "operator" ? renderTopCandidates(message) : ""
+  const manualBlock = renderManualSources(message, context)
+  const candidateBlock = context.template === "operator" ? renderTopCandidates(message, context) : ""
   const templateClass = `${context.template}-${message.sender}`
+  const briefBlock = context.template === "report" ? renderReportBrief(message) : ""
+  const spotlightBlock =
+    message.sender === "bot" && (context.template === "user" || context.template === "report")
+      ? renderManualSpotlight(message, context)
+      : ""
+  const diagnosticBlock = renderOperatorDiagnostics(message, context)
 
   return `
     <section class="message ${message.sender} ${templateClass}">
@@ -586,10 +813,13 @@ function renderPrintableMessage(message: Message, context: ExportContext): strin
           <div class="sender">${escapeHtml(formatSender(message, context.template))}</div>
           <div class="timestamp">${escapeHtml(formatMessageDateTime(message.timestamp))}</div>
         </div>
-        <div class="meta-chips">${renderMetaChips(message, context.template)}</div>
+        <div class="meta-chips">${renderMetaChips(message, context)}</div>
       </div>
-      ${renderMessageContentHtml(message)}
+      ${briefBlock}
+      ${renderMessageContentHtml(message, context)}
       ${link ? `<div class="link-row"><strong>\uCC38\uACE0 \uB9C1\uD06C</strong><a href="${escapeHtml(link)}" target="_blank" rel="noreferrer">${escapeHtml(link)}</a></div>` : ""}
+      ${spotlightBlock}
+      ${diagnosticBlock}
       ${manualBlock}
       ${candidateBlock}
     </section>
@@ -757,20 +987,20 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       font-size: 14px;
       color: #2b2d31;
     }
+    .messages {
+      display: block;
+    }
     .messages.report-layout {
-      display: grid;
-      gap: 14px;
       padding-left: 18px;
       border-left: 2px solid #ddcfba;
     }
-    .messages.default-layout,
-    .messages.operator-layout {
-      display: grid;
-      gap: 16px;
+    .messages > .message + .message {
+      margin-top: 16px;
     }
     .message {
       border-radius: 22px;
-      page-break-inside: avoid;
+      break-inside: auto;
+      page-break-inside: auto;
     }
     .template-user-user,
     .template-user-bot {
@@ -887,6 +1117,24 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       border-radius: 16px;
       border: 1px solid #dbe3ef;
       background: #f8fbff;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .tone-core {
+      border-color: #bfdbfe;
+      background: linear-gradient(180deg, #edf5ff, #ffffff);
+    }
+    .tone-howto {
+      border-color: #c7d2fe;
+      background: linear-gradient(180deg, #f5f7ff, #ffffff);
+    }
+    .tone-checkpoint {
+      border-color: #bbf7d0;
+      background: linear-gradient(180deg, #f2fbf5, #ffffff);
+    }
+    .tone-reference {
+      border-color: #fde68a;
+      background: linear-gradient(180deg, #fff9e8, #ffffff);
     }
     .template-user-bot .answer-section:nth-child(1) {
       background: linear-gradient(180deg, #eef6ff, #ffffff);
@@ -935,6 +1183,8 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       border: 1px solid #dbe3ef;
       border-radius: 18px;
       background: #fcfdff;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
     .template-user-bot .source-block {
       background: linear-gradient(180deg, #f6fbff, #ffffff);
@@ -995,6 +1245,115 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     .template-operator-bot .manual-preview {
       max-height: 260px;
     }
+    .manual-spotlight,
+    .diagnostic-block,
+    .brief-block {
+      margin-top: 14px;
+      border-radius: 18px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .manual-spotlight {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(220px, 0.85fr);
+      gap: 16px;
+      padding: 16px;
+      border: 1px solid #d6e5ff;
+      background: linear-gradient(180deg, #eff6ff, #ffffff);
+    }
+    .manual-spotlight-label,
+    .brief-label {
+      margin-bottom: 8px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #2563eb;
+    }
+    .manual-spotlight h4,
+    .diagnostic-block h4 {
+      margin: 0 0 8px;
+      font-size: 15px;
+    }
+    .manual-spotlight p {
+      margin: 0;
+      font-size: 12px;
+      color: #334155;
+      white-space: pre-wrap;
+    }
+    .manual-spotlight-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 10px;
+      margin-top: 10px;
+      font-size: 11px;
+      color: #475569;
+    }
+    .manual-spotlight-meta a {
+      color: #1d4ed8;
+      text-decoration: none;
+    }
+    .manual-spotlight-image {
+      width: 100%;
+      max-height: 260px;
+      border: 1px solid #dbe3ef;
+      border-radius: 14px;
+      object-fit: contain;
+      background: #ffffff;
+    }
+    .diagnostic-block {
+      padding: 14px 16px;
+      border: 1px solid #dbe3ef;
+      background: #f8fafc;
+    }
+    .diagnostic-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin: 0;
+    }
+    .diagnostic-item {
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+    }
+    .diagnostic-item dt {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+    .diagnostic-item dd {
+      margin: 6px 0 0;
+      font-size: 12px;
+      color: #0f172a;
+    }
+    .brief-block {
+      padding: 14px 16px;
+      border: 1px solid #e9dcc7;
+      background: linear-gradient(180deg, #fffdfa, #ffffff);
+    }
+    .brief-core {
+      font-size: 13px;
+      font-weight: 600;
+      color: #2b2d31;
+      white-space: pre-wrap;
+    }
+    .brief-points {
+      margin: 12px 0 0;
+      padding-left: 18px;
+      font-size: 12px;
+      color: #475569;
+    }
+    .brief-points li + li {
+      margin-top: 6px;
+    }
+    .answer-overflow-note {
+      font-size: 11px;
+      color: #64748b;
+    }
     .candidate-list strong {
       display: block;
       margin-bottom: 4px;
@@ -1012,6 +1371,9 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       .page-header,
       .message {
         box-shadow: none !important;
+      }
+      .messages > .message + .message {
+        margin-top: 12px;
       }
     }
   </style>
@@ -1059,25 +1421,30 @@ function openPrintWindow(content: string): void {
 export function exportChatMessages(messages: Message[], request: ChatExportFormat | ChatExportRequest): string {
   const normalized = normalizeChatExportRequest(request)
   const fileStem = `${createFileStem()}_${normalized.template}`
+  const exportMessages = resolveExportMessages(messages, normalized.scope)
   const context: ExportContext = {
     template: normalized.template,
     exportedAt: formatExportedAt(),
-    conversationTitle: getConversationTitle(messages),
+    conversationTitle: getConversationTitle(exportMessages),
+    scope: normalized.scope,
+    includeSources: normalized.includeSources,
+    includeDiagnostics: normalized.includeDiagnostics,
+    includeManualPreviews: normalized.includeManualPreviews,
   }
 
   if (normalized.format === "md") {
     const fileName = `${fileStem}.md`
-    downloadFile(buildMarkdown(messages, context), fileName, "text/markdown;charset=utf-8")
+    downloadFile(buildMarkdown(exportMessages, context), fileName, "text/markdown;charset=utf-8")
     return fileName
   }
 
   if (normalized.format === "pdf") {
-    openPrintWindow(buildPrintableHtml(messages, context))
+    openPrintWindow(buildPrintableHtml(exportMessages, context))
     return "\uC778\uC1C4 \uD654\uBA74"
   }
 
   const fileName = `${fileStem}.txt`
-  downloadFile(buildPlainText(messages, context), fileName, "text/plain;charset=utf-8")
+  downloadFile(buildPlainText(exportMessages, context), fileName, "text/plain;charset=utf-8")
   return fileName
 }
 
@@ -1091,4 +1458,8 @@ export function getChatExportTemplateLabel(template: ChatExportTemplate): string
 
 export function getChatExportTemplateDescription(template: ChatExportTemplate): string {
   return TEMPLATE_DESCRIPTION[template]
+}
+
+export function getChatExportScopeLabel(scope: ChatExportScope): string {
+  return SCOPE_LABEL[scope]
 }
