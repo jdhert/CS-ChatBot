@@ -1,26 +1,37 @@
-<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <style>
-    @media (prefers-color-scheme: light) {
-      .background { fill: black; }
-      .foreground { fill: white; }
-    }
-    @media (prefers-color-scheme: dark) {
-      .background { fill: white; }
-      .foreground { fill: black; }
-    }
-  </style>
-  <g clip-path="url(#clip0_7960_43945)">
-    <rect class="background" width="180" height="180" rx="37" />
-    <g style="transform: scale(95%); transform-origin: center">
-      <path class="foreground"
-        d="M101.141 53H136.632C151.023 53 162.689 64.6662 162.689 79.0573V112.904H148.112V79.0573C148.112 78.7105 148.098 78.3662 148.072 78.0251L112.581 112.898C112.701 112.902 112.821 112.904 112.941 112.904H148.112V126.672H112.941C98.5504 126.672 86.5638 114.891 86.5638 100.5V66.7434H101.141V100.5C101.141 101.15 101.191 101.792 101.289 102.422L137.56 66.7816C137.255 66.7563 136.945 66.7434 136.632 66.7434H101.141V53Z" />
-      <path class="foreground"
-        d="M65.2926 124.136L14 66.7372H34.6355L64.7495 100.436V66.7372H80.1365V118.47C80.1365 126.278 70.4953 129.958 65.2926 124.136Z" />
-    </g>
-  </g>
+﻿<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <clipPath id="clip0_7960_43945">
-      <rect width="180" height="180" fill="white" />
-    </clipPath>
+    <linearGradient id="bg" x1="22" y1="18" x2="160" y2="162" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="bgDark" x1="22" y1="18" x2="160" y2="162" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0A1B3A"/>
+      <stop offset="1" stop-color="#1B54D7"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(132 132) rotate(132) scale(78)">
+      <stop stop-color="#38BDF8" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#38BDF8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="panel" x1="54" y1="42" x2="126" y2="132" gradientUnits="userSpaceOnUse">
+      <stop stop-color="white" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="white" stop-opacity="0.04"/>
+    </linearGradient>
+    <style>
+      .bgshape { fill: url(#bg); }
+      @media (prefers-color-scheme: dark) {
+        .bgshape { fill: url(#bgDark); }
+      }
+    </style>
   </defs>
+  <rect x="14" y="14" width="152" height="152" rx="35" class="bgshape"/>
+  <circle cx="132" cy="132" r="42" fill="url(#glow)"/>
+  <rect x="35" y="33" width="110" height="114" rx="30" fill="url(#panel)" stroke="rgba(255,255,255,0.22)"/>
+  <path d="M52 73C52 63.6112 59.6112 56 69 56H111C120.389 56 128 63.6112 128 73V90C128 99.3888 120.389 107 111 107H86L67 121V107H69C59.6112 107 52 99.3888 52 90V73Z" fill="white"/>
+  <rect x="70" y="72" width="34" height="8" rx="4" fill="#3B82F6"/>
+  <rect x="70" y="86" width="23" height="8" rx="4" fill="#38BDF8"/>
+  <path d="M131 48L134 56L142 59L134 62L131 70L128 62L120 59L128 56L131 48Z" fill="white" fill-opacity="0.95"/>
+  <path d="M40 74C44 63 53 55 66 51" stroke="rgba(255,255,255,0.55)" stroke-width="4" stroke-linecap="round"/>
+  <path d="M133 58C139 64 142 71 142 81" stroke="rgba(255,255,255,0.55)" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="116" cy="121" r="12" fill="#22C55E" fill-opacity="0.18"/>
+  <circle cx="116" cy="121" r="6" fill="#22C55E"/>
 </svg>
