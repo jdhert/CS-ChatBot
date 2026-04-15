@@ -659,10 +659,10 @@ function renderOperatorDiagnostics(message: Message, context: ExportContext): st
     <section class="diagnostic-block">
       <h4>\uC9C4\uB2E8 \uC694\uC57D</h4>
       <div class="diagnostic-legend">
-        <span class="legend-chip priority-good">\uC548\uC815</span>
-        <span class="legend-chip priority-medium">\uC8FC\uC758</span>
-        <span class="legend-chip priority-high">\uD655\uC778 \uD544\uC694</span>
-        <span class="legend-chip priority-critical">\uC6B0\uC120 \uC810\uAC80</span>
+        ${renderDiagnosticLegendItem("good", "\uC548\uC815")}
+        ${renderDiagnosticLegendItem("medium", "\uC8FC\uC758")}
+        ${renderDiagnosticLegendItem("high", "\uD655\uC778 \uD544\uC694")}
+        ${renderDiagnosticLegendItem("critical", "\uC6B0\uC120 \uC810\uAC80")}
       </div>
       <dl class="diagnostic-grid">
         ${rows
@@ -845,6 +845,15 @@ function renderDiagnosticIcon(priority: DiagnosticPriority): string {
   `
 }
 
+function renderDiagnosticLegendItem(priority: Exclude<DiagnosticPriority, "neutral">, label: string): string {
+  return `
+    <span class="legend-chip priority-${priority}">
+      <span class="legend-icon">${renderDiagnosticIcon(priority)}</span>
+      <span>${escapeHtml(label)}</span>
+    </span>
+  `
+}
+
 type DiagnosticPriority = "good" | "medium" | "high" | "critical" | "neutral"
 
 function getDiagnosticPriority(
@@ -999,28 +1008,36 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
             <strong>${escapeHtml(context.conversationTitle)}</strong>
             <p>\uD575\uC2EC \uB0B4\uC6A9\uACFC \uACF5\uC720 \uD3EC\uC778\uD2B8\uB97C \uC9E7\uACE0 \uBC14\uB85C \uC4F8 \uC218 \uC788\uB294 \uD615\uC2DD\uC73C\uB85C \uC815\uB9AC\uD55C \uBCF4\uACE0\uC6A9 \uD45C\uC9C0\uC785\uB2C8\uB2E4.</p>
             <div class="report-meta-list">
-              <div class="report-meta-item"><span>company</span><strong>${escapeHtml(context.companyName)}</strong></div>
-              <div class="report-meta-item"><span>document no.</span><strong>${escapeHtml(context.documentNumber)}</strong></div>
-              <div class="report-meta-item"><span>release</span><strong>${escapeHtml(context.releaseVersion)}</strong></div>
-              <div class="report-meta-item"><span>department</span><strong>${escapeHtml(context.departmentName)}</strong></div>
-              <div class="report-meta-item"><span>distribution</span><strong>${escapeHtml(context.distributionTarget)}</strong></div>
-              <div class="report-meta-item"><span>approver</span><strong>${escapeHtml(context.approverName)}</strong></div>
-              ${context.buildStamp ? `<div class="report-meta-item"><span>build time</span><strong>${escapeHtml(context.buildStamp)}</strong></div>` : ""}
+              <div class="report-meta-item"><span>\uD68C\uC0AC</span><strong>${escapeHtml(context.companyName)}</strong></div>
+              <div class="report-meta-item"><span>\uBB38\uC11C \uBC88\uD638</span><strong>${escapeHtml(context.documentNumber)}</strong></div>
+              <div class="report-meta-item"><span>\uBC30\uD3EC \uBC84\uC804</span><strong>${escapeHtml(context.releaseVersion)}</strong></div>
+              <div class="report-meta-item"><span>\uB2F4\uB2F9 \uBD80\uC11C</span><strong>${escapeHtml(context.departmentName)}</strong></div>
+              <div class="report-meta-item"><span>\uBC30\uD3EC \uB300\uC0C1</span><strong>${escapeHtml(context.distributionTarget)}</strong></div>
+              <div class="report-meta-item"><span>\uC2B9\uC778\uC790</span><strong>${escapeHtml(context.approverName)}</strong></div>
+              ${context.buildStamp ? `<div class="report-meta-item"><span>\uBE4C\uB4DC \uC815\uBCF4</span><strong>${escapeHtml(context.buildStamp)}</strong></div>` : ""}
             </div>
           </div>
           <div class="report-cover-side">
             ${renderTemplateHeaderVisual("report")}
             <div class="report-deck">
               <div class="report-deck-item">
-                <span class="report-deck-label">topic</span>
+                <span class="report-deck-label">\uC8FC\uC81C</span>
                 <strong>${escapeHtml(context.conversationTitle)}</strong>
               </div>
               <div class="report-deck-item">
-                <span class="report-deck-label">audience</span>
-                <strong>\uACF5\uC720 / \uBCF4\uACE0</strong>
+                <span class="report-deck-label">\uBC30\uD3EC \uB300\uC0C1</span>
+                <strong>${escapeHtml(context.distributionTarget)}</strong>
               </div>
               <div class="report-deck-item">
-                <span class="report-deck-label">snapshot</span>
+                <span class="report-deck-label">\uB2F4\uB2F9 \uBD80\uC11C</span>
+                <strong>${escapeHtml(context.departmentName)}</strong>
+              </div>
+              <div class="report-deck-item">
+                <span class="report-deck-label">\uC2B9\uC778\uC790</span>
+                <strong>${escapeHtml(context.approverName)}</strong>
+              </div>
+              <div class="report-deck-item">
+                <span class="report-deck-label">\uC2A4\uB0C5\uC0F7</span>
                 <strong>${escapeHtml(context.exportedAt)}</strong>
               </div>
             </div>
@@ -1420,7 +1437,7 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     }
     .report-deck {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px;
     }
     .report-deck-item {
@@ -2054,6 +2071,7 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     .legend-chip {
       display: inline-flex;
       align-items: center;
+      gap: 6px;
       padding: 4px 8px;
       border-radius: 999px;
       font-size: 10px;
@@ -2062,10 +2080,25 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       border: 1px solid transparent;
     }
     .diagnostic-item {
+      position: relative;
       padding: 10px 12px;
       border-radius: 14px;
       background: #ffffff;
       border: 1px solid #e2e8f0;
+      border-left-width: 4px;
+    }
+    .legend-icon {
+      display: inline-flex;
+      width: 14px;
+      height: 14px;
+      flex: 0 0 14px;
+      align-items: center;
+      justify-content: center;
+    }
+    .legend-icon svg {
+      display: block;
+      width: 14px;
+      height: 14px;
     }
     .priority-good {
       background: rgba(220, 252, 231, 0.9);
@@ -2095,22 +2128,27 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     .diagnostic-item.priority-good {
       background: linear-gradient(180deg, rgba(220, 252, 231, 0.85), #ffffff);
       border-color: rgba(34, 197, 94, 0.26);
+      box-shadow: 0 8px 18px rgba(22, 163, 74, 0.08);
     }
     .diagnostic-item.priority-medium {
       background: linear-gradient(180deg, rgba(254, 249, 195, 0.82), #ffffff);
       border-color: rgba(234, 179, 8, 0.28);
+      box-shadow: 0 8px 18px rgba(202, 138, 4, 0.08);
     }
     .diagnostic-item.priority-high {
       background: linear-gradient(180deg, rgba(255, 237, 213, 0.88), #ffffff);
       border-color: rgba(249, 115, 22, 0.28);
+      box-shadow: 0 8px 18px rgba(234, 88, 12, 0.08);
     }
     .diagnostic-item.priority-critical {
       background: linear-gradient(180deg, rgba(254, 226, 226, 0.9), #ffffff);
       border-color: rgba(239, 68, 68, 0.32);
+      box-shadow: 0 10px 20px rgba(220, 38, 38, 0.12);
     }
     .diagnostic-item.priority-neutral {
       background: linear-gradient(180deg, rgba(241, 245, 249, 0.94), #ffffff);
       border-color: rgba(148, 163, 184, 0.24);
+      box-shadow: 0 8px 18px rgba(100, 116, 139, 0.06);
     }
     .diagnostic-item dt {
       display: flex;

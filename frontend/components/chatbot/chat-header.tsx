@@ -38,6 +38,7 @@ type ExportMenuItem = {
   description: string
   request: ChatExportRequest
   badge?: string
+  usageHint?: string
   tone?: "blue" | "violet" | "amber" | "slate" | "emerald"
   icon?: LucideIcon
   tagline?: string
@@ -46,36 +47,41 @@ type ExportMenuItem = {
 const pdfExportItems: ExportMenuItem[] = [
   {
     label: "\uD575\uC2EC PDF",
-    description: "\uD575\uC2EC \uC548\uB0B4 1\uD398\uC774\uC9C0\uD615",
+    description: "\uCEF4\uD329\uD2B8 \u00B7 \uD575\uC2EC \uC548\uB0B4 1\uD398\uC774\uC9C0\uD615",
     request: { format: "pdf", template: "user", scope: "latest_exchange", compactSummary: true },
-    badge: "\uCD94\uCC9C",
+    badge: "compact",
+    usageHint: "\uBE60\uB978 \uC548\uB0B4 \uACF5\uC720",
     tone: "blue",
     icon: MessageSquareText,
-    tagline: "\uAC1C\uC778 1P",
+    tagline: "\uC0AC\uC6A9\uC790\uC6A9",
   },
   {
     label: "\uC0C1\uB2F4 PDF",
-    description: "\uC9C8\uBB38\uACFC \uB2F5\uBCC0 \uD750\uB984 \uC804\uCCB4 \uC815\uB9AC",
+    description: "\uC77C\uBC18\uD615 \u00B7 \uC9C8\uBB38\uACFC \uB2F5\uBCC0 \uD750\uB984 \uC804\uCCB4 \uC815\uB9AC",
     request: { format: "pdf", template: "user", scope: "all", compactSummary: false },
+    badge: "\uC77C\uBC18\uD615",
+    usageHint: "\uB300\uD654 \uD750\uB984 \uBCF4\uAD00",
     tone: "emerald",
     icon: FileText,
-    tagline: "\uAC1C\uC778 \uC77C\uBC18",
+    tagline: "\uC0AC\uC6A9\uC790\uC6A9",
   },
   {
     label: "\uC6B4\uC601 PDF",
-    description: "\uC9C4\uB2E8 \uC815\uBCF4 \uD3EC\uD568",
+    description: "\uC9C4\uB2E8 \uC815\uBCF4 \u00B7 \uC6B0\uC120\uC21C\uC704 \uC544\uC774\uCF58 \uD3EC\uD568",
     request: { format: "pdf", template: "operator", scope: "all", includeDiagnostics: true },
+    usageHint: "\uC9C4\uB2E8 / \uADFC\uAC70 \uAC80\uD1A0",
     tone: "violet",
     icon: ShieldCheck,
-    tagline: "\uC6B4\uC601\uC6A9",
+    tagline: "\uC6B4\uC601\uC790\uC6A9",
   },
   {
     label: "\uBCF4\uACE0 PDF",
-    description: "\uACF5\uC720\uC6A9 \uBE0C\uB9AC\uD551",
+    description: "\uD45C\uC9C0 \uBA54\uD0C0 \uD3EC\uD568 \uBE0C\uB9AC\uD551",
     request: { format: "pdf", template: "report", scope: "latest_exchange" },
+    usageHint: "\uACF5\uC720 \uBE0C\uB9AC\uD551 \uBC30\uD3EC",
     tone: "amber",
     icon: Presentation,
-    tagline: "\uACF5\uC720\uC6A9",
+    tagline: "\uBCF4\uACE0\uC6A9",
   },
 ]
 
@@ -85,6 +91,7 @@ const otherExportItems: ExportMenuItem[] = [
     description: "\uC804\uCCB4 \uB300\uD654",
     request: { format: "txt", template: "user", scope: "all" },
     badge: getChatExportFormatLabel("txt"),
+    usageHint: "\uBCF5\uC0AC / \uC804\uB2EC",
     tone: "slate",
     icon: FileText,
   },
@@ -93,6 +100,7 @@ const otherExportItems: ExportMenuItem[] = [
     description: "\uBB38\uC11C \uACF5\uC720\uC6A9",
     request: { format: "md", template: "user", scope: "all" },
     badge: getChatExportFormatLabel("md"),
+    usageHint: "\uBB38\uC11C \uD3B8\uC9D1 / \uC704\uD0A4",
     tone: "slate",
     icon: ScrollText,
   },
@@ -196,7 +204,11 @@ function ExportSection({
                   <div className={`mt-1.5 text-[11px] leading-relaxed ${cardBodyClass(variant)}`}>{item.description}</div>
                   <div className={`mt-2 h-px w-full ${cardDividerClass(variant)}`} />
                   <div className={`mt-2 text-[10px] leading-relaxed ${cardBodyClass(variant)}`}>
-                    {variant === "pdf" ? "PDF로 바로 저장하거나 공유할 때 적합합니다." : "복사, 편집, 문서 공유에 적합합니다."}
+                    {item.usageHint
+                      ? `${item.usageHint}용`
+                      : variant === "pdf"
+                        ? "PDF로 바로 저장하거나 공유할 때 적합합니다."
+                        : "복사, 편집, 문서 공유에 적합합니다."}
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-medium ${cardHintPillClass(variant)}`}>
