@@ -580,12 +580,6 @@ function StructuredAnswerSections({ content }: { content: string }) {
   )
 }
 
-function summarizeText(text: string, limit = 120): string {
-  const normalized = text.replace(/\s+/g, " ").trim()
-  if (normalized.length <= limit) return normalized
-  return `${normalized.slice(0, limit)}…`
-}
-
 function AnswerOverviewCard({
   message,
   content,
@@ -597,7 +591,7 @@ function AnswerOverviewCard({
 }) {
   const sections = parseStructuredAnswerSections(content)
   const primarySection = sections[0]
-  const summaryText = summarizeText(primarySection?.body ?? content, isManualAnswer ? 140 : 120)
+  const summaryText = (primarySection?.body ?? content).replace(/\s+/g, " ").trim()
 
   return (
     <div
@@ -623,7 +617,7 @@ function AnswerOverviewCard({
             <span className="text-[11px] font-medium text-muted-foreground">{primarySection.title}</span>
           ) : null}
         </div>
-        <p className="mt-2.5 text-base font-semibold leading-7 text-foreground">{summaryText}</p>
+        <p className="mt-2.5 break-words text-base font-semibold leading-7 text-foreground">{summaryText}</p>
         <p className="mt-2 text-xs leading-5 text-muted-foreground">
           {isManualAnswer
             ? "필요하면 아래 절차와 화면 미리보기까지 이어서 확인해 주세요."

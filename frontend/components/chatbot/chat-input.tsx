@@ -41,6 +41,10 @@ export function ChatInput({ onSend, disabled, prefill, recentQuestions = [] }: C
     }
   }
 
+  function handleAttachmentClick() {
+    window.alert("첨부파일 기능은 추후 지원 예정입니다.")
+  }
+
   return (
     <div className="shrink-0 border-t border-border bg-card px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 md:p-4">
       {recentQuestions.length > 0 ? (
@@ -63,8 +67,10 @@ export function ChatInput({ onSend, disabled, prefill, recentQuestions = [] }: C
 
       <div className="flex items-end gap-2 rounded-2xl border border-border bg-background p-2 transition-all focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 md:gap-3">
         <button
+          onClick={handleAttachmentClick}
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:h-9 md:w-9 md:rounded-lg"
           aria-label="첨부 파일"
+          title="첨부 파일"
           type="button"
         >
           <Paperclip className="h-5 w-5" />
