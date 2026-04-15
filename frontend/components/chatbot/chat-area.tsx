@@ -7,7 +7,7 @@ import { ChatInput } from "./chat-input"
 import { ChatMessage, TypingIndicator, type Message } from "./chat-message"
 import { QuickActions } from "./quick-actions"
 import { cn } from "@/lib/utils"
-import type { ChatExportFormat } from "@/lib/chat-export"
+import type { ChatExportRequest } from "@/lib/chat-export"
 
 interface ChatAreaProps {
   messages: Message[]
@@ -15,7 +15,7 @@ interface ChatAreaProps {
   isDarkMode: boolean
   onToggleDarkMode: () => void
   onSendMessage: (message: string) => void
-  onExportChat?: (format: ChatExportFormat) => void
+  onExportChat?: (request: ChatExportRequest) => void
   onRetry?: () => void
   onOpenSidebar?: () => void
   onEditQuestion?: (query: string) => void
@@ -97,7 +97,7 @@ export function ChatArea({
                 <div className="rounded-3xl border border-border/70 bg-card/80 px-5 py-5 shadow-sm backdrop-blur">
                   <h2 className="mb-2 text-xl font-semibold text-foreground">코비전 CS Bot</h2>
                   <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
-                    증상이나 오류 메시지, 메뉴명, 매뉴얼 기준 작업명을 입력하면
+                    증상이나 오류 메시지, 메뉴명과 매뉴얼 기준 작업명을 입력하면
                     <br className="hidden md:block" /> 유사 처리 이력과 매뉴얼 안내를 함께 찾아드립니다.
                   </p>
                 </div>
@@ -146,7 +146,7 @@ export function ChatArea({
           className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-border bg-card/95 px-3 py-2 text-xs font-medium text-foreground shadow-lg backdrop-blur"
         >
           <ArrowDown className="h-3.5 w-3.5" />
-          최신 답변으로 이동
+          최신 응답으로 이동
         </button>
       </div>
 

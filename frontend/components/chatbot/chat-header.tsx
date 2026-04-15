@@ -2,7 +2,14 @@
 
 import Link from "next/link"
 import { Bot, Download, Menu, Moon, MoreHorizontal, ScrollText, Search, Sun } from "lucide-react"
-import { getChatExportFormatLabel, type ChatExportFormat } from "@/lib/chat-export"
+import {
+  getChatExportFormatLabel,
+  getChatExportTemplateDescription,
+  getChatExportTemplateLabel,
+  type ChatExportFormat,
+  type ChatExportRequest,
+  type ChatExportTemplate,
+} from "@/lib/chat-export"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,11 +22,38 @@ import {
 interface ChatHeaderProps {
   isDarkMode: boolean
   onToggleDarkMode: () => void
-  onExportChat?: (format: ChatExportFormat) => void
+  onExportChat?: (request: ChatExportRequest) => void
   onOpenSidebar?: () => void
 }
 
 const exportFormats: ChatExportFormat[] = ["txt", "md", "pdf"]
+const exportTemplates: ChatExportTemplate[] = ["user", "operator", "report"]
+
+function ExportMenuItems({ onExportChat }: { onExportChat: (request: ChatExportRequest) => void }) {
+  return (
+    <>
+      {exportTemplates.map((template, templateIndex) => (
+        <div key={template}>
+          {templateIndex > 0 ? <DropdownMenuSeparator /> : null}
+          <DropdownMenuLabel>{getChatExportTemplateLabel(template)}</DropdownMenuLabel>
+          <div className="px-2 pb-1 text-[11px] text-muted-foreground">
+            {getChatExportTemplateDescription(template)}
+          </div>
+          {exportFormats.map((format) => (
+            <DropdownMenuItem key={`${template}-${format}`} onClick={() => onExportChat({ format, template })}>
+              <div className="flex w-full items-center gap-3">
+                <span>{getChatExportFormatLabel(format)}</span>
+                <span className="ml-auto text-[10px] uppercase text-muted-foreground">
+                  {format === "pdf" ? "print" : format}
+                </span>
+              </div>
+            </DropdownMenuItem>
+          ))}
+        </div>
+      ))}
+    </>
+  )
+}
 
 export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenSidebar }: ChatHeaderProps) {
   return (
@@ -84,17 +118,10 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
                   <Download className="h-5 w-5" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuContent align="end" className="w-64">
                 <DropdownMenuLabel>대화 내보내기</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {exportFormats.map((format) => (
-                  <DropdownMenuItem key={format} onClick={() => onExportChat(format)}>
-                    <span>{getChatExportFormatLabel(format)}</span>
-                    <span className="ml-auto text-[10px] uppercase text-muted-foreground">
-                      {format === "pdf" ? "print" : format}
-                    </span>
-                  </DropdownMenuItem>
-                ))}
+                <ExportMenuItems onExportChat={onExportChat} />
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
@@ -121,7 +148,7 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
               <MoreHorizontal className="h-5 w-5" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuContent align="end" className="w-64">
             <DropdownMenuLabel>빠른 메뉴</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
@@ -134,12 +161,7 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel>대화 내보내기</DropdownMenuLabel>
-                {exportFormats.map((format) => (
-                  <DropdownMenuItem key={format} onClick={() => onExportChat(format)}>
-                    <Download className="h-4 w-4" />
-                    <span>{getChatExportFormatLabel(format)}</span>
-                  </DropdownMenuItem>
-                ))}
+                <ExportMenuItems onExportChat={onExportChat} />
               </>
             ) : null}
             <DropdownMenuSeparator />

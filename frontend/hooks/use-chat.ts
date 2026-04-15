@@ -1,8 +1,14 @@
-﻿import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { flushSync } from "react-dom"
 import type { CandidateCard, ManualCandidateCard, Message } from "@/components/chatbot/chat-message"
 import { toast } from "@/hooks/use-toast"
-import { exportChatMessages, getChatExportFormatLabel, type ChatExportFormat } from "@/lib/chat-export"
+import {
+  exportChatMessages,
+  getChatExportFormatLabel,
+  getChatExportTemplateLabel,
+  type ChatExportFormat,
+  type ChatExportRequest,
+} from "@/lib/chat-export"
 
 function generateUUID(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -96,7 +102,7 @@ export function useChat(args: {
     void submitMessage(lastUserMessage.content)
   }, [currentMessages, setCurrentMessages])
 
-  const handleExportChat = useCallback((format: ChatExportFormat = "txt") => {
+  const handleExportChat = useCallback((request: ChatExportRequest = { format: "txt", template: "user" }) => {
     if (currentMessages.length === 0) {
       toast({
         title: "내보낼 대화가 없습니다",
@@ -107,8 +113,10 @@ export function useChat(args: {
     }
 
     try {
-      const result = exportChatMessages(currentMessages, format)
-      const label = getChatExportFormatLabel(format)
+      const format: ChatExportFormat = request.format
+      const template = request.template ?? "user"
+      const result = exportChatMessages(currentMessages, request)
+      const label = `${getChatExportTemplateLabel(template)} ${getChatExportFormatLabel(format)}`
       toast({
         title: format === "pdf" ? "PDF 저장 화면을 열었습니다" : "대화를 내보냈습니다",
         description: format === "pdf" ? "인쇄 대화상자에서 PDF로 저장을 선택해 주세요." : `${label}: ${result}`,
@@ -311,3 +319,4 @@ export function useChat(args: {
     handleExportChat,
   }
 }
+
