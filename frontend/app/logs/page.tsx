@@ -14,11 +14,13 @@ import {
   MessageCircleWarning,
   RefreshCw,
   Search,
+  SquarePlay,
   ThumbsDown,
   ThumbsUp,
   XCircle,
   Zap,
 } from "lucide-react"
+import { storeChatReplayPayload } from "@/lib/chat-replay"
 import { cn } from "@/lib/utils"
 
 interface LogRow {
@@ -935,6 +937,23 @@ function LogRowCard({ row }: { row: LogRow }) {
     ["rewrittenQuery", metadata.rewrittenQuery],
     ["assistantStatus", row.assistant_status],
   ].filter(([, value]) => value !== null && value !== undefined && value !== "")
+
+  const handleReplay = () => {
+    storeChatReplayPayload({
+      query: row.query,
+      answerText: row.assistant_content ?? "응답 본문이 저장되지 않았습니다.",
+      answerSource: row.answer_source,
+      retrievalMode: row.retrieval_mode,
+      confidence: row.confidence,
+      linkUrl: sccUrl,
+      linkLabel: "SCC 이력 바로가기",
+      logId: row.log_uuid,
+      top3Candidates: topCandidates,
+      manualCandidates,
+      createdAt: row.created_at,
+    })
+    window.location.assign("/?replay=1")
+  }
 
   return (
     <div

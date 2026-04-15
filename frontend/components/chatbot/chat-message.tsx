@@ -90,6 +90,24 @@ interface ChatMessageProps {
 }
 
 const LOW_CONFIDENCE_THRESHOLD = 0.62
+const QUERY_STOP_WORDS = new Set([
+  "방법",
+  "설정",
+  "가능",
+  "문의",
+  "관련",
+  "어떻게",
+  "혹시",
+  "지금",
+  "그냥",
+  "정리",
+  "바로",
+  "이거",
+  "해줘",
+  "해주세요",
+  "알려줘",
+  "알려주세요",
+])
 
 function formatTimestamp(timestamp: Date | string): string {
   const date = typeof timestamp === "string" ? new Date(timestamp) : timestamp
@@ -220,6 +238,34 @@ const CHUNK_TYPE_LABEL: Record<string, string> = {
   action: "조치",
   resolution: "처리",
   qa_pair: "Q&A",
+}
+
+function extractQueryKeywords(query: string | undefined, limit = 6): string[] {
+  if (!query) return []
+  return Array.from(
+    new Set(
+      query
+        .toLowerCase()
+        .split(/[^0-9a-zA-Z가-힣]+/)
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 2 && !QUERY_STOP_WORDS.has(token)),
+    ),
+  ).slice(0, limit)
+}
+
+function buildClarificationPrompts(originalQuery: string | undefined, isManualAnswer = false): string[] {
+  const baseQuery = originalQuery?.trim() ?? ""
+  const prompts = [
+    "제품명/서비스명과 메뉴 경로를 함께 적어 주세요.",
+    "오류 문구를 그대로 붙여 넣어 주세요.",
+    "문제가 발생한 화면과 직전 동작을 같이 적어 주세요.",
+  ]
+
+  if (isManualAnswer) {
+    prompts.unshift("적용하려는 메뉴명과 원하는 결과를 같이 적어 주세요.")
+  }
+
+  return prompts.map((prompt) => [baseQuery, prompt].filter(Boolean).join("\n"))
 }
 
 const ANSWER_SOURCE_LABEL: Record<string, string> = {
@@ -461,16 +507,19 @@ function LowConfidenceCard({
   confidence,
   originalQuery,
   onEditQuestion,
+  isManualAnswer = false,
 }: {
   confidence?: number | null
   originalQuery?: string
   onEditQuestion?: (query: string) => void
+  isManualAnswer?: boolean
 }) {
-  const prompts = [
-    "제품명이나 서비스명을 포함해 주세요",
-    "메뉴 경로나 버튼명을 같이 적어 주세요",
-    "오류 문구를 그대로 붙여 넣어 주세요",
-    "발생 화면과 직전 동작을 함께 적어 주세요",
+  const prompts = buildClarificationPrompts(originalQuery, isManualAnswer)
+  const promptLabels = [
+    "제품명 + 메뉴 경로",
+    "오류 문구 원문",
+    "화면 + 직전 동작",
+    "원하는 결과 설명",
   ]
 
   return (
@@ -488,17 +537,76 @@ function LowConfidenceCard({
           </p>
           {onEditQuestion ? (
             <div className="mt-2 flex flex-wrap gap-2">
-              {prompts.map((prompt) => (
+              {prompts.map((prompt, index) => (
                 <button
-                  key={prompt}
+                  key={`${prompt}-${index}`}
                   type="button"
-                  onClick={() => onEditQuestion([originalQuery?.trim(), prompt].filter(Boolean).join("\n"))}
+                  onClick={() => onEditQuestion(prompt)}
                   className="rounded-full border border-amber-500/20 bg-background px-3 py-1.5 text-[11px] font-medium text-amber-700 transition-colors hover:bg-amber-500/10 dark:text-amber-300"
                 >
-                  {prompt}
+                  {promptLabels[index] ?? `질문 보강 ${index + 1}`}
                 </button>
               ))}
             </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ManualSelectionReasonCard({
+  originalQuery,
+  candidate,
+}: {
+  originalQuery?: string
+  candidate: ManualCandidateCard
+}) {
+  const queryKeywords = extractQueryKeywords(originalQuery)
+  const searchableText = [
+    candidate.product,
+    candidate.title,
+    candidate.sectionTitle,
+    candidate.sourceLabel,
+    candidate.previewText,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+
+  const matchedKeywords = queryKeywords.filter((keyword) => searchableText.includes(keyword)).slice(0, 4)
+
+  const reasons = [
+    candidate.product ? `${candidate.product} 매뉴얼 기준` : null,
+    candidate.sectionTitle ? `관련 섹션: ${candidate.sectionTitle}` : null,
+    typeof candidate.previewPageNumber === "number" ? `미리보기 페이지: p.${candidate.previewPageNumber}` : null,
+    candidate.previewImageConfidence === "high" ? "질문과 가까운 화면을 우선 선택" : null,
+  ].filter(Boolean) as string[]
+
+  if (reasons.length === 0 && matchedKeywords.length === 0) return null
+
+  return (
+    <div className="mb-3 rounded-2xl border border-sky-500/15 bg-sky-500/5 px-3 py-3">
+      <div className="flex items-start gap-2">
+        <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-sky-600 dark:text-sky-300" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-sky-700 dark:text-sky-300">이 매뉴얼 답변이 선택된 이유</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {matchedKeywords.map((keyword) => (
+              <span
+                key={keyword}
+                className="rounded-full border border-sky-500/20 bg-background px-2.5 py-1 text-[10px] font-medium text-sky-700 dark:text-sky-300"
+              >
+                매칭 키워드: {keyword}
+              </span>
+            ))}
+          </div>
+          {reasons.length > 0 ? (
+            <ul className="mt-2 space-y-1 text-xs leading-5 text-muted-foreground">
+              {reasons.map((reason) => (
+                <li key={reason}>• {reason}</li>
+              ))}
+            </ul>
           ) : null}
         </div>
       </div>
@@ -1079,9 +1187,13 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
                   confidence={message.confidence}
                   originalQuery={originalQuery}
                   onEditQuestion={onEditQuestion}
+                  isManualAnswer={isManualAnswer}
                 />
               ) : null}
               {primaryManualCandidate ? <ManualAnswerHero candidate={primaryManualCandidate} /> : null}
+              {primaryManualCandidate ? (
+                <ManualSelectionReasonCard originalQuery={originalQuery} candidate={primaryManualCandidate} />
+              ) : null}
               <StructuredAnswerSections content={contentToDisplay} />
             </>
           )}

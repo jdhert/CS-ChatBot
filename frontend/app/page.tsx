@@ -5,6 +5,7 @@ import { ChatArea } from "@/components/chatbot/chat-area"
 import { ConversationsPanel } from "@/components/chatbot/conversations-panel"
 import { useChat } from "@/hooks/use-chat"
 import { useConversations } from "@/hooks/use-conversations"
+import { buildReplayMessages, consumeChatReplayPayload } from "@/lib/chat-replay"
 
 export default function ChatbotPage() {
   const [isDarkMode, setIsDarkMode] = useState(false)
@@ -64,6 +65,23 @@ export default function ChatbotPage() {
     }
     localStorage.setItem("darkMode", String(isDarkMode))
   }, [isDarkMode])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const params = new URLSearchParams(window.location.search)
+    if (params.get("replay") !== "1") return
+
+    const payload = consumeChatReplayPayload()
+    params.delete("replay")
+    const nextQuery = params.toString()
+    window.history.replaceState({}, "", nextQuery ? `/?${nextQuery}` : "/")
+
+    if (!payload) return
+
+    startNewConversation()
+    setCurrentMessages(buildReplayMessages(payload))
+  }, [setCurrentMessages, startNewConversation])
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-background">

@@ -97,7 +97,9 @@ export function ChatInput({ onSend, disabled, prefill, recentQuestions = [] }: C
         </button>
       </div>
       <div className="mt-2 flex items-center justify-between gap-2 px-1">
-        <p className="text-[11px] text-muted-foreground md:text-xs">오류 문구, 메뉴 경로, 제품명을 함께 적으면 더 정확해집니다.</p>
+        <p className="text-[11px] text-muted-foreground md:text-xs">
+          오류 문구, 메뉴 경로, 제품명을 함께 적으면 더 정확해집니다.
+        </p>
         <p className="hidden text-xs text-muted-foreground md:block">Shift + Enter로 줄바꿈 가능합니다.</p>
       </div>
     </div>
