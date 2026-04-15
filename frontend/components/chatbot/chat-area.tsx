@@ -83,24 +83,25 @@ export function ChatArea({
         <div className="flex flex-col gap-4 px-4 py-5 md:p-6">
           {messages.length === 0 ? (
             <>
-              <div className="flex flex-col items-center justify-center py-8 text-center md:py-12">
-                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-[1.75rem] bg-gradient-to-br from-primary to-blue-400 text-white shadow-xl">
-                  <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                    />
-                  </svg>
+              <div className="flex flex-col items-center justify-center pb-4 pt-10 text-center md:pt-16">
+                <div className="relative mb-6">
+                  <div className="absolute inset-0 rounded-[2rem] bg-gradient-to-br from-primary/30 to-blue-400/20 blur-2xl" />
+                  <div className="relative flex h-20 w-20 items-center justify-center rounded-[2rem] bg-gradient-to-br from-primary to-blue-500 text-white shadow-2xl shadow-primary/25">
+                    <svg className="h-10 w-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.75}
+                        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                      />
+                    </svg>
+                  </div>
                 </div>
-                <div className="rounded-3xl border border-border/70 bg-card/80 px-5 py-5 shadow-sm backdrop-blur">
-                  <h2 className="mb-2 text-xl font-semibold text-foreground">코비전 CS Bot</h2>
-                  <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
-                    증상이나 오류 메시지, 메뉴명과 매뉴얼 기준 작업명을 입력하면
-                    <br className="hidden md:block" /> 유사 처리 이력과 매뉴얼 안내를 함께 찾아드립니다.
-                  </p>
-                </div>
+                <h2 className="mb-2 text-2xl font-bold tracking-tight text-foreground">코비전 CS Bot</h2>
+                <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
+                  증상·오류·메뉴명을 입력하면 유사 처리 이력과
+                  <br className="hidden md:block" /> 매뉴얼 안내를 함께 찾아드립니다.
+                </p>
               </div>
 
               <QuickActions onSelect={onSendMessage} />
