@@ -112,6 +112,12 @@ interface ExportStats {
   manualReferences: number
 }
 
+function shouldRenderManualArtifacts(message: Message): boolean {
+  if (message.sender !== "bot") return false
+  if (!Array.isArray(message.manualCandidates) || message.manualCandidates.length === 0) return false
+  return message.answerSource === "manual" || message.retrievalMode === "manual"
+}
+
 function getDefaultExportOptions(template: ChatExportTemplate): Omit<NormalizedChatExportRequest, "format" | "template"> {
   if (template === "operator") {
     return {
@@ -479,7 +485,10 @@ function buildPlainText(messages: Message[], context: ExportContext): string {
       lines.push(...meta.map((item) => `- ${item}`))
     }
 
-    const manualLines = context.includeSources ? collectManualSourceLines(message.manualCandidates, context.template) : []
+    const manualLines =
+      context.includeSources && shouldRenderManualArtifacts(message)
+        ? collectManualSourceLines(message.manualCandidates, context.template)
+        : []
     if (manualLines.length > 0) {
       lines.push("")
       lines.push("\uB9E4\uB274\uC5BC \uCC38\uACE0")
@@ -543,7 +552,10 @@ function buildMarkdown(messages: Message[], context: ExportContext): string {
       lines.push("")
     }
 
-    const manualLines = context.includeSources ? collectManualSourceLines(message.manualCandidates, context.template) : []
+    const manualLines =
+      context.includeSources && shouldRenderManualArtifacts(message)
+        ? collectManualSourceLines(message.manualCandidates, context.template)
+        : []
     if (manualLines.length > 0) {
       lines.push("### \uB9E4\uB274\uC5BC \uCC38\uACE0")
       lines.push("")
@@ -579,6 +591,7 @@ function renderMetaChips(message: Message, context: ExportContext): string {
 function renderManualSources(message: Message, context: ExportContext): string {
   if (!context.includeSources) return ""
   if (context.template === "user" && context.compactSummary) return ""
+  if (!shouldRenderManualArtifacts(message)) return ""
 
   const template = context.template
   const candidates = Array.isArray(message.manualCandidates)
@@ -686,6 +699,7 @@ function renderOperatorDiagnostics(message: Message, context: ExportContext): st
 
 function renderManualSpotlight(message: Message, context: ExportContext): string {
   if (!context.includeSources || message.sender !== "bot") return ""
+  if (!shouldRenderManualArtifacts(message)) return ""
   const candidate = Array.isArray(message.manualCandidates) ? message.manualCandidates[0] : null
   if (!candidate) return ""
 
@@ -970,7 +984,10 @@ function collectStats(messages: Message[]): ExportStats {
     totalMessages: messages.length,
     userMessages: messages.filter((message) => message.sender === "user").length,
     botMessages: messages.filter((message) => message.sender === "bot").length,
-    manualReferences: messages.reduce((sum, message) => sum + (message.manualCandidates?.length ?? 0), 0),
+    manualReferences: messages.reduce(
+      (sum, message) => sum + (shouldRenderManualArtifacts(message) ? message.manualCandidates?.length ?? 0 : 0),
+      0,
+    ),
   }
 }
 
