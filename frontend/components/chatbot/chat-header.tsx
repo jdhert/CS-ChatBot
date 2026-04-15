@@ -40,6 +40,7 @@ type ExportMenuItem = {
   badge?: string
   usageHint?: string
   tone?: "blue" | "violet" | "amber" | "slate" | "emerald"
+  previewStyle?: "compact" | "conversation" | "diagnostic" | "brief" | "text" | "markdown"
   icon?: LucideIcon
   tagline?: string
 }
@@ -52,6 +53,7 @@ const pdfExportItems: ExportMenuItem[] = [
     badge: "compact",
     usageHint: "\uBE60\uB978 \uC548\uB0B4 \uACF5\uC720",
     tone: "blue",
+    previewStyle: "compact",
     icon: MessageSquareText,
     tagline: "\uC0AC\uC6A9\uC790\uC6A9",
   },
@@ -62,6 +64,7 @@ const pdfExportItems: ExportMenuItem[] = [
     badge: "\uC77C\uBC18\uD615",
     usageHint: "\uB300\uD654 \uD750\uB984 \uBCF4\uAD00",
     tone: "emerald",
+    previewStyle: "conversation",
     icon: FileText,
     tagline: "\uC0AC\uC6A9\uC790\uC6A9",
   },
@@ -71,6 +74,7 @@ const pdfExportItems: ExportMenuItem[] = [
     request: { format: "pdf", template: "operator", scope: "all", includeDiagnostics: true },
     usageHint: "\uC9C4\uB2E8 / \uADFC\uAC70 \uAC80\uD1A0",
     tone: "violet",
+    previewStyle: "diagnostic",
     icon: ShieldCheck,
     tagline: "\uC6B4\uC601\uC790\uC6A9",
   },
@@ -80,6 +84,7 @@ const pdfExportItems: ExportMenuItem[] = [
     request: { format: "pdf", template: "report", scope: "latest_exchange" },
     usageHint: "\uACF5\uC720 \uBE0C\uB9AC\uD551 \uBC30\uD3EC",
     tone: "amber",
+    previewStyle: "brief",
     icon: Presentation,
     tagline: "\uBCF4\uACE0\uC6A9",
   },
@@ -93,6 +98,7 @@ const otherExportItems: ExportMenuItem[] = [
     badge: getChatExportFormatLabel("txt"),
     usageHint: "\uBCF5\uC0AC / \uC804\uB2EC",
     tone: "slate",
+    previewStyle: "text",
     icon: FileText,
   },
   {
@@ -102,9 +108,112 @@ const otherExportItems: ExportMenuItem[] = [
     badge: getChatExportFormatLabel("md"),
     usageHint: "\uBB38\uC11C \uD3B8\uC9D1 / \uC704\uD0A4",
     tone: "slate",
+    previewStyle: "markdown",
     icon: ScrollText,
   },
 ]
+
+function ExportPreview({
+  tone,
+  style = "text",
+}: {
+  tone?: ExportMenuItem["tone"]
+  style?: ExportMenuItem["previewStyle"]
+}) {
+  const frameClass =
+    tone === "blue"
+      ? "border-blue-200/90 bg-gradient-to-br from-white via-blue-50 to-blue-100/80 dark:border-blue-400/30 dark:from-slate-950 dark:via-blue-950/40 dark:to-slate-900"
+      : tone === "emerald"
+        ? "border-emerald-200/90 bg-gradient-to-br from-white via-emerald-50 to-teal-100/80 dark:border-emerald-400/30 dark:from-slate-950 dark:via-emerald-950/40 dark:to-slate-900"
+        : tone === "violet"
+          ? "border-violet-200/90 bg-gradient-to-br from-white via-violet-50 to-fuchsia-100/80 dark:border-violet-400/30 dark:from-slate-950 dark:via-violet-950/40 dark:to-slate-900"
+          : tone === "amber"
+            ? "border-amber-200/90 bg-gradient-to-br from-white via-amber-50 to-orange-100/80 dark:border-amber-400/30 dark:from-slate-950 dark:via-amber-950/40 dark:to-slate-900"
+            : "border-slate-200/90 bg-gradient-to-br from-white via-slate-50 to-slate-100/90 dark:border-slate-600/40 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800"
+
+  const accentClass =
+    tone === "blue"
+      ? "bg-blue-500/85"
+      : tone === "emerald"
+        ? "bg-emerald-500/85"
+        : tone === "violet"
+          ? "bg-violet-500/85"
+          : tone === "amber"
+            ? "bg-amber-500/85"
+            : "bg-slate-500/80"
+
+  const mutedLine = "rounded-full bg-white/85 dark:bg-white/10"
+
+  return (
+    <div className={`relative h-16 w-[4.9rem] shrink-0 overflow-hidden rounded-2xl border ${frameClass}`}>
+      <div className={`absolute inset-x-2 top-2 h-1.5 rounded-full ${accentClass}`} />
+      {style === "compact" ? (
+        <div className="absolute inset-x-2 top-5 space-y-1.5">
+          <div className={`h-1.5 w-11/12 ${mutedLine}`} />
+          <div className={`h-1.5 w-8/12 ${mutedLine}`} />
+          <div className="mt-2 grid grid-cols-2 gap-1">
+            <div className="h-5 rounded-lg bg-white/80 dark:bg-white/10" />
+            <div className="h-5 rounded-lg bg-white/60 dark:bg-white/5" />
+          </div>
+        </div>
+      ) : null}
+      {style === "conversation" ? (
+        <div className="absolute inset-x-2 top-5 space-y-1.5">
+          <div className="ml-auto h-2 w-8 rounded-full bg-white/80 dark:bg-white/10" />
+          <div className="h-5 rounded-xl bg-white/80 dark:bg-white/10" />
+          <div className="ml-3 h-4 rounded-xl bg-white/60 dark:bg-white/5" />
+        </div>
+      ) : null}
+      {style === "diagnostic" ? (
+        <div className="absolute inset-x-2 top-5">
+          <div className="grid grid-cols-3 gap-1.5">
+            <div className="h-6 rounded-lg bg-emerald-400/75 dark:bg-emerald-500/30" />
+            <div className="h-6 rounded-lg bg-amber-400/75 dark:bg-amber-500/30" />
+            <div className="h-6 rounded-lg bg-rose-400/75 dark:bg-rose-500/30" />
+          </div>
+          <div className={`mt-2 h-1.5 w-10/12 ${mutedLine}`} />
+          <div className={`mt-1 h-1.5 w-7/12 ${mutedLine}`} />
+        </div>
+      ) : null}
+      {style === "brief" ? (
+        <div className="absolute inset-x-2 top-5">
+          <div className="rounded-xl border border-white/70 bg-white/75 px-2 py-1.5 dark:border-white/10 dark:bg-white/5">
+            <div className={`h-1.5 w-9/12 ${mutedLine}`} />
+            <div className={`mt-1 h-1.5 w-11/12 ${mutedLine}`} />
+            <div className={`mt-1 h-1.5 w-7/12 ${mutedLine}`} />
+          </div>
+          <div className="mt-2 flex items-center gap-1">
+            <div className="h-2 w-2 rounded-full bg-blue-500/80" />
+            <div className={`h-1.5 w-8 ${mutedLine}`} />
+          </div>
+        </div>
+      ) : null}
+      {style === "text" ? (
+        <div className="absolute inset-x-2 top-5 space-y-1.5">
+          <div className={`h-1.5 w-11/12 ${mutedLine}`} />
+          <div className={`h-1.5 w-10/12 ${mutedLine}`} />
+          <div className={`h-1.5 w-9/12 ${mutedLine}`} />
+          <div className={`h-1.5 w-7/12 ${mutedLine}`} />
+        </div>
+      ) : null}
+      {style === "markdown" ? (
+        <div className="absolute inset-x-2 top-5 space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <div className="h-2 w-2 rounded-full bg-slate-500/75 dark:bg-slate-300/40" />
+            <div className={`h-1.5 w-9 ${mutedLine}`} />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="h-2 w-2 rounded-full bg-slate-500/75 dark:bg-slate-300/40" />
+            <div className={`h-1.5 w-11 ${mutedLine}`} />
+          </div>
+          <div className="mt-2 rounded-lg bg-white/75 px-2 py-1.5 dark:bg-white/5">
+            <div className={`h-1.5 w-full ${mutedLine}`} />
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
 function ExportSection({
   title,
@@ -168,22 +277,25 @@ function ExportSection({
         <DropdownMenuItem
           key={item.label}
           onClick={() => onExportChat(item.request)}
-          className="min-h-0 cursor-pointer whitespace-normal rounded-2xl px-1.5 py-1.5 focus:bg-transparent data-[highlighted]:bg-transparent"
+          className="min-h-0 cursor-pointer whitespace-normal rounded-2xl px-1 py-1.5 touch-manipulation focus:bg-transparent data-[highlighted]:bg-transparent sm:px-1.5"
         >
           {(() => {
             const Icon = item.icon ?? FileText
             return (
               <div
-                className={`flex w-full min-w-0 items-start gap-3 rounded-2xl border px-3.5 py-3 ${
+                className={`flex min-h-[6.75rem] w-full min-w-0 items-start gap-3.5 rounded-[1.35rem] border px-4 py-3.5 ${
                   variant === "pdf" ? toneClass(item.tone) : "border-border/80 bg-background/60"
-                }`}
+                } sm:min-h-[6.25rem] sm:gap-3 sm:px-3.5 sm:py-3`}
               >
-                <div
-                  className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                    variant === "pdf" ? iconToneClass(item.tone) : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  <Icon className={`h-5 w-5 ${variant === "pdf" ? iconGlyphToneClass(item.tone) : "text-muted-foreground"}`} strokeWidth={2.3} />
+                <div className="flex shrink-0 flex-col items-center gap-2">
+                  <div
+                    className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                      variant === "pdf" ? iconToneClass(item.tone) : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    <Icon className={`h-5 w-5 ${variant === "pdf" ? iconGlyphToneClass(item.tone) : "text-muted-foreground"}`} strokeWidth={2.3} />
+                  </div>
+                  <ExportPreview tone={item.tone} style={item.previewStyle} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">

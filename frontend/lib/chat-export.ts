@@ -797,6 +797,49 @@ function renderTemplateHeaderVisual(template: ChatExportTemplate): string {
   `
 }
 
+function renderUserHeaderChecklist(): string {
+  return `
+    <ul class="user-checklist">
+      <li><strong>핵심 답변</strong><span>가장 먼저 확인할 처리 방향만 짧게 정리합니다.</span></li>
+      <li><strong>확인 순서</strong><span>실제 화면에서 따라갈 포인트를 순서대로 묶습니다.</span></li>
+      <li><strong>참고 정보</strong><span>링크와 참고 화면은 문서 하단에서 이어서 확인합니다.</span></li>
+    </ul>
+  `
+}
+
+function renderOperatorHeaderRail(): string {
+  return `
+    <div class="operator-rail">
+      <article class="operator-rail-card priority-good">
+        <span>안정</span>
+        <strong>응답 구조 / 링크 확인</strong>
+      </article>
+      <article class="operator-rail-card priority-medium">
+        <span>주의</span>
+        <strong>매뉴얼 / 유사 이력 연결</strong>
+      </article>
+      <article class="operator-rail-card priority-high">
+        <span>확인</span>
+        <strong>쿼리 재작성 / 검색 경로 검토</strong>
+      </article>
+    </div>
+  `
+}
+
+function renderReportCoverHighlight(context: ExportContext): string {
+  return `
+    <div class="report-highlight-card">
+      <div class="report-highlight-kicker">배포 메모</div>
+      <strong>${escapeHtml(context.conversationTitle)}</strong>
+      <p>공유용 브리핑 기준으로 핵심 주제, 배포 대상, 승인 메타를 먼저 읽을 수 있도록 표지형 카드로 구성했습니다.</p>
+      <div class="report-highlight-tags">
+        <span>${escapeHtml(context.departmentName)}</span>
+        <span>${escapeHtml(context.distributionTarget)}</span>
+      </div>
+    </div>
+  `
+}
+
 function renderDiagnosticIcon(priority: DiagnosticPriority): string {
   if (priority === "good") {
     return `
@@ -952,7 +995,10 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
             <div class="operator-callout-label">OPERATOR CHECKLIST</div>
             <div class="operator-callout-body">\uAC80\uC0C9 \uACBD\uB85C, \uB9E4\uCE6D \uADFC\uAC70, \uCC38\uACE0 \uBB38\uC11C, \uC9C4\uB2E8 \uD6C4\uBCF4\uB97C \uD55C \uBC88\uC5D0 \uD655\uC778\uD558\uB294 \uC6B4\uC601 \uC6A9\uB3C4 \uBB38\uC11C\uC785\uB2C8\uB2E4.</div>
           </div>
-          ${renderTemplateHeaderVisual("operator")}
+          <div class="operator-side-stack">
+            ${renderTemplateHeaderVisual("operator")}
+            ${renderOperatorHeaderRail()}
+          </div>
         </div>
         <div class="summary-grid operator-grid">
           <article class="summary-card accent-blue">
@@ -1018,7 +1064,10 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
             </div>
           </div>
           <div class="report-cover-side">
-            ${renderTemplateHeaderVisual("report")}
+            <div class="report-side-stack">
+              ${renderTemplateHeaderVisual("report")}
+              ${renderReportCoverHighlight(context)}
+            </div>
             <div class="report-deck">
               <div class="report-deck-item">
                 <span class="report-deck-label">\uC8FC\uC81C</span>
@@ -1071,6 +1120,7 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
           <div class="user-hero-label">\uBC14\uB85C \uBCF4\uB294 \uC548\uB0B4</div>
           <strong>\uD575\uC2EC \uB2F5\uBCC0\uACFC \uCC38\uACE0 \uD654\uBA74\uC744 \uD55C \uBB38\uC11C\uC5D0 \uC815\uB9AC\uD588\uC2B5\uB2C8\uB2E4.</strong>
           <span>\uC0AC\uC6A9\uC790\uAC00 \uBC14\uB85C \uD655\uC778\uD558\uACE0 \uB530\uB77C\uD560 \uC218 \uC788\uB3C4\uB85D \uC0C1\uB2F4 \uC2DC\uAC01, \uBC94\uC704, \uCC38\uACE0 \uC815\uBCF4\uB97C \uAC04\uACB0\uD558\uAC8C \uBB36\uC5C8\uC2B5\uB2C8\uB2E4.</span>
+          ${renderUserHeaderChecklist()}
         </div>
         <div class="user-hero-side">
           ${renderTemplateHeaderVisual("user")}
@@ -1292,6 +1342,32 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       font-size: 12px;
       color: #4f6b95;
     }
+    .user-checklist {
+      margin: 14px 0 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 10px;
+    }
+    .user-checklist li {
+      display: grid;
+      grid-template-columns: 88px minmax(0, 1fr);
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 16px;
+      border: 1px solid rgba(96, 165, 250, 0.18);
+      background: rgba(255, 255, 255, 0.72);
+    }
+    .user-checklist strong {
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      color: #1d4ed8;
+    }
+    .user-checklist span {
+      font-size: 11px;
+      line-height: 1.5;
+      color: #4f6b95;
+    }
     .user-hero-side {
       display: flex;
       flex-direction: column;
@@ -1332,6 +1408,43 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     .operator-callout-body {
       font-size: 12px;
       color: rgba(226, 232, 240, 0.92);
+    }
+    .operator-side-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .operator-rail {
+      display: grid;
+      gap: 10px;
+    }
+    .operator-rail-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 16px;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      background: rgba(15, 23, 42, 0.28);
+      color: #f8fafc;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+    .operator-rail-card span {
+      display: inline-flex;
+      min-width: 52px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .operator-rail-card strong {
+      font-size: 11px;
+      line-height: 1.45;
+      text-align: right;
     }
     .report-cover {
       display: grid;
@@ -1430,10 +1543,59 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       flex-direction: column;
       gap: 12px;
     }
+    .report-side-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
     .report-visual {
       min-height: 164px;
       border-color: rgba(182, 138, 74, 0.18);
       background: linear-gradient(180deg, rgba(255, 248, 238, 0.96), rgba(255, 255, 255, 0.9));
+    }
+    .report-highlight-card {
+      padding: 16px;
+      border-radius: 20px;
+      border: 1px solid #e5d7bf;
+      background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,248,238,0.88));
+      box-shadow: 0 10px 22px rgba(122, 104, 81, 0.08);
+    }
+    .report-highlight-kicker {
+      display: inline-flex;
+      margin-bottom: 8px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #8a6a38;
+    }
+    .report-highlight-card strong {
+      display: block;
+      font-size: 15px;
+      line-height: 1.45;
+      color: #4d3920;
+    }
+    .report-highlight-card p {
+      margin: 8px 0 0;
+      font-size: 11px;
+      color: #7a6851;
+      line-height: 1.6;
+    }
+    .report-highlight-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .report-highlight-tags span {
+      display: inline-flex;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid #e5d7bf;
+      background: rgba(255, 255, 255, 0.78);
+      font-size: 10px;
+      font-weight: 700;
+      color: #8a6a38;
     }
     .report-deck {
       display: grid;
@@ -2228,6 +2390,15 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       gap: 14px;
       padding: 14px 16px;
     }
+    body.compact-summary .user-checklist {
+      gap: 8px;
+      margin-top: 12px;
+    }
+    body.compact-summary .user-checklist li {
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 10px;
+      padding: 8px 10px;
+    }
     body.compact-summary .summary-card {
       min-height: 94px;
       padding: 14px 16px;
@@ -2273,6 +2444,9 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       .report-cover,
       .user-hero,
       .report-deck {
+        grid-template-columns: 1fr;
+      }
+      .user-checklist li {
         grid-template-columns: 1fr;
       }
     }
