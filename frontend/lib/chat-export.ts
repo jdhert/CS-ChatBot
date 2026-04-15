@@ -882,24 +882,71 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       color: #4f5d75;
     }
     .user-header {
+      position: relative;
+      overflow: hidden;
       border: 1px solid #d7e5ff;
-      background: linear-gradient(135deg, #ffffff 0%, #edf5ff 55%, #f6f9ff 100%);
+      background:
+        radial-gradient(circle at top right, rgba(96, 165, 250, 0.22), transparent 32%),
+        linear-gradient(135deg, #ffffff 0%, #edf5ff 55%, #f6f9ff 100%);
       box-shadow: 0 18px 34px rgba(57, 110, 193, 0.08);
     }
+    .user-header::after {
+      content: "";
+      position: absolute;
+      right: -48px;
+      top: -58px;
+      width: 180px;
+      height: 180px;
+      border-radius: 999px;
+      background: rgba(191, 219, 254, 0.45);
+      filter: blur(6px);
+    }
     .operator-header {
+      position: relative;
+      overflow: hidden;
       border: 1px solid #dbe1ea;
-      background: linear-gradient(145deg, #111827 0%, #1f2937 72%);
+      background:
+        radial-gradient(circle at top right, rgba(37, 99, 235, 0.22), transparent 28%),
+        linear-gradient(145deg, #0f172a 0%, #111827 38%, #1f2937 100%);
       color: #f8fafc;
       box-shadow: 0 24px 48px rgba(15, 23, 42, 0.22);
+    }
+    .operator-header::after {
+      content: "";
+      position: absolute;
+      inset: auto 24px 0 auto;
+      width: 180px;
+      height: 2px;
+      background: linear-gradient(90deg, rgba(37, 99, 235, 0), rgba(96, 165, 250, 0.82));
     }
     .operator-header .eyebrow,
     .operator-header .headline {
       color: rgba(226, 232, 240, 0.82);
     }
     .report-header {
+      position: relative;
+      overflow: hidden;
       border: 1px solid #e5ddcf;
-      background: linear-gradient(180deg, #fffdfa 0%, #f6f0e6 100%);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0)),
+        linear-gradient(180deg, #fffdfa 0%, #f6f0e6 100%);
       box-shadow: 0 16px 34px rgba(102, 84, 59, 0.08);
+    }
+    .report-header::before {
+      content: "";
+      position: absolute;
+      left: 24px;
+      top: 24px;
+      bottom: 24px;
+      width: 4px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #d6b98b, #8a6a38);
+    }
+    .report-header h1,
+    .report-header .headline,
+    .report-header .summary-strip {
+      position: relative;
+      margin-left: 18px;
     }
     .summary-grid {
       display: grid;
@@ -1006,7 +1053,7 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     .template-user-bot {
       padding: 18px 20px;
       border: 1px solid #d9e5f7;
-      background: rgba(255, 255, 255, 0.92);
+      background: rgba(255, 255, 255, 0.94);
       box-shadow: 0 12px 26px rgba(36, 79, 164, 0.08);
     }
     .template-user-user {
@@ -1014,7 +1061,12 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       background: linear-gradient(180deg, #f3f8ff, #ffffff);
     }
     .template-user-bot {
+      position: relative;
+      overflow: hidden;
       border-left: 6px solid #60a5fa;
+      background:
+        radial-gradient(circle at top right, rgba(191, 219, 254, 0.45), transparent 24%),
+        rgba(255, 255, 255, 0.96);
     }
     .template-operator-user,
     .template-operator-bot {
@@ -1027,15 +1079,30 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       background: linear-gradient(180deg, #f8fafc, #eef2f7);
     }
     .template-operator-bot {
+      position: relative;
+      overflow: hidden;
       border-top: 5px solid #2563eb;
-      background: linear-gradient(180deg, #ffffff, #f8fbff);
+      background:
+        linear-gradient(180deg, rgba(219, 234, 254, 0.42), rgba(255, 255, 255, 0)),
+        linear-gradient(180deg, #ffffff, #f8fbff);
+    }
+    .template-operator-bot::after {
+      content: "";
+      position: absolute;
+      right: 18px;
+      top: 18px;
+      width: 72px;
+      height: 72px;
+      border-radius: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      background: linear-gradient(145deg, rgba(37, 99, 235, 0.07), rgba(15, 23, 42, 0.02));
     }
     .template-report-user,
     .template-report-bot {
       position: relative;
       padding: 18px 20px;
       border: 1px solid #e8ddca;
-      background: rgba(255, 255, 255, 0.94);
+      background: rgba(255, 255, 255, 0.96);
       box-shadow: 0 10px 24px rgba(94, 76, 51, 0.08);
     }
     .template-report-user::before,
@@ -1052,6 +1119,16 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     }
     .template-report-bot::before {
       background: #2563eb;
+    }
+    .template-report-bot::after {
+      content: "";
+      position: absolute;
+      left: 20px;
+      right: 20px;
+      top: 0;
+      height: 3px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(37, 99, 235, 0.1), rgba(124, 94, 50, 0.72), rgba(37, 99, 235, 0.1));
     }
     .message-head {
       display: flex;
@@ -1148,8 +1225,9 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       border-color: #bbf7d0;
     }
     .template-report-bot .answer-section {
-      background: #fffdf7;
+      background: linear-gradient(180deg, #fffdf7, #fffaf0);
       border-color: #eadfce;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
     }
     .answer-section-title {
       margin-bottom: 8px;
@@ -1187,14 +1265,19 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       page-break-inside: avoid;
     }
     .template-user-bot .source-block {
-      background: linear-gradient(180deg, #f6fbff, #ffffff);
+      background: linear-gradient(180deg, #f2f8ff, #ffffff);
+      border-color: #cfe0ff;
+      box-shadow: 0 8px 22px rgba(96, 165, 250, 0.08);
     }
     .template-operator-bot .source-block {
-      background: #f8fafc;
+      background: linear-gradient(180deg, #f8fafc, #eef4fb);
+      border-color: #cbd5e1;
+      box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.04);
     }
     .template-report-bot .source-block {
-      background: #fffdfa;
+      background: linear-gradient(180deg, #fffdfa, #fff7ea);
       border-color: #eadfce;
+      box-shadow: 0 8px 18px rgba(148, 109, 52, 0.06);
     }
     .source-block h4 {
       margin: 0 0 10px;
@@ -1244,6 +1327,14 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     }
     .template-operator-bot .manual-preview {
       max-height: 260px;
+      border-radius: 10px;
+      border-color: #cbd5e1;
+    }
+    .template-report-bot .manual-preview {
+      max-height: 300px;
+      border-color: #e5d7bf;
+      box-shadow: 0 8px 22px rgba(122, 104, 81, 0.08);
+      background: #fffdfa;
     }
     .manual-spotlight,
     .diagnostic-block,
@@ -1260,6 +1351,16 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       padding: 16px;
       border: 1px solid #d6e5ff;
       background: linear-gradient(180deg, #eff6ff, #ffffff);
+    }
+    .template-user-bot .manual-spotlight {
+      border-color: #bfdbfe;
+      background: linear-gradient(180deg, #eaf3ff, #ffffff);
+      box-shadow: 0 14px 30px rgba(59, 130, 246, 0.1);
+    }
+    .template-report-bot .manual-spotlight {
+      border-color: #e5d7bf;
+      background: linear-gradient(180deg, #fff8ee, #fffdfa);
+      box-shadow: 0 12px 26px rgba(148, 109, 52, 0.08);
     }
     .manual-spotlight-label,
     .brief-label {
@@ -1306,6 +1407,11 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       border: 1px solid #dbe3ef;
       background: #f8fafc;
     }
+    .template-operator-bot .diagnostic-block {
+      border-color: #c7d2fe;
+      background: linear-gradient(180deg, #eef4ff, #f8fbff);
+      box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.06);
+    }
     .diagnostic-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1334,6 +1440,22 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       padding: 14px 16px;
       border: 1px solid #e9dcc7;
       background: linear-gradient(180deg, #fffdfa, #ffffff);
+    }
+    .template-report-bot .brief-block {
+      position: relative;
+      overflow: hidden;
+      border-color: #dcc3a0;
+      background: linear-gradient(180deg, #fff9f0, #ffffff);
+      box-shadow: 0 12px 22px rgba(122, 104, 81, 0.07);
+    }
+    .template-report-bot .brief-block::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: linear-gradient(180deg, #b68a4a, #e6c790);
     }
     .brief-core {
       font-size: 13px;

@@ -130,35 +130,35 @@ function ExportSection({
           {(() => {
             const Icon = item.icon ?? FileText
             return (
-          <div
-            className={`flex w-full min-w-0 items-start gap-3 rounded-2xl border px-3 py-3 md:px-3 md:py-2.5 ${
-              variant === "pdf" ? toneClass(item.tone) : "border-border/80 bg-background/60"
-            }`}
-          >
-            <div
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                variant === "pdf" ? iconToneClass(item.tone) : "bg-muted text-muted-foreground"
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <div className="truncate text-sm font-medium">{item.label}</div>
-                {variant === "pdf" && item.tagline ? (
-                  <span className="hidden rounded-full bg-background/80 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground md:inline-flex">
-                    {item.tagline}
+              <div
+                className={`flex w-full min-w-0 items-start gap-3 rounded-2xl border px-3 py-3 md:px-3 md:py-2.5 ${
+                  variant === "pdf" ? toneClass(item.tone) : "border-border/80 bg-background/60"
+                }`}
+              >
+                <div
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                    variant === "pdf" ? iconToneClass(item.tone) : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <div className="truncate text-sm font-medium">{item.label}</div>
+                    {variant === "pdf" && item.tagline ? (
+                      <span className="hidden rounded-full bg-background/80 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground md:inline-flex">
+                        {item.tagline}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">{item.description}</div>
+                </div>
+                {item.badge ? (
+                  <span className="shrink-0 rounded-full border border-border/80 bg-background/80 px-2 py-0.5 text-[10px] uppercase text-muted-foreground">
+                    {item.badge}
                   </span>
                 ) : null}
               </div>
-              <div className="mt-0.5 text-[10px] text-muted-foreground">{item.description}</div>
-            </div>
-            {item.badge ? (
-              <span className="shrink-0 rounded-full border border-border/80 bg-background/80 px-2 py-0.5 text-[10px] uppercase text-muted-foreground">
-                {item.badge}
-              </span>
-            ) : null}
-          </div>
             )
           })()}
         </DropdownMenuItem>
