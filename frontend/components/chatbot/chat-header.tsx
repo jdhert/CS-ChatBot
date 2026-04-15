@@ -39,6 +39,7 @@ type ExportMenuItem = {
   request: ChatExportRequest
   badge?: string
   usageHint?: string
+  actionLabel?: string
   tone?: "blue" | "violet" | "amber" | "slate" | "emerald"
   previewStyle?: "compact" | "conversation" | "diagnostic" | "brief" | "text" | "markdown"
   icon?: LucideIcon
@@ -52,6 +53,7 @@ const pdfExportItems: ExportMenuItem[] = [
     request: { format: "pdf", template: "user", scope: "latest_exchange", compactSummary: true },
     badge: "compact",
     usageHint: "\uBE60\uB978 \uC548\uB0B4 \uACF5\uC720",
+    actionLabel: "\uD575\uC2EC 1P \uC800\uC7A5",
     tone: "blue",
     previewStyle: "compact",
     icon: MessageSquareText,
@@ -63,6 +65,7 @@ const pdfExportItems: ExportMenuItem[] = [
     request: { format: "pdf", template: "user", scope: "all", compactSummary: false },
     badge: "\uC77C\uBC18\uD615",
     usageHint: "\uB300\uD654 \uD750\uB984 \uBCF4\uAD00",
+    actionLabel: "\uC0C1\uB2F4 \uBCF8 \uC800\uC7A5",
     tone: "emerald",
     previewStyle: "conversation",
     icon: FileText,
@@ -73,6 +76,7 @@ const pdfExportItems: ExportMenuItem[] = [
     description: "\uC9C4\uB2E8 \uC815\uBCF4 \u00B7 \uC6B0\uC120\uC21C\uC704 \uC544\uC774\uCF58 \uD3EC\uD568",
     request: { format: "pdf", template: "operator", scope: "all", includeDiagnostics: true },
     usageHint: "\uC9C4\uB2E8 / \uADFC\uAC70 \uAC80\uD1A0",
+    actionLabel: "\uC6B4\uC601 \uC9C4\uB2E8 \uC800\uC7A5",
     tone: "violet",
     previewStyle: "diagnostic",
     icon: ShieldCheck,
@@ -83,6 +87,7 @@ const pdfExportItems: ExportMenuItem[] = [
     description: "\uD45C\uC9C0 \uBA54\uD0C0 \uD3EC\uD568 \uBE0C\uB9AC\uD551",
     request: { format: "pdf", template: "report", scope: "latest_exchange" },
     usageHint: "\uACF5\uC720 \uBE0C\uB9AC\uD551 \uBC30\uD3EC",
+    actionLabel: "\uBCF4\uACE0 \uD45C\uC9C0 \uC800\uC7A5",
     tone: "amber",
     previewStyle: "brief",
     icon: Presentation,
@@ -97,6 +102,7 @@ const otherExportItems: ExportMenuItem[] = [
     request: { format: "txt", template: "user", scope: "all" },
     badge: getChatExportFormatLabel("txt"),
     usageHint: "\uBCF5\uC0AC / \uC804\uB2EC",
+    actionLabel: "\uD14D\uC2A4\uD2B8 \uC800\uC7A5",
     tone: "slate",
     previewStyle: "text",
     icon: FileText,
@@ -107,6 +113,7 @@ const otherExportItems: ExportMenuItem[] = [
     request: { format: "md", template: "user", scope: "all" },
     badge: getChatExportFormatLabel("md"),
     usageHint: "\uBB38\uC11C \uD3B8\uC9D1 / \uC704\uD0A4",
+    actionLabel: "Markdown \uC800\uC7A5",
     tone: "slate",
     previewStyle: "markdown",
     icon: ScrollText,
@@ -269,6 +276,14 @@ function ExportSection({
   const cardHintPillClass = (variant: "pdf" | "other") =>
     variant === "pdf" ? "bg-slate-900/5 text-slate-600" : "bg-foreground/5 text-muted-foreground"
 
+  const actionChipClass = (tone?: ExportMenuItem["tone"]) => {
+    if (tone === "blue") return "bg-blue-600 text-white shadow-sm shadow-blue-200 dark:bg-blue-500"
+    if (tone === "emerald") return "bg-emerald-600 text-white shadow-sm shadow-emerald-200 dark:bg-emerald-500"
+    if (tone === "violet") return "bg-violet-600 text-white shadow-sm shadow-violet-200 dark:bg-violet-500"
+    if (tone === "amber") return "bg-amber-500 text-slate-950 shadow-sm shadow-amber-200 dark:bg-amber-400"
+    return "bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900"
+  }
+
   return (
     <div className="space-y-1">
       <DropdownMenuLabel className="px-3 pt-1">{title}</DropdownMenuLabel>
@@ -277,15 +292,15 @@ function ExportSection({
         <DropdownMenuItem
           key={item.label}
           onClick={() => onExportChat(item.request)}
-          className="min-h-0 cursor-pointer whitespace-normal rounded-2xl px-1 py-1.5 touch-manipulation focus:bg-transparent data-[highlighted]:bg-transparent sm:px-1.5"
+          className="min-h-0 cursor-pointer whitespace-normal rounded-2xl px-1 py-1.5 touch-manipulation transition-transform active:scale-[0.99] focus:bg-transparent data-[highlighted]:bg-transparent sm:px-1.5"
         >
           {(() => {
             const Icon = item.icon ?? FileText
             return (
               <div
-                className={`flex min-h-[6.75rem] w-full min-w-0 items-start gap-3.5 rounded-[1.35rem] border px-4 py-3.5 ${
+                className={`flex min-h-[7rem] w-full min-w-0 items-start gap-3.5 rounded-[1.35rem] border px-4 py-4 transition-all duration-150 ${
                   variant === "pdf" ? toneClass(item.tone) : "border-border/80 bg-background/60"
-                } sm:min-h-[6.25rem] sm:gap-3 sm:px-3.5 sm:py-3`}
+                } ring-0 hover:-translate-y-[1px] hover:shadow-[0_14px_34px_rgba(15,23,42,0.08)] data-[highlighted]:ring-2 data-[highlighted]:ring-primary/25 sm:min-h-[6.25rem] sm:gap-3 sm:px-3.5 sm:py-3`}
               >
                 <div className="flex shrink-0 flex-col items-center gap-2">
                   <div
@@ -322,9 +337,14 @@ function ExportSection({
                         ? "PDF로 바로 저장하거나 공유할 때 적합합니다."
                         : "복사, 편집, 문서 공유에 적합합니다."}
                   </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-medium ${cardHintPillClass(variant)}`}>
                       {variant === "pdf" ? "저장용" : "편집용"}
+                    </span>
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-1 text-[9px] font-semibold tracking-[0.03em] ${actionChipClass(item.tone)}`}
+                    >
+                      {item.actionLabel ?? (variant === "pdf" ? "PDF 저장" : "파일 저장")}
                     </span>
                   </div>
                 </div>

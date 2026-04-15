@@ -1193,7 +1193,7 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
   <meta charset="utf-8" />
   <title>${escapeHtml(context.conversationTitle)} - \uCF54\uBE44\uC804 CS AI Core \uB300\uD654 \uB0B4\uBCF4\uB0B4\uAE30</title>
   <style>
-    @page { margin: 14mm; }
+    @page { margin: 12mm; }
     * { box-sizing: border-box; }
     body {
       margin: 0;
@@ -1215,6 +1215,15 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       max-width: 980px;
       margin: 0 auto;
     }
+    body.template-user main {
+      max-width: 940px;
+    }
+    body.template-operator main {
+      max-width: 1000px;
+    }
+    body.template-report main {
+      max-width: 980px;
+    }
     .eyebrow {
       font-size: 10px;
       letter-spacing: 0.22em;
@@ -1233,6 +1242,18 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       margin: 0;
       font-size: 28px;
       line-height: 1.24;
+    }
+    body.template-user .page-header h1 {
+      font-size: 27px;
+      line-height: 1.22;
+    }
+    body.template-operator .page-header h1 {
+      font-size: 29px;
+      line-height: 1.2;
+    }
+    body.template-report .page-header h1 {
+      font-size: 31px;
+      line-height: 1.18;
     }
     .header-topline {
       display: flex;
@@ -1301,6 +1322,15 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       font-size: 13px;
       color: #4f5d75;
     }
+    body.template-user .headline {
+      font-size: 12.5px;
+    }
+    body.template-operator .headline {
+      font-size: 13px;
+    }
+    body.template-report .headline {
+      font-size: 13.5px;
+    }
     .user-hero,
     .operator-callout,
     .report-deck {
@@ -1312,10 +1342,11 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       display: grid;
       grid-template-columns: minmax(0, 1.3fr) minmax(220px, 0.7fr);
       gap: 16px;
-      padding: 16px 18px;
+      padding: 18px 20px;
       border: 1px solid #cfe0ff;
       border-radius: 20px;
       background: linear-gradient(180deg, rgba(239, 246, 255, 0.92), rgba(255, 255, 255, 0.98));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
     }
     .user-hero-label,
     .operator-callout-label,
@@ -1397,10 +1428,11 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       background: linear-gradient(180deg, rgba(15, 23, 42, 0.22), rgba(15, 23, 42, 0.06));
     }
     .operator-callout {
-      padding: 14px 16px;
-      border-radius: 18px;
+      padding: 16px 18px;
+      border-radius: 20px;
       border: 1px solid rgba(96, 165, 250, 0.24);
       background: linear-gradient(180deg, rgba(15, 23, 42, 0.26), rgba(15, 23, 42, 0.12));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
     }
     .operator-callout-label {
       color: #93c5fd;
@@ -1412,11 +1444,11 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     .operator-side-stack {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 14px;
     }
     .operator-rail {
       display: grid;
-      gap: 10px;
+      gap: 12px;
     }
     .operator-rail-card {
       display: flex;
@@ -1449,10 +1481,10 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     .report-cover {
       display: grid;
       grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
-      gap: 18px;
+      gap: 20px;
       margin-top: 18px;
-      padding: 18px;
-      border-radius: 24px;
+      padding: 20px;
+      border-radius: 26px;
       border: 1px solid #e5d7bf;
       background: linear-gradient(135deg, rgba(255, 252, 246, 0.96), rgba(248, 240, 226, 0.94));
       box-shadow: 0 14px 28px rgba(122, 104, 81, 0.08);
@@ -1514,8 +1546,8 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     .report-meta-list {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-      margin-top: 14px;
+      gap: 12px;
+      margin-top: 16px;
     }
     .report-meta-item {
       padding: 10px 12px;
@@ -1541,12 +1573,12 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     .report-cover-side {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 14px;
     }
     .report-side-stack {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 14px;
     }
     .report-visual {
       min-height: 164px;
@@ -1715,7 +1747,7 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     .summary-grid {
       display: grid;
       gap: 14px;
-      margin-top: 18px;
+      margin-top: 20px;
     }
     .user-grid {
       grid-template-columns: 1.5fr 1fr 1fr;
@@ -1727,14 +1759,14 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       display: flex;
       flex-direction: column;
       gap: 6px;
-      min-height: 112px;
-      padding: 16px 18px;
+      min-height: 118px;
+      padding: 18px 18px;
       border-radius: 20px;
       border: 1px solid #dbe3ef;
       background: rgba(255, 255, 255, 0.82);
     }
     .summary-card.large {
-      min-height: 128px;
+      min-height: 136px;
     }
     .summary-card .label {
       font-size: 11px;
@@ -1744,8 +1776,8 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       color: #5b6b86;
     }
     .summary-card strong {
-      font-size: 20px;
-      line-height: 1.35;
+      font-size: 19px;
+      line-height: 1.32;
     }
     .summary-card .helper {
       margin-top: auto;
@@ -1773,11 +1805,27 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 0;
-      margin-top: 18px;
+      margin-top: 20px;
       overflow: hidden;
       border: 1px solid #e5ddcf;
       border-radius: 18px;
       background: rgba(255, 255, 255, 0.7);
+    }
+    body.template-report .summary-strip {
+      border-radius: 20px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+    }
+    body.template-user .summary-grid {
+      gap: 12px;
+    }
+    body.template-user .summary-card {
+      min-height: 108px;
+    }
+    body.template-operator .summary-grid {
+      gap: 16px;
+    }
+    body.template-report .summary-grid {
+      gap: 16px;
     }
     .summary-strip > div {
       padding: 14px 16px;
@@ -2384,11 +2432,11 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       color: #64748b;
     }
     body.compact-summary .page-header {
-      padding: 20px 22px;
+      padding: 18px 20px;
     }
     body.compact-summary .user-hero {
-      gap: 14px;
-      padding: 14px 16px;
+      gap: 12px;
+      padding: 14px 15px;
     }
     body.compact-summary .user-checklist {
       gap: 8px;
@@ -2400,8 +2448,8 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       padding: 8px 10px;
     }
     body.compact-summary .summary-card {
-      min-height: 94px;
-      padding: 14px 16px;
+      min-height: 88px;
+      padding: 12px 14px;
     }
     body.compact-summary .template-user-user,
     body.compact-summary .template-user-bot {
@@ -2445,6 +2493,9 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       .user-hero,
       .report-deck {
         grid-template-columns: 1fr;
+      }
+      .report-meta-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
       .user-checklist li {
         grid-template-columns: 1fr;
