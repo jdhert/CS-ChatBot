@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import Link from "next/link"
-import { Bot, Download, Menu, Moon, MoreHorizontal, ScrollText, Search, Sun } from "lucide-react"
+import { Bot, Download, FileText, Menu, Moon, MoreHorizontal, ScrollText, Search, Sun } from "lucide-react"
 import { getChatExportFormatLabel, type ChatExportRequest } from "@/lib/chat-export"
 import {
   DropdownMenu,
@@ -19,37 +19,50 @@ interface ChatHeaderProps {
   onOpenSidebar?: () => void
 }
 
-const pdfExportItems: Array<{ label: string; description: string; request: ChatExportRequest; badge?: string }> = [
+type ExportMenuItem = {
+  label: string
+  description: string
+  request: ChatExportRequest
+  badge?: string
+  tone?: "blue" | "violet" | "amber" | "slate"
+}
+
+const pdfExportItems: ExportMenuItem[] = [
   {
-    label: "\uCD5C\uADFC \uC751\uB2F5 PDF",
-    description: "\uB9C8\uC9C0\uB9C9 \uC9C8\uC758\uC640 \uB2F5\uBCC0\uB9CC PDF\uB85C \uC800\uC7A5",
+    label: "\uC751\uB2F5 PDF",
+    description: "\uB9C8\uC9C0\uB9C9 \uC751\uB2F5 \uC800\uC7A5",
     request: { format: "pdf", template: "user", scope: "latest_exchange" },
     badge: "\uCD94\uCC9C",
+    tone: "blue",
   },
   {
-    label: "\uC6B4\uC601 \uC9C4\uB2E8 PDF",
-    description: "\uC804\uCCB4 \uB300\uD654\uC640 \uC9C4\uB2E8 \uC815\uBCF4\uB97C \uAC19\uC774 \uC800\uC7A5",
+    label: "\uC6B4\uC601 PDF",
+    description: "\uC9C4\uB2E8 \uC815\uBCF4 \uD3EC\uD568",
     request: { format: "pdf", template: "operator", scope: "all", includeDiagnostics: true },
+    tone: "violet",
   },
   {
-    label: "\uACF5\uC720\uC6A9 \uBCF4\uACE0 PDF",
-    description: "\uCD5C\uADFC \uC751\uB2F5\uC744 \uBE0C\uB9AC\uD551 \uBB38\uC11C \uD615\uD0DC\uB85C \uC800\uC7A5",
+    label: "\uBCF4\uACE0 PDF",
+    description: "\uACF5\uC720\uC6A9 \uBE0C\uB9AC\uD551",
     request: { format: "pdf", template: "report", scope: "latest_exchange" },
+    tone: "amber",
   },
 ]
 
-const otherExportItems: Array<{ label: string; description: string; request: ChatExportRequest; badge?: string }> = [
+const otherExportItems: ExportMenuItem[] = [
   {
-    label: "\uC804\uCCB4 \uB300\uD654 \uD14D\uC2A4\uD2B8",
-    description: "\uC804\uCCB4 \uB300\uD654\uB97C TXT \uD30C\uC77C\uB85C \uC800\uC7A5",
+    label: "TXT",
+    description: "\uC804\uCCB4 \uB300\uD654",
     request: { format: "txt", template: "user", scope: "all" },
     badge: getChatExportFormatLabel("txt"),
+    tone: "slate",
   },
   {
-    label: "\uC804\uCCB4 \uB300\uD654 Markdown",
-    description: "\uC804\uCCB4 \uB300\uD654\uB97C Markdown \uD30C\uC77C\uB85C \uC800\uC7A5",
+    label: "MD",
+    description: "\uBB38\uC11C \uACF5\uC720\uC6A9",
     request: { format: "md", template: "user", scope: "all" },
     badge: getChatExportFormatLabel("md"),
+    tone: "slate",
   },
 ]
 
@@ -58,25 +71,49 @@ function ExportSection({
   helper,
   items,
   onExportChat,
+  variant = "other",
 }: {
   title: string
   helper: string
-  items: Array<{ label: string; description: string; request: ChatExportRequest; badge?: string }>
+  items: ExportMenuItem[]
   onExportChat: (request: ChatExportRequest) => void
+  variant?: "pdf" | "other"
 }) {
+  const toneClass = (tone?: ExportMenuItem["tone"]) => {
+    if (tone === "blue") return "border-blue-200/70 bg-blue-50/60 dark:border-blue-500/30 dark:bg-blue-500/10"
+    if (tone === "violet") return "border-violet-200/70 bg-violet-50/60 dark:border-violet-500/30 dark:bg-violet-500/10"
+    if (tone === "amber") return "border-amber-200/70 bg-amber-50/60 dark:border-amber-500/30 dark:bg-amber-500/10"
+    return "border-border bg-muted/40"
+  }
+
   return (
-    <div>
-      <DropdownMenuLabel>{title}</DropdownMenuLabel>
-      <div className="px-2 pb-2 text-[11px] text-muted-foreground">{helper}</div>
+    <div className="space-y-1">
+      <DropdownMenuLabel className="px-3 pt-1">{title}</DropdownMenuLabel>
+      <div className="px-3 pb-2 text-[11px] leading-relaxed text-muted-foreground">{helper}</div>
       {items.map((item) => (
-        <DropdownMenuItem key={item.label} onClick={() => onExportChat(item.request)}>
-          <div className="flex w-full min-w-0 items-start gap-3">
+        <DropdownMenuItem
+          key={item.label}
+          onClick={() => onExportChat(item.request)}
+          className="min-h-0 cursor-pointer rounded-2xl px-1.5 py-1.5 focus:bg-transparent data-[highlighted]:bg-transparent"
+        >
+          <div
+            className={`flex w-full min-w-0 items-start gap-3 rounded-2xl border px-3 py-3 md:px-3 md:py-2.5 ${
+              variant === "pdf" ? toneClass(item.tone) : "border-border/80 bg-background/60"
+            }`}
+          >
+            <div
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                variant === "pdf" ? "bg-background/80 text-foreground shadow-sm" : "bg-muted text-muted-foreground"
+              }`}
+            >
+              <FileText className="h-4 w-4" />
+            </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate">{item.label}</div>
+              <div className="truncate text-sm font-medium">{item.label}</div>
               <div className="mt-0.5 text-[10px] text-muted-foreground">{item.description}</div>
             </div>
             {item.badge ? (
-              <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] uppercase text-muted-foreground">
+              <span className="shrink-0 rounded-full border border-border/80 bg-background/80 px-2 py-0.5 text-[10px] uppercase text-muted-foreground">
                 {item.badge}
               </span>
             ) : null}
@@ -91,20 +128,22 @@ function ExportMenuItems({ onExportChat }: { onExportChat: (request: ChatExportR
   return (
     <>
       <ExportSection
-        title={"\uB300\uD654 \uB0B4\uBCF4\uB0B4\uAE30 · PDF 3\uC885"}
-        helper={"\uBCF4\uACE0\uC6A9\uB3C4\uC5D0 \uB9DE\uC8FC \uAC00\uC7A5 \uB9CE\uC774 \uC4F0\uB294 PDF \uD615\uC2DD\uB9CC \uBC14\uB85C \uBCF4\uC5EC\uC90D\uB2C8\uB2E4."}
+        title={"PDF 3\uC885"}
+        helper={"\uBC14\uB85C \uC4F0\uB294 PDF \uC800\uC7A5 \uBC29\uC2DD"}
         items={pdfExportItems}
         onExportChat={onExportChat}
+        variant="pdf"
       />
       <DropdownMenuSeparator />
       <ExportSection
         title={"\uAE30\uD0C0 2\uC885"}
-        helper={"\uD14D\uC2A4\uD2B8 \uACF5\uC720\uB098 \uBB38\uC11C \uD3B8\uC9D1\uC774 \uD544\uC694\uD560 \uB54C \uC0AC\uC6A9\uD558\uBA74 \uB429\uB2C8\uB2E4."}
+        helper={"\uD14D\uC2A4\uD2B8 \uACF5\uC720/\uD3B8\uC9D1 \uC6A9\uB3C4"}
         items={otherExportItems}
         onExportChat={onExportChat}
+        variant="other"
       />
       <DropdownMenuSeparator />
-      <div className="px-2 py-1 text-[10px] text-muted-foreground">
+      <div className="px-3 py-1.5 text-[10px] leading-relaxed text-muted-foreground">
         {"\uC138\uBD80 \uBC94\uC704\uC640 \uC9C4\uB2E8 \uC635\uC158\uC740 \uD15C\uD50C\uB9BF\uBCC4 \uAE30\uBCF8\uAC12\uC73C\uB85C \uC790\uB3D9 \uC801\uC6A9\uB429\uB2C8\uB2E4."}
       </div>
     </>
@@ -174,7 +213,7 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
                   <Download className="h-5 w-5" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-72">
+              <DropdownMenuContent align="end" className="w-[19rem] max-w-[calc(100vw-1rem)] rounded-2xl p-1.5 md:w-72">
                 <ExportMenuItems onExportChat={onExportChat} />
               </DropdownMenuContent>
             </DropdownMenu>
@@ -202,7 +241,7 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
               <MoreHorizontal className="h-5 w-5" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-72">
+          <DropdownMenuContent align="end" className="w-[19rem] max-w-[calc(100vw-1rem)] rounded-2xl p-1.5 md:w-72">
             <DropdownMenuLabel>{"\uBE60\uB978 \uBA54\uB274"}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
