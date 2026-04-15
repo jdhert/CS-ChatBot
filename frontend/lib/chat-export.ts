@@ -736,6 +736,10 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
         </div>
         <h1>\uCF54\uBE44\uC804 CS AI Core \uC6B4\uC601 \uC9C4\uB2E8 \uBD84\uC11D \uB9AC\uD3EC\uD2B8</h1>
         <p class="headline">${escapeHtml(TEMPLATE_HEADLINE[context.template])}</p>
+        <div class="operator-callout">
+          <div class="operator-callout-label">OPERATOR CHECKLIST</div>
+          <div class="operator-callout-body">\uAC80\uC0C9 \uACBD\uB85C, \uB9E4\uCE6D \uADFC\uAC70, \uCC38\uACE0 \uBB38\uC11C, \uC9C4\uB2E8 \uD6C4\uBCF4\uB97C \uD55C \uBC88\uC5D0 \uD655\uC778\uD558\uB294 \uC6B4\uC601 \uC6A9\uB3C4 \uBB38\uC11C\uC785\uB2C8\uB2E4.</div>
+        </div>
         <div class="summary-grid operator-grid">
           <article class="summary-card accent-blue">
             <span class="label">\uB300\uD654 \uC81C\uBAA9</span>
@@ -777,6 +781,20 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
         </div>
         <h1>\uCF54\uBE44\uC804 CS AI Core \uACF5\uC720 \uBE0C\uB9AC\uD551 \uC694\uC57D\uBCF8</h1>
         <p class="headline">${escapeHtml(TEMPLATE_HEADLINE[context.template])}</p>
+        <div class="report-deck">
+          <div class="report-deck-item">
+            <span class="report-deck-label">topic</span>
+            <strong>${escapeHtml(context.conversationTitle)}</strong>
+          </div>
+          <div class="report-deck-item">
+            <span class="report-deck-label">audience</span>
+            <strong>\uACF5\uC720 / \uBCF4\uACE0</strong>
+          </div>
+          <div class="report-deck-item">
+            <span class="report-deck-label">snapshot</span>
+            <strong>${escapeHtml(context.exportedAt)}</strong>
+          </div>
+        </div>
         <div class="summary-strip">
           <div><strong>\uB300\uD654 \uC81C\uBAA9</strong><span>${escapeHtml(context.conversationTitle)}</span></div>
           <div><strong>\uC694\uC57D</strong><span>\uC9C8\uC758 ${stats.userMessages}\uAC74 / \uC751\uB2F5 ${stats.botMessages}\uAC74</span></div>
@@ -800,6 +818,18 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
       </div>
       <h1>\uCF54\uBE44\uC804 CS AI Core \uC0AC\uC6A9\uC790 \uC0C1\uB2F4 \uACB0\uACFC\uC11C</h1>
       <p class="headline">${escapeHtml(TEMPLATE_HEADLINE[context.template])}</p>
+      <div class="user-hero">
+        <div class="user-hero-copy">
+          <div class="user-hero-label">\uBC14\uB85C \uBCF4\uB294 \uC548\uB0B4</div>
+          <strong>\uD575\uC2EC \uB2F5\uBCC0\uACFC \uCC38\uACE0 \uD654\uBA74\uC744 \uD55C \uBB38\uC11C\uC5D0 \uC815\uB9AC\uD588\uC2B5\uB2C8\uB2E4.</strong>
+          <span>\uC0AC\uC6A9\uC790\uAC00 \uBC14\uB85C \uD655\uC778\uD558\uACE0 \uB530\uB77C\uD560 \uC218 \uC788\uB3C4\uB85D \uC0C1\uB2F4 \uC2DC\uAC01, \uBC94\uC704, \uCC38\uACE0 \uC815\uBCF4\uB97C \uAC04\uACB0\uD558\uAC8C \uBB36\uC5C8\uC2B5\uB2C8\uB2E4.</span>
+        </div>
+        <div class="user-pill-list">
+          <span class="user-pill">\uC9C8\uBB38 ${stats.userMessages}\uAC74</span>
+          <span class="user-pill">\uB2F5\uBCC0 ${stats.botMessages}\uAC74</span>
+          <span class="user-pill">${escapeHtml(getScopeLabel(context.scope))}</span>
+        </div>
+      </div>
       <div class="summary-grid user-grid">
         <article class="summary-card large">
           <span class="label">\uB300\uD654 \uC81C\uBAA9</span>
@@ -948,6 +978,98 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       margin: 10px 0 0;
       font-size: 13px;
       color: #4f5d75;
+    }
+    .user-hero,
+    .operator-callout,
+    .report-deck {
+      margin-top: 18px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .user-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(220px, 0.7fr);
+      gap: 16px;
+      padding: 16px 18px;
+      border: 1px solid #cfe0ff;
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(239, 246, 255, 0.92), rgba(255, 255, 255, 0.98));
+    }
+    .user-hero-label,
+    .operator-callout-label,
+    .report-deck-label {
+      display: inline-flex;
+      margin-bottom: 8px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .user-hero-label {
+      color: #2563eb;
+    }
+    .user-hero-copy strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 16px;
+      line-height: 1.45;
+      color: #15315f;
+    }
+    .user-hero-copy span {
+      display: block;
+      font-size: 12px;
+      color: #4f6b95;
+    }
+    .user-pill-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      justify-content: center;
+    }
+    .user-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 42px;
+      padding: 0 14px;
+      border-radius: 999px;
+      border: 1px solid #bfdbfe;
+      background: rgba(255, 255, 255, 0.86);
+      font-size: 12px;
+      font-weight: 700;
+      color: #1d4ed8;
+    }
+    .operator-callout {
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(96, 165, 250, 0.24);
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.26), rgba(15, 23, 42, 0.12));
+    }
+    .operator-callout-label {
+      color: #93c5fd;
+    }
+    .operator-callout-body {
+      font-size: 12px;
+      color: rgba(226, 232, 240, 0.92);
+    }
+    .report-deck {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .report-deck-item {
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid #e7d9bf;
+      background: rgba(255, 253, 248, 0.92);
+    }
+    .report-deck-label {
+      color: #8a6a38;
+    }
+    .report-deck-item strong {
+      display: block;
+      font-size: 14px;
+      line-height: 1.45;
+      color: #4d3920;
     }
     .user-badge {
       background: linear-gradient(135deg, #2563eb, #60a5fa);
@@ -1321,13 +1443,55 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
     }
     .answer-section-title {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.18);
       margin-bottom: 8px;
       font-size: 12px;
       font-weight: 800;
       color: #2563eb;
     }
+    .answer-section-title::before {
+      content: "";
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #2563eb, #60a5fa);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+      flex: 0 0 auto;
+    }
+    .template-user-bot .answer-section-title {
+      color: #1d4ed8;
+      border-bottom-color: rgba(96, 165, 250, 0.2);
+    }
+    .template-user-bot .answer-section-title::before {
+      background: linear-gradient(135deg, #2563eb, #93c5fd);
+    }
+    .template-operator-bot .answer-section-title {
+      color: #1e3a8a;
+      border-bottom-style: dashed;
+      border-bottom-color: rgba(37, 99, 235, 0.26);
+    }
+    .template-operator-bot .answer-section-title::before {
+      width: 28px;
+      height: 18px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #0f172a, #2563eb);
+      box-shadow: inset 0 0 0 1px rgba(191, 219, 254, 0.3);
+    }
     .template-report-bot .answer-section-title {
       color: #7c5e32;
+      border-bottom-color: rgba(182, 138, 74, 0.28);
+    }
+    .template-report-bot .answer-section-title::before {
+      width: 24px;
+      height: 14px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #b68a4a, #ead4a6);
+      box-shadow: none;
     }
     .answer-section-body {
       font-size: 12px;
@@ -1587,6 +1751,12 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       }
       .messages > .message + .message {
         margin-top: 12px;
+      }
+    }
+    @media (max-width: 900px) {
+      .user-hero,
+      .report-deck {
+        grid-template-columns: 1fr;
       }
     }
   </style>
