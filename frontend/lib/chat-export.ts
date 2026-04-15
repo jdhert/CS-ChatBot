@@ -724,8 +724,17 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
   if (context.template === "operator") {
     return `
       <section class="page-header operator-header">
-        <div class="eyebrow">OPERATOR DIAGNOSTIC EXPORT</div>
-        <h1>\uCF54\uBE44\uC804 CS AI Core \uC6B4\uC601 \uC9C4\uB2E8 \uB9AC\uD3EC\uD2B8</h1>
+        <div class="header-topline">
+          <div class="header-badge operator-badge">
+            <span class="header-badge-kicker">OPERATOR PDF</span>
+            <strong>OPS</strong>
+          </div>
+          <div class="header-copy">
+            <div class="eyebrow">OPERATOR DIAGNOSTIC EXPORT</div>
+            <div class="header-caption">\uC6B4\uC601 \uD310\uB2E8\uC640 \uC870\uCE58 \uD6C4\uBCF4\uB97C \uBC14\uB85C \uBCF4\uB294 \uC9C4\uB2E8\uC6A9 PDF</div>
+          </div>
+        </div>
+        <h1>\uCF54\uBE44\uC804 CS AI Core \uC6B4\uC601 \uC9C4\uB2E8 \uBD84\uC11D \uB9AC\uD3EC\uD2B8</h1>
         <p class="headline">${escapeHtml(TEMPLATE_HEADLINE[context.template])}</p>
         <div class="summary-grid operator-grid">
           <article class="summary-card accent-blue">
@@ -756,8 +765,17 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
   if (context.template === "report") {
     return `
       <section class="page-header report-header">
-        <div class="eyebrow">SHAREABLE BRIEF</div>
-        <h1>\uCF54\uBE44\uC804 CS AI Core \uC0C1\uB2F4 \uBE0C\uB9AC\uD551</h1>
+        <div class="header-topline">
+          <div class="header-badge report-badge">
+            <span class="header-badge-kicker">REPORT PDF</span>
+            <strong>BRIEF</strong>
+          </div>
+          <div class="header-copy">
+            <div class="eyebrow">SHAREABLE BRIEF</div>
+            <div class="header-caption">\uACF5\uC720\uC640 \uBCF4\uACE0\uC5D0 \uBC14\uB85C \uC4F0\uB294 \uC694\uC57D \uBB38\uC11C</div>
+          </div>
+        </div>
+        <h1>\uCF54\uBE44\uC804 CS AI Core \uACF5\uC720 \uBE0C\uB9AC\uD551 \uC694\uC57D\uBCF8</h1>
         <p class="headline">${escapeHtml(TEMPLATE_HEADLINE[context.template])}</p>
         <div class="summary-strip">
           <div><strong>\uB300\uD654 \uC81C\uBAA9</strong><span>${escapeHtml(context.conversationTitle)}</span></div>
@@ -770,8 +788,17 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
 
   return `
     <section class="page-header user-header">
-      <div class="eyebrow">COUNSELING RESULT</div>
-      <h1>\uCF54\uBE44\uC804 CS AI Core \uC0C1\uB2F4 \uACB0\uACFC\uC9C0</h1>
+      <div class="header-topline">
+        <div class="header-badge user-badge">
+          <span class="header-badge-kicker">USER PDF</span>
+          <strong>Q/A</strong>
+        </div>
+        <div class="header-copy">
+          <div class="eyebrow">COUNSELING RESULT</div>
+          <div class="header-caption">\uC0AC\uC6A9\uC790\uAC00 \uBC14\uB85C \uD655\uC778\uD558\uB294 \uC0C1\uB2F4 \uACB0\uACFC \uC815\uB9AC\uBCF8</div>
+        </div>
+      </div>
+      <h1>\uCF54\uBE44\uC804 CS AI Core \uC0AC\uC6A9\uC790 \uC0C1\uB2F4 \uACB0\uACFC\uC11C</h1>
       <p class="headline">${escapeHtml(TEMPLATE_HEADLINE[context.template])}</p>
       <div class="summary-grid user-grid">
         <article class="summary-card large">
@@ -876,10 +903,56 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       font-size: 28px;
       line-height: 1.24;
     }
+    .header-topline {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 12px;
+    }
+    .header-copy {
+      min-width: 0;
+      flex: 1;
+    }
+    .header-caption {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      color: #64748b;
+    }
+    .header-badge {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 2px;
+      min-width: 86px;
+      padding: 10px 12px;
+      border-radius: 18px;
+      border: 1px solid transparent;
+      box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
+    }
+    .header-badge-kicker {
+      font-size: 9px;
+      line-height: 1;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      opacity: 0.8;
+    }
+    .header-badge strong {
+      font-size: 20px;
+      line-height: 1;
+      letter-spacing: 0.04em;
+    }
     .headline {
       margin: 10px 0 0;
       font-size: 13px;
       color: #4f5d75;
+    }
+    .user-badge {
+      background: linear-gradient(135deg, #2563eb, #60a5fa);
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.55);
     }
     .user-header {
       position: relative;
@@ -901,6 +974,14 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       background: rgba(191, 219, 254, 0.45);
       filter: blur(6px);
     }
+    .user-header .header-caption {
+      color: #4f6b95;
+    }
+    .operator-badge {
+      background: linear-gradient(135deg, #0f172a, #1d4ed8);
+      color: #f8fafc;
+      border-color: rgba(148, 163, 184, 0.35);
+    }
     .operator-header {
       position: relative;
       overflow: hidden;
@@ -920,8 +1001,14 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       background: linear-gradient(90deg, rgba(37, 99, 235, 0), rgba(96, 165, 250, 0.82));
     }
     .operator-header .eyebrow,
-    .operator-header .headline {
+    .operator-header .headline,
+    .operator-header .header-caption {
       color: rgba(226, 232, 240, 0.82);
+    }
+    .report-badge {
+      background: linear-gradient(135deg, #fff7e8, #f2d29a);
+      color: #7c5e32;
+      border-color: rgba(138, 106, 56, 0.18);
     }
     .report-header {
       position: relative;
@@ -944,9 +1031,13 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     }
     .report-header h1,
     .report-header .headline,
-    .report-header .summary-strip {
+    .report-header .summary-strip,
+    .report-header .header-topline {
       position: relative;
       margin-left: 18px;
+    }
+    .report-header .header-caption {
+      color: #8a6a38;
     }
     .summary-grid {
       display: grid;
