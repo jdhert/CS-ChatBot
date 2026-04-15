@@ -253,19 +253,54 @@ function extractQueryKeywords(query: string | undefined, limit = 6): string[] {
   ).slice(0, limit)
 }
 
-function buildClarificationPrompts(originalQuery: string | undefined, isManualAnswer = false): string[] {
+interface ClarificationSuggestion {
+  label: string
+  helper: string
+  prompt: string
+}
+
+function buildClarificationSuggestions(originalQuery: string | undefined, isManualAnswer = false): ClarificationSuggestion[] {
   const baseQuery = originalQuery?.trim() ?? ""
-  const prompts = [
-    "제품명/서비스명과 메뉴 경로를 함께 적어 주세요.",
-    "오류 문구를 그대로 붙여 넣어 주세요.",
-    "문제가 발생한 화면과 직전 동작을 같이 적어 주세요.",
-  ]
+  const suggestions: ClarificationSuggestion[] = isManualAnswer
+    ? [
+        {
+          label: "메뉴명 + 원하는 결과",
+          helper: "어느 메뉴에서 무엇을 하려는지 같이 적어 주세요.",
+          prompt: "적용하려는 메뉴명과 원하는 결과를 같이 적어 주세요.",
+        },
+        {
+          label: "화면 경로",
+          helper: "좌측 메뉴부터 실제 화면 경로를 적어 주세요.",
+          prompt: "좌측 메뉴부터 현재 보고 있는 화면 경로를 순서대로 적어 주세요.",
+        },
+        {
+          label: "현재 막힌 단계",
+          helper: "어느 단계에서 막혔는지 알려 주세요.",
+          prompt: "현재 절차 중 어느 단계에서 막혔는지와 기대한 결과를 같이 적어 주세요.",
+        },
+      ]
+    : [
+        {
+          label: "제품명 + 메뉴 경로",
+          helper: "어느 제품/화면인지 먼저 특정해 주세요.",
+          prompt: "제품명/서비스명과 메뉴 경로를 함께 적어 주세요.",
+        },
+        {
+          label: "오류 문구 원문",
+          helper: "알림창이나 오류 문구를 그대로 붙여 주세요.",
+          prompt: "오류 문구를 그대로 붙여 넣어 주세요.",
+        },
+        {
+          label: "직전 동작",
+          helper: "문제 직전에 무엇을 눌렀는지 적어 주세요.",
+          prompt: "문제가 발생한 화면과 직전 동작을 같이 적어 주세요.",
+        },
+      ]
 
-  if (isManualAnswer) {
-    prompts.unshift("적용하려는 메뉴명과 원하는 결과를 같이 적어 주세요.")
-  }
-
-  return prompts.map((prompt) => [baseQuery, prompt].filter(Boolean).join("\n"))
+  return suggestions.map((item) => ({
+    ...item,
+    prompt: [baseQuery, item.prompt].filter(Boolean).join("\n"),
+  }))
 }
 
 const ANSWER_SOURCE_LABEL: Record<string, string> = {
@@ -542,27 +577,114 @@ function StructuredAnswerSections({ content }: { content: string }) {
   )
 }
 
+function summarizeText(text: string, limit = 120): string {
+  const normalized = text.replace(/\s+/g, " ").trim()
+  if (normalized.length <= limit) return normalized
+  return `${normalized.slice(0, limit)}…`
+}
+
+function AnswerOverviewCard({
+  message,
+  content,
+  isManualAnswer = false,
+}: {
+  message: Message
+  content: string
+  isManualAnswer?: boolean
+}) {
+  const sections = parseStructuredAnswerSections(content)
+  const primarySection = sections[0]
+  const summaryText = summarizeText(primarySection?.body ?? content, isManualAnswer ? 140 : 120)
+  const followupSectionTitles = sections.slice(1, 4).map((section) => section.title)
+  const sourceLabel = getAnswerSourceLabel(message.answerSource)
+  const retrievalLabel = getRetrievalModeLabel(message.retrievalMode)
+  const confidenceLabel =
+    typeof message.confidence === "number" && Number.isFinite(message.confidence)
+      ? `${Math.round(message.confidence * 100)}%`
+      : "정보 없음"
+
+  return (
+    <div
+      className={cn(
+        "mb-3 overflow-hidden rounded-2xl border",
+        isManualAnswer
+          ? "border-sky-500/20 bg-gradient-to-br from-sky-500/8 via-background to-cyan-500/5"
+          : "border-primary/15 bg-gradient-to-br from-primary/8 via-background to-background",
+      )}
+    >
+      <div className="border-b border-border/60 px-3.5 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]",
+              isManualAnswer ? "bg-sky-500/12 text-sky-700 dark:text-sky-300" : "bg-primary/10 text-primary",
+            )}
+          >
+            {isManualAnswer ? <BookOpen className="h-3 w-3" /> : <Sparkles className="h-3 w-3" />}
+            {isManualAnswer ? "문서 기준 요약" : "답변 요약"}
+          </span>
+          {primarySection ? (
+            <span className="text-[11px] font-medium text-muted-foreground">{primarySection.title}</span>
+          ) : null}
+        </div>
+        <p className="mt-2 text-sm font-medium leading-6 text-foreground">{summaryText}</p>
+      </div>
+
+      <div className="grid gap-2 px-3.5 py-3 md:grid-cols-3">
+        <div className="rounded-xl border border-border/70 bg-background/80 px-3 py-2">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">답변 방식</div>
+          <div className="mt-1 text-sm font-semibold text-foreground">{sourceLabel ?? "기본 답변"}</div>
+        </div>
+        <div className="rounded-xl border border-border/70 bg-background/80 px-3 py-2">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">검색 경로</div>
+          <div className="mt-1 text-sm font-semibold text-foreground">{retrievalLabel ?? "일반 응답"}</div>
+        </div>
+        <div className="rounded-xl border border-border/70 bg-background/80 px-3 py-2">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">신뢰도</div>
+          <div className="mt-1 text-sm font-semibold text-foreground">{confidenceLabel}</div>
+        </div>
+      </div>
+
+      {followupSectionTitles.length > 0 ? (
+        <div className="border-t border-border/60 px-3.5 py-2.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {followupSectionTitles.map((title) => (
+              <span
+                key={title}
+                className={cn(
+                  "rounded-full border px-2.5 py-1 text-[10px] font-medium",
+                  isManualAnswer
+                    ? "border-sky-500/20 bg-background text-sky-700 dark:text-sky-300"
+                    : "border-primary/15 bg-background text-muted-foreground",
+                )}
+              >
+                다음: {title}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function LowConfidenceCard({
   confidence,
   originalQuery,
   onEditQuestion,
   isManualAnswer = false,
+  className,
 }: {
   confidence?: number | null
   originalQuery?: string
   onEditQuestion?: (query: string) => void
   isManualAnswer?: boolean
+  className?: string
 }) {
-  const prompts = buildClarificationPrompts(originalQuery, isManualAnswer)
-  const promptLabels = [
-    "제품명 + 메뉴 경로",
-    "오류 문구 원문",
-    "화면 + 직전 동작",
-    "원하는 결과 설명",
-  ]
+  const suggestions = buildClarificationSuggestions(originalQuery, isManualAnswer)
 
   return (
-    <div className="mb-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-3">
+    <div className={cn("mb-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-3", className)}>
       <div className="flex items-start gap-2">
         <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
         <div className="min-w-0 flex-1">
@@ -575,15 +697,16 @@ function LowConfidenceCard({
               : "현재 응답은 참고 수준일 수 있습니다. 제품명, 메뉴 경로, 오류 문구가 있으면 훨씬 정확해집니다."}
           </p>
           {onEditQuestion ? (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {prompts.map((prompt, index) => (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {suggestions.map((suggestion, index) => (
                 <button
-                  key={`${prompt}-${index}`}
+                  key={`${suggestion.label}-${index}`}
                   type="button"
-                  onClick={() => onEditQuestion(prompt)}
-                  className="rounded-full border border-amber-500/20 bg-background px-3 py-1.5 text-[11px] font-medium text-amber-700 transition-colors hover:bg-amber-500/10 dark:text-amber-300"
+                  onClick={() => onEditQuestion(suggestion.prompt)}
+                  className="rounded-2xl border border-amber-500/20 bg-background px-3 py-2 text-left transition-colors hover:bg-amber-500/10"
                 >
-                  {promptLabels[index] ?? `질문 보강 ${index + 1}`}
+                  <div className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">{suggestion.label}</div>
+                  <div className="mt-1 text-[10px] leading-4 text-muted-foreground">{suggestion.helper}</div>
                 </button>
               ))}
             </div>
@@ -597,9 +720,11 @@ function LowConfidenceCard({
 function ManualSelectionReasonCard({
   originalQuery,
   candidate,
+  className,
 }: {
   originalQuery?: string
   candidate: ManualCandidateCard
+  className?: string
 }) {
   const queryKeywords = extractQueryKeywords(originalQuery)
   const searchableText = [
@@ -625,7 +750,7 @@ function ManualSelectionReasonCard({
   if (reasons.length === 0 && matchedKeywords.length === 0) return null
 
   return (
-    <div className="mb-3 rounded-2xl border border-sky-500/15 bg-sky-500/5 px-3 py-3">
+    <div className={cn("mb-3 rounded-2xl border border-sky-500/15 bg-sky-500/5 px-3 py-3", className)}>
       <div className="flex items-start gap-2">
         <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-sky-600 dark:text-sky-300" />
         <div className="min-w-0 flex-1">
@@ -653,9 +778,9 @@ function ManualSelectionReasonCard({
   )
 }
 
-function ManualAnswerHero({ candidate }: { candidate: ManualCandidateCard }) {
+function ManualAnswerHero({ candidate, className }: { candidate: ManualCandidateCard; className?: string }) {
   return (
-    <div className="mb-3 rounded-2xl border border-sky-500/20 bg-sky-500/6 p-3">
+    <div className={cn("mb-3 rounded-2xl border border-sky-500/20 bg-sky-500/6 p-3", className)}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="mb-1 flex flex-wrap items-center gap-1.5">
@@ -687,6 +812,46 @@ function ManualAnswerHero({ candidate }: { candidate: ManualCandidateCard }) {
             <ExternalLink className="h-3.5 w-3.5" />
           </a>
         ) : null}
+      </div>
+    </div>
+  )
+}
+
+function ManualAnswerPanel({
+  message,
+  originalQuery,
+  content,
+  primaryManualCandidate,
+}: {
+  message: Message
+  originalQuery?: string
+  content: string
+  primaryManualCandidate: ManualCandidateCard
+}) {
+  return (
+    <div className="mb-3 overflow-hidden rounded-[1.4rem] border border-sky-500/20 bg-gradient-to-br from-sky-500/10 via-background to-cyan-500/5">
+      <div className="border-b border-sky-500/15 px-3.5 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/12 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-700 dark:text-sky-300">
+            <BookOpen className="h-3 w-3" />
+            매뉴얼 답변
+          </span>
+          <span className="text-[11px] text-muted-foreground">문서 근거를 중심으로 절차를 안내합니다.</span>
+        </div>
+      </div>
+      <div className="px-3.5 py-3">
+        <AnswerOverviewCard message={message} content={content} isManualAnswer />
+        <div className="grid gap-3 lg:grid-cols-2">
+          <ManualAnswerHero candidate={primaryManualCandidate} className="mb-0 h-full" />
+          <ManualSelectionReasonCard
+            originalQuery={originalQuery}
+            candidate={primaryManualCandidate}
+            className="mb-0 h-full"
+          />
+        </div>
+        <div className="mt-3">
+          <StructuredAnswerSections content={content} />
+        </div>
       </div>
     </div>
   )
@@ -1229,11 +1394,19 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
                   isManualAnswer={isManualAnswer}
                 />
               ) : null}
-              {primaryManualCandidate ? <ManualAnswerHero candidate={primaryManualCandidate} /> : null}
               {primaryManualCandidate ? (
-                <ManualSelectionReasonCard originalQuery={originalQuery} candidate={primaryManualCandidate} />
-              ) : null}
-              <StructuredAnswerSections content={contentToDisplay} />
+                <ManualAnswerPanel
+                  message={message}
+                  originalQuery={originalQuery}
+                  content={contentToDisplay}
+                  primaryManualCandidate={primaryManualCandidate}
+                />
+              ) : (
+                <>
+                  <AnswerOverviewCard message={message} content={contentToDisplay} />
+                  <StructuredAnswerSections content={contentToDisplay} />
+                </>
+              )}
             </>
           )}
 
