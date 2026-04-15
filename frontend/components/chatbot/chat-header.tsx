@@ -120,11 +120,19 @@ function ExportSection({
   }
 
   const iconToneClass = (tone?: ExportMenuItem["tone"]) => {
-    if (tone === "blue") return "bg-blue-600 text-white shadow-sm"
-    if (tone === "emerald") return "bg-emerald-600 text-white shadow-sm"
-    if (tone === "violet") return "bg-violet-600 text-white shadow-sm"
-    if (tone === "amber") return "bg-amber-500 text-white shadow-sm"
-    return "bg-muted text-muted-foreground"
+    if (tone === "blue") return "border border-blue-200 bg-white shadow-sm shadow-blue-200/80"
+    if (tone === "emerald") return "border border-emerald-200 bg-white shadow-sm shadow-emerald-200/80"
+    if (tone === "violet") return "border border-violet-200 bg-white shadow-sm shadow-violet-200/80"
+    if (tone === "amber") return "border border-amber-200 bg-white shadow-sm shadow-amber-200/80"
+    return "border border-border bg-background text-muted-foreground"
+  }
+
+  const iconGlyphToneClass = (tone?: ExportMenuItem["tone"]) => {
+    if (tone === "blue") return "text-blue-600"
+    if (tone === "emerald") return "text-emerald-600"
+    if (tone === "violet") return "text-violet-600"
+    if (tone === "amber") return "text-amber-600"
+    return "text-muted-foreground"
   }
 
   return (
@@ -150,7 +158,7 @@ function ExportSection({
                     variant === "pdf" ? iconToneClass(item.tone) : "bg-muted text-muted-foreground"
                   }`}
                 >
-                  <Icon className="h-[18px] w-[18px]" />
+                  <Icon className={`h-5 w-5 ${variant === "pdf" ? iconGlyphToneClass(item.tone) : "text-muted-foreground"}`} strokeWidth={2.3} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
