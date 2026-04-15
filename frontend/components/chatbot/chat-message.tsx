@@ -533,14 +533,17 @@ function StructuredAnswerSections({ content }: { content: string }) {
   }
 
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-2">
       {sections.map((section, index) => {
         const tone = getSectionTone(section.title)
         const Icon = tone.icon
         const isExpanded = expandedTitles.has(section.title)
 
         return (
-          <section key={`${section.title}-${index}`} className={cn("rounded-2xl border px-3 py-3", tone.cardClassName)}>
+          <section
+            key={`${section.title}-${index}`}
+            className={cn("rounded-2xl border px-3.5 py-3 shadow-sm", tone.cardClassName)}
+          >
             <button
               type="button"
               onClick={() => toggleSection(section.title)}
@@ -562,11 +565,11 @@ function StructuredAnswerSections({ content }: { content: string }) {
               )}
             </button>
             {isExpanded ? (
-              <div className="mt-2 text-sm leading-relaxed">
+              <div className="mt-2.5 text-sm leading-relaxed">
                 <BotMessageContent content={section.body} />
               </div>
             ) : (
-              <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+              <p className="mt-2.5 line-clamp-2 text-xs text-muted-foreground">
                 {section.body.replace(/\s+/g, " ").trim()}
               </p>
             )}
@@ -595,24 +598,17 @@ function AnswerOverviewCard({
   const sections = parseStructuredAnswerSections(content)
   const primarySection = sections[0]
   const summaryText = summarizeText(primarySection?.body ?? content, isManualAnswer ? 140 : 120)
-  const followupSectionTitles = sections.slice(1, 4).map((section) => section.title)
-  const sourceLabel = getAnswerSourceLabel(message.answerSource)
-  const retrievalLabel = getRetrievalModeLabel(message.retrievalMode)
-  const confidenceLabel =
-    typeof message.confidence === "number" && Number.isFinite(message.confidence)
-      ? `${Math.round(message.confidence * 100)}%`
-      : "정보 없음"
 
   return (
     <div
       className={cn(
-        "mb-3 overflow-hidden rounded-2xl border",
+        "mb-3 overflow-hidden rounded-[1.35rem] border shadow-[0_14px_34px_rgba(15,23,42,0.06)]",
         isManualAnswer
-          ? "border-sky-500/20 bg-gradient-to-br from-sky-500/8 via-background to-cyan-500/5"
-          : "border-primary/15 bg-gradient-to-br from-primary/8 via-background to-background",
+          ? "border-sky-500/25 bg-gradient-to-br from-sky-500/12 via-background to-cyan-500/8"
+          : "border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background",
       )}
     >
-      <div className="border-b border-border/60 px-3.5 py-3">
+      <div className="border-b border-border/60 px-4 py-3.5">
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={cn(
@@ -627,43 +623,13 @@ function AnswerOverviewCard({
             <span className="text-[11px] font-medium text-muted-foreground">{primarySection.title}</span>
           ) : null}
         </div>
-        <p className="mt-2 text-sm font-medium leading-6 text-foreground">{summaryText}</p>
+        <p className="mt-2.5 text-base font-semibold leading-7 text-foreground">{summaryText}</p>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          {isManualAnswer
+            ? "필요하면 아래 절차와 화면 미리보기까지 이어서 확인해 주세요."
+            : "아래에서 적용 방법과 확인 포인트만 이어서 보면 됩니다."}
+        </p>
       </div>
-
-      <div className="grid gap-2 px-3.5 py-3 md:grid-cols-3">
-        <div className="rounded-xl border border-border/70 bg-background/80 px-3 py-2">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">답변 방식</div>
-          <div className="mt-1 text-sm font-semibold text-foreground">{sourceLabel ?? "기본 답변"}</div>
-        </div>
-        <div className="rounded-xl border border-border/70 bg-background/80 px-3 py-2">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">검색 경로</div>
-          <div className="mt-1 text-sm font-semibold text-foreground">{retrievalLabel ?? "일반 응답"}</div>
-        </div>
-        <div className="rounded-xl border border-border/70 bg-background/80 px-3 py-2">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">신뢰도</div>
-          <div className="mt-1 text-sm font-semibold text-foreground">{confidenceLabel}</div>
-        </div>
-      </div>
-
-      {followupSectionTitles.length > 0 ? (
-        <div className="border-t border-border/60 px-3.5 py-2.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {followupSectionTitles.map((title) => (
-              <span
-                key={title}
-                className={cn(
-                  "rounded-full border px-2.5 py-1 text-[10px] font-medium",
-                  isManualAnswer
-                    ? "border-sky-500/20 bg-background text-sky-700 dark:text-sky-300"
-                    : "border-primary/15 bg-background text-muted-foreground",
-                )}
-              >
-                다음: {title}
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
     </div>
   )
 }
@@ -682,36 +648,37 @@ function LowConfidenceCard({
   className?: string
 }) {
   const suggestions = buildClarificationSuggestions(originalQuery, isManualAnswer)
+  const leadSuggestion = suggestions[0]
 
   return (
-    <div className={cn("mb-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-3", className)}>
-      <div className="flex items-start gap-2">
-        <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+    <div
+      className={cn(
+        "mb-3 rounded-[1.25rem] border border-amber-500/20 bg-gradient-to-r from-amber-500/12 via-background to-amber-500/5 px-3.5 py-3 shadow-sm",
+        className,
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <Info className="h-4 w-4 shrink-0 text-amber-500" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-            답변 정확도를 높이려면 질문을 조금 더 구체화해 주세요.
+            답변 정확도를 높이려면 질문을 한 줄만 더 보강해 주세요.
           </p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             {typeof confidence === "number"
-              ? `현재 응답은 참고 수준입니다. 신뢰도는 약 ${Math.round(confidence * 100)}%입니다.`
-              : "현재 응답은 참고 수준일 수 있습니다. 제품명, 메뉴 경로, 오류 문구가 있으면 훨씬 정확해집니다."}
+              ? `현재 응답은 참고용입니다. 신뢰도는 약 ${Math.round(confidence * 100)}%입니다.`
+              : "제품명, 메뉴 경로, 오류 문구 중 하나만 더 있으면 훨씬 정확해집니다."}
           </p>
-          {onEditQuestion ? (
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {suggestions.map((suggestion, index) => (
-                <button
-                  key={`${suggestion.label}-${index}`}
-                  type="button"
-                  onClick={() => onEditQuestion(suggestion.prompt)}
-                  className="rounded-2xl border border-amber-500/20 bg-background px-3 py-2 text-left transition-colors hover:bg-amber-500/10"
-                >
-                  <div className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">{suggestion.label}</div>
-                  <div className="mt-1 text-[10px] leading-4 text-muted-foreground">{suggestion.helper}</div>
-                </button>
-              ))}
-            </div>
-          ) : null}
         </div>
+        {onEditQuestion && leadSuggestion ? (
+          <button
+            type="button"
+            onClick={() => onEditQuestion(leadSuggestion.prompt)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-amber-500/25 bg-amber-500/12 px-3 py-1.5 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-500/18 dark:text-amber-300"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            질문 보강하기
+          </button>
+        ) : null}
       </div>
     </div>
   )
@@ -750,7 +717,12 @@ function ManualSelectionReasonCard({
   if (reasons.length === 0 && matchedKeywords.length === 0) return null
 
   return (
-    <div className={cn("mb-3 rounded-2xl border border-sky-500/15 bg-sky-500/5 px-3 py-3", className)}>
+    <div
+      className={cn(
+        "mb-3 rounded-[1.3rem] border border-sky-500/18 bg-gradient-to-br from-sky-500/8 via-background to-cyan-500/5 px-3.5 py-3.5 shadow-sm",
+        className,
+      )}
+    >
       <div className="flex items-start gap-2">
         <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-sky-600 dark:text-sky-300" />
         <div className="min-w-0 flex-1">
@@ -780,7 +752,12 @@ function ManualSelectionReasonCard({
 
 function ManualAnswerHero({ candidate, className }: { candidate: ManualCandidateCard; className?: string }) {
   return (
-    <div className={cn("mb-3 rounded-2xl border border-sky-500/20 bg-sky-500/6 p-3", className)}>
+    <div
+      className={cn(
+        "mb-3 rounded-[1.3rem] border border-sky-500/22 bg-gradient-to-br from-sky-500/10 via-background to-cyan-500/6 p-3.5 shadow-sm",
+        className,
+      )}
+    >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="mb-1 flex flex-wrap items-center gap-1.5">
@@ -828,9 +805,11 @@ function ManualAnswerPanel({
   content: string
   primaryManualCandidate: ManualCandidateCard
 }) {
+  const previewCandidates = (message.manualCandidates ?? []).filter((candidate) => Boolean(candidate.previewImageUrl))
+
   return (
-    <div className="mb-3 overflow-hidden rounded-[1.4rem] border border-sky-500/20 bg-gradient-to-br from-sky-500/10 via-background to-cyan-500/5">
-      <div className="border-b border-sky-500/15 px-3.5 py-3">
+    <div className="mb-3 overflow-hidden rounded-[1.45rem] border border-sky-500/20 bg-gradient-to-br from-sky-500/10 via-background to-cyan-500/5 shadow-[0_16px_40px_rgba(14,165,233,0.08)]">
+      <div className="border-b border-sky-500/15 px-4 py-3.5">
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/12 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-700 dark:text-sky-300">
             <BookOpen className="h-3 w-3" />
@@ -839,7 +818,7 @@ function ManualAnswerPanel({
           <span className="text-[11px] text-muted-foreground">문서 근거를 중심으로 절차를 안내합니다.</span>
         </div>
       </div>
-      <div className="px-3.5 py-3">
+      <div className="px-4 py-3.5">
         <AnswerOverviewCard message={message} content={content} isManualAnswer />
         <div className="grid gap-3 lg:grid-cols-2">
           <ManualAnswerHero candidate={primaryManualCandidate} className="mb-0 h-full" />
@@ -848,6 +827,36 @@ function ManualAnswerPanel({
             candidate={primaryManualCandidate}
             className="mb-0 h-full"
           />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[1.2rem] border border-sky-500/15 bg-background/80 px-3 py-2.5">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-700 dark:text-sky-300">
+            바로 확인
+          </span>
+          {primaryManualCandidate.linkUrl ? (
+            <a
+              href={primaryManualCandidate.linkUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 rounded-full bg-sky-600 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-sky-500"
+            >
+              원문 매뉴얼 열기
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          ) : null}
+          {previewCandidates.length > 0 ? (
+            <ManualPreviewDialog candidates={previewCandidates}>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-full border border-sky-500/20 bg-sky-500/10 px-3 py-1.5 text-[11px] font-medium text-sky-700 transition-colors hover:bg-sky-500/15 dark:text-sky-300"
+              >
+                화면 크게 보기
+                <Maximize2 className="h-3.5 w-3.5" />
+              </button>
+            </ManualPreviewDialog>
+          ) : null}
+          <span className="text-[11px] text-muted-foreground">
+            문서 열기 또는 화면 미리보기로 바로 다음 행동을 이어갈 수 있습니다.
+          </span>
         </div>
         <div className="mt-3">
           <StructuredAnswerSections content={content} />
@@ -1341,7 +1350,7 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
                 ? "rounded-tl-sm border border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300"
                 : isNoMatch
                   ? "rounded-tl-sm border border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
-                  : "rounded-tl-sm border border-border bg-card text-card-foreground",
+                : "rounded-tl-sm border border-border/80 bg-card text-card-foreground shadow-[0_12px_30px_rgba(15,23,42,0.06)]",
           )}
         >
           {!isUser && message.title ? (
@@ -1381,11 +1390,6 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
             <p className="whitespace-pre-wrap break-words">{contentToDisplay}</p>
           ) : (
             <>
-              <AnswerMetaPills
-                answerSource={message.answerSource}
-                retrievalMode={message.retrievalMode}
-                confidence={message.confidence}
-              />
               {shouldShowLowConfidenceGuide ? (
                 <LowConfidenceCard
                   confidence={message.confidence}
