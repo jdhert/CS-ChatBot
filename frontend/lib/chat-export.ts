@@ -9,49 +9,55 @@ export interface ChatExportRequest {
 }
 
 const FORMAT_LABEL: Record<ChatExportFormat, string> = {
-  txt: "텍스트",
+  txt: "\uD14D\uC2A4\uD2B8",
   md: "Markdown",
-  pdf: "PDF 인쇄",
+  pdf: "PDF \uC778\uC1C4",
 }
 
 const TEMPLATE_LABEL: Record<ChatExportTemplate, string> = {
-  user: "사용자용",
-  operator: "운영자용",
-  report: "보고용",
+  user: "\uC0AC\uC6A9\uC790\uC6A9",
+  operator: "\uC6B4\uC601\uC790\uC6A9",
+  report: "\uBCF4\uACE0\uC6A9",
 }
 
 const TEMPLATE_DESCRIPTION: Record<ChatExportTemplate, string> = {
-  user: "질문과 답변 중심",
-  operator: "출처와 진단 정보 포함",
-  report: "공유용 요약 포맷",
+  user: "\uC9C8\uBB38\uACFC \uB2F5\uBCC0 \uC911\uC2EC",
+  operator: "\uCD9C\uCC98\uC640 \uC9C4\uB2E8 \uC815\uBCF4 \uD3EC\uD568",
+  report: "\uACF5\uC720\uC6A9 \uC694\uC57D \uD3EC\uB9F7",
+}
+
+const TEMPLATE_HEADLINE: Record<ChatExportTemplate, string> = {
+  user: "\uC9C8\uBB38\uACFC \uC548\uB0B4\uB97C \uBC14\uB85C \uD655\uC778\uD560 \uC218 \uC788\uB294 \uC0C1\uB2F4 \uACB0\uACFC\uC9C0 \uD615\uC2DD\uC785\uB2C8\uB2E4.",
+  operator: "\uAC80\uC0C9 \uACBD\uB85C\uC640 \uADFC\uAC70\uB97C \uD568\uAED8 \uAC80\uD1A0\uD560 \uC218 \uC788\uB294 \uC6B4\uC601 \uC9C4\uB2E8 \uB9AC\uD3EC\uD2B8\uC785\uB2C8\uB2E4.",
+  report: "\uACF5\uC720\uC640 \uBCF4\uACE0\uC5D0 \uB9DE\uCD98 \uBE0C\uB9AC\uD551 \uBB38\uC11C \uD615\uC2DD\uC785\uB2C8\uB2E4.",
 }
 
 const ANSWER_SOURCE_LABEL: Record<string, string> = {
-  llm: "LLM 답변",
-  deterministic_fallback: "이력 기반 답변",
-  rule_only: "규칙 기반 답변",
-  manual: "매뉴얼 답변",
-  clarification: "추가 정보 필요",
-  no_match: "유사 이력 없음",
-  proxy_error: "연결 오류",
+  llm: "LLM \uB2F5\uBCC0",
+  deterministic_fallback: "\uC774\uB825 \uAE30\uBC18 \uB2F5\uBCC0",
+  rule_only: "\uADDC\uCE59 \uAE30\uBC18 \uB2F5\uBCC0",
+  manual: "\uB9E4\uB274\uC5BC \uB2F5\uBCC0",
+  clarification: "\uCD94\uAC00 \uC815\uBCF4 \uD544\uC694",
+  no_match: "\uC720\uC0AC \uC774\uB825 \uC5C6\uC74C",
+  proxy_error: "\uC5F0\uACB0 \uC624\uB958",
 }
 
 const RETRIEVAL_MODE_LABEL: Record<string, string> = {
-  hybrid: "하이브리드 검색",
-  rule_only: "규칙 검색",
-  manual: "매뉴얼 검색",
+  hybrid: "\uD558\uC774\uBE0C\uB9AC\uB4DC \uAC80\uC0C9",
+  rule_only: "\uADDC\uCE59 \uAC80\uC0C9",
+  manual: "\uB9E4\uB274\uC5BC \uAC80\uC0C9",
 }
 
 const STRUCTURED_SECTION_TITLES = [
-  "핵심 답변",
-  "핵심 안내",
-  "적용 방법",
-  "진행 방법",
-  "확인 포인트",
-  "체크 포인트",
-  "참고 링크",
-  "참고 사항",
-  "주요 내용",
+  "\uD575\uC2EC \uB2F5\uBCC0",
+  "\uD575\uC2EC \uC548\uB0B4",
+  "\uC801\uC6A9 \uBC29\uBC95",
+  "\uC9C4\uD589 \uBC29\uBC95",
+  "\uD655\uC778 \uD3EC\uC778\uD2B8",
+  "\uCCB4\uD06C \uD3EC\uC778\uD2B8",
+  "\uCC38\uACE0 \uB9C1\uD06C",
+  "\uCC38\uACE0 \uC0AC\uD56D",
+  "\uC8FC\uC694 \uB0B4\uC6A9",
 ] as const
 
 interface ParsedAnswerSection {
@@ -63,6 +69,13 @@ interface ExportContext {
   template: ChatExportTemplate
   exportedAt: string
   conversationTitle: string
+}
+
+interface ExportStats {
+  totalMessages: number
+  userMessages: number
+  botMessages: number
+  manualReferences: number
 }
 
 function normalizeChatExportRequest(request: ChatExportFormat | ChatExportRequest = "txt"): Required<ChatExportRequest> {
@@ -90,10 +103,17 @@ function formatMessageDateTime(timestamp: Date | string): string {
   return ts.toLocaleString("ko-KR")
 }
 
-function formatSender(message: Message): string {
-  return message.sender === "user" ? "사용자" : message.title ?? "AI Core"
-}
+function formatSender(message: Message, template?: ChatExportTemplate): string {
+  if (message.sender === "user") {
+    return template === "report" ? "\uC9C8\uC758" : "\uC0AC\uC6A9\uC790"
+  }
 
+  if (template === "report") {
+    return message.title ?? "\uAC80\uD1A0 \uACB0\uACFC"
+  }
+
+  return message.title ?? "AI Core"
+}
 function createFileStem(): string {
   const date = new Date().toISOString().slice(0, 10)
   return `chat_export_${date}`
@@ -128,7 +148,7 @@ function trimConversationTitle(value: string): string {
 
 function getConversationTitle(messages: Message[]): string {
   const firstUserMessage = messages.find((message) => message.sender === "user" && message.content.trim().length > 0)
-  if (!firstUserMessage) return "코비전 CS AI Core 대화"
+  if (!firstUserMessage) return "\uCF54\uBE44\uC804 CS AI Core \uB300\uD654"
   return trimConversationTitle(firstUserMessage.content)
 }
 
@@ -173,7 +193,7 @@ function parseStructuredAnswerSections(content: string): ParsedAnswerSection[] {
       if (rest.startsWith(candidateTitle)) {
         const inlineBody = rest
           .slice(candidateTitle.length)
-          .replace(/^[:：\-]\s*/, "")
+          .replace(/^[:\uFF1A\-]\s*/, "")
           .trim()
         return {
           title: candidateTitle,
@@ -201,7 +221,7 @@ function parseStructuredAnswerSections(content: string): ParsedAnswerSection[] {
     }
 
     if (!currentTitle) {
-      currentTitle = "핵심 안내"
+      currentTitle = "\uD575\uC2EC \uC548\uB0B4"
     }
     currentBody.push(line)
   }
@@ -221,10 +241,10 @@ function collectMessageMeta(message: Message, template: ChatExportTemplate): str
   const retrievalMode = getRetrievalModeLabel(message.retrievalMode)
   const confidence = formatConfidence(message.confidence)
 
-  if (answerSource) meta.push(`답변 출처: ${answerSource}`)
-  if (retrievalMode) meta.push(`검색 방식: ${retrievalMode}`)
-  if (confidence) meta.push(`신뢰도: ${confidence}`)
-  if (template === "operator" && message.logId) meta.push(`로그 ID: ${message.logId}`)
+  if (answerSource) meta.push(`\uB2F5\uBCC0 \uCD9C\uCC98: ${answerSource}`)
+  if (retrievalMode) meta.push(`\uAC80\uC0C9 \uBC29\uC2DD: ${retrievalMode}`)
+  if (confidence) meta.push(`\uC2E0\uB8B0\uB3C4: ${confidence}`)
+  if (template === "operator" && message.logId) meta.push(`\uB85C\uADF8 ID: ${message.logId}`)
 
   return meta
 }
@@ -272,29 +292,29 @@ function renderStructuredSectionsAsPlainText(content: string): string[] {
 
 function buildPlainText(messages: Message[], context: ExportContext): string {
   const lines: string[] = [
-    "=== 코비전 CS AI Core 대화 내보내기 ===",
-    `대화 제목: ${context.conversationTitle}`,
-    `템플릿: ${getChatExportTemplateLabel(context.template)} (${TEMPLATE_DESCRIPTION[context.template]})`,
-    `내보낸 시각: ${context.exportedAt}`,
-    `메시지 수: ${messages.length}`,
+    "=== \uCF54\uBE44\uC804 CS AI Core \uB300\uD654 \uB0B4\uBCF4\uB0B4\uAE30 ===",
+    `\uB300\uD654 \uC81C\uBAA9: ${context.conversationTitle}`,
+    `\uD15C\uD50C\uB9BF: ${getChatExportTemplateLabel(context.template)} (${TEMPLATE_DESCRIPTION[context.template]})`,
+    `\uB0B4\uBCF4\uB0B8 \uC2DC\uAC01: ${context.exportedAt}`,
+    `\uBA54\uC2DC\uC9C0 \uC218: ${messages.length}`,
     "",
   ]
 
   for (const message of messages) {
-    lines.push(`[${formatMessageTime(message.timestamp)}] ${formatSender(message)}`)
+    lines.push(`[${formatMessageTime(message.timestamp)}] ${formatSender(message, context.template)}`)
     lines.push(...renderStructuredSectionsAsPlainText(message.content))
 
     const meta = collectMessageMeta(message, context.template)
     if (meta.length > 0) {
       lines.push("")
-      lines.push("출처 정보")
+      lines.push("\uCD9C\uCC98 \uC815\uBCF4")
       lines.push(...meta.map((item) => `- ${item}`))
     }
 
     const manualLines = collectManualSourceLines(message.manualCandidates, context.template)
     if (manualLines.length > 0) {
       lines.push("")
-      lines.push("매뉴얼 참고")
+      lines.push("\uB9E4\uB274\uC5BC \uCC38\uACE0")
       lines.push(...manualLines.map((item) => `- ${item}`))
     }
 
@@ -302,14 +322,14 @@ function buildPlainText(messages: Message[], context: ExportContext): string {
       const candidateLines = collectTopCandidateLines(message.top3Candidates)
       if (candidateLines.length > 0) {
         lines.push("")
-        lines.push("상위 후보")
+        lines.push("\uC0C1\uC704 \uD6C4\uBCF4")
         lines.push(...candidateLines.map((item) => `- ${item}`))
       }
     }
 
     if (message.linkUrl) {
       lines.push("")
-      lines.push(`참고 링크: ${absoluteUrl(message.linkUrl) ?? message.linkUrl}`)
+      lines.push(`\uCC38\uACE0 \uB9C1\uD06C: ${absoluteUrl(message.linkUrl) ?? message.linkUrl}`)
     }
 
     lines.push("")
@@ -320,17 +340,17 @@ function buildPlainText(messages: Message[], context: ExportContext): string {
 
 function buildMarkdown(messages: Message[], context: ExportContext): string {
   const lines: string[] = [
-    "# 코비전 CS AI Core 대화 내보내기",
+    "# \uCF54\uBE44\uC804 CS AI Core \uB300\uD654 \uB0B4\uBCF4\uB0B4\uAE30",
     "",
-    `- 대화 제목: ${context.conversationTitle}`,
-    `- 템플릿: ${getChatExportTemplateLabel(context.template)} (${TEMPLATE_DESCRIPTION[context.template]})`,
-    `- 내보낸 시각: ${context.exportedAt}`,
-    `- 메시지 수: ${messages.length}`,
+    `- \uB300\uD654 \uC81C\uBAA9: ${context.conversationTitle}`,
+    `- \uD15C\uD50C\uB9BF: ${getChatExportTemplateLabel(context.template)} (${TEMPLATE_DESCRIPTION[context.template]})`,
+    `- \uB0B4\uBCF4\uB0B8 \uC2DC\uAC01: ${context.exportedAt}`,
+    `- \uBA54\uC2DC\uC9C0 \uC218: ${messages.length}`,
     "",
   ]
 
   for (const message of messages) {
-    lines.push(`## [${formatMessageTime(message.timestamp)}] ${formatSender(message)}`)
+    lines.push(`## [${formatMessageTime(message.timestamp)}] ${formatSender(message, context.template)}`)
     lines.push("")
 
     const sections = parseStructuredAnswerSections(message.content)
@@ -348,7 +368,7 @@ function buildMarkdown(messages: Message[], context: ExportContext): string {
 
     const meta = collectMessageMeta(message, context.template)
     if (meta.length > 0) {
-      lines.push("### 출처 정보")
+      lines.push("### \uCD9C\uCC98 \uC815\uBCF4")
       lines.push("")
       lines.push(...meta.map((item) => `- ${item}`))
       lines.push("")
@@ -356,7 +376,7 @@ function buildMarkdown(messages: Message[], context: ExportContext): string {
 
     const manualLines = collectManualSourceLines(message.manualCandidates, context.template)
     if (manualLines.length > 0) {
-      lines.push("### 매뉴얼 참고")
+      lines.push("### \uB9E4\uB274\uC5BC \uCC38\uACE0")
       lines.push("")
       lines.push(...manualLines.map((item) => `- ${item}`))
       lines.push("")
@@ -365,7 +385,7 @@ function buildMarkdown(messages: Message[], context: ExportContext): string {
     if (context.template === "operator") {
       const candidateLines = collectTopCandidateLines(message.top3Candidates)
       if (candidateLines.length > 0) {
-        lines.push("### 상위 후보")
+        lines.push("### \uC0C1\uC704 \uD6C4\uBCF4")
         lines.push("")
         lines.push(...candidateLines.map((item) => `- ${item}`))
         lines.push("")
@@ -373,7 +393,7 @@ function buildMarkdown(messages: Message[], context: ExportContext): string {
     }
 
     if (message.linkUrl) {
-      lines.push(`- 참고 링크: ${absoluteUrl(message.linkUrl) ?? message.linkUrl}`)
+      lines.push(`- \uCC38\uACE0 \uB9C1\uD06C: ${absoluteUrl(message.linkUrl) ?? message.linkUrl}`)
       lines.push("")
     }
   }
@@ -406,10 +426,10 @@ function renderManualSources(message: Message, template: ChatExportTemplate): st
             ${candidate.sectionTitle ? `<span>${escapeHtml(candidate.sectionTitle)}</span>` : ""}
             ${typeof candidate.previewPageNumber === "number" ? `<span>p.${candidate.previewPageNumber}</span>` : ""}
             ${template === "operator" ? `<span>score ${Math.round(candidate.score * 100)}%</span>` : ""}
-            ${link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noreferrer">원문 링크</a>` : ""}
+            ${link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noreferrer">\uC6D0\uBB38 \uB9C1\uD06C</a>` : ""}
           </div>
           <div class="source-preview">${escapeHtml(candidate.previewText)}</div>
-          ${previewImage ? `<img class="manual-preview" src="${escapeHtml(previewImage)}" alt="${escapeHtml(candidate.title)} 미리보기" />` : ""}
+          ${previewImage ? `<img class="manual-preview" src="${escapeHtml(previewImage)}" alt="${escapeHtml(candidate.title)} \uBBF8\uB9AC\uBCF4\uAE30" />` : ""}
         </li>
       `
     })
@@ -417,7 +437,7 @@ function renderManualSources(message: Message, template: ChatExportTemplate): st
 
   return `
     <section class="source-block">
-      <h4>매뉴얼 참고</h4>
+      <h4>\uB9E4\uB274\uC5BC \uCC38\uACE0</h4>
       <ul class="source-list">${items}</ul>
     </section>
   `
@@ -442,7 +462,7 @@ function renderTopCandidates(message: Message): string {
 
   return `
     <section class="source-block operator-only">
-      <h4>상위 후보</h4>
+      <h4>\uC0C1\uC704 \uD6C4\uBCF4</h4>
       <ul class="candidate-list">${items}</ul>
     </section>
   `
@@ -470,91 +490,370 @@ function renderMessageContentHtml(message: Message): string {
   `
 }
 
+function collectStats(messages: Message[]): ExportStats {
+  return {
+    totalMessages: messages.length,
+    userMessages: messages.filter((message) => message.sender === "user").length,
+    botMessages: messages.filter((message) => message.sender === "bot").length,
+    manualReferences: messages.reduce((sum, message) => sum + (message.manualCandidates?.length ?? 0), 0),
+  }
+}
+
+function renderTemplateHeader(context: ExportContext, stats: ExportStats): string {
+  if (context.template === "operator") {
+    return `
+      <section class="page-header operator-header">
+        <div class="eyebrow">OPERATOR DIAGNOSTIC EXPORT</div>
+        <h1>\uCF54\uBE44\uC804 CS AI Core \uC6B4\uC601 \uC9C4\uB2E8 \uB9AC\uD3EC\uD2B8</h1>
+        <p class="headline">${escapeHtml(TEMPLATE_HEADLINE[context.template])}</p>
+        <div class="summary-grid operator-grid">
+          <article class="summary-card accent-blue">
+            <span class="label">\uB300\uD654 \uC81C\uBAA9</span>
+            <strong>${escapeHtml(context.conversationTitle)}</strong>
+            <span class="helper">\uC0C1\uB2F4 \uC138\uC158 \uC2DD\uBCC4\uC6A9 \uC81C\uBAA9</span>
+          </article>
+          <article class="summary-card accent-violet">
+            <span class="label">\uBA54\uC2DC\uC9C0 \uAD6C\uC131</span>
+            <strong>${stats.userMessages} / ${stats.botMessages}</strong>
+            <span class="helper">\uC0AC\uC6A9\uC790 / AI \uC751\uB2F5</span>
+          </article>
+          <article class="summary-card accent-amber">
+            <span class="label">\uB9E4\uB274\uC5BC \uD6C4\uBCF4</span>
+            <strong>${stats.manualReferences}</strong>
+            <span class="helper">\uB2F5\uBCC0\uC5D0 \uC5F0\uACB0\uB41C \uCC38\uACE0 \uCE74\uB4DC \uC218</span>
+          </article>
+          <article class="summary-card accent-slate">
+            <span class="label">\uB0B4\uBCF4\uB0B8 \uC2DC\uAC01</span>
+            <strong>${escapeHtml(context.exportedAt)}</strong>
+            <span class="helper">\uC6B4\uC601 \uC810\uAC80\uC6A9 \uC2A4\uB0C5\uC0F7</span>
+          </article>
+        </div>
+      </section>
+    `
+  }
+
+  if (context.template === "report") {
+    return `
+      <section class="page-header report-header">
+        <div class="eyebrow">SHAREABLE BRIEF</div>
+        <h1>\uCF54\uBE44\uC804 CS AI Core \uC0C1\uB2F4 \uBE0C\uB9AC\uD551</h1>
+        <p class="headline">${escapeHtml(TEMPLATE_HEADLINE[context.template])}</p>
+        <div class="summary-strip">
+          <div><strong>\uB300\uD654 \uC81C\uBAA9</strong><span>${escapeHtml(context.conversationTitle)}</span></div>
+          <div><strong>\uC694\uC57D</strong><span>\uC9C8\uC758 ${stats.userMessages}\uAC74 / \uC751\uB2F5 ${stats.botMessages}\uAC74</span></div>
+          <div><strong>\uB0B4\uBCF4\uB0B8 \uC2DC\uAC01</strong><span>${escapeHtml(context.exportedAt)}</span></div>
+        </div>
+      </section>
+    `
+  }
+
+  return `
+    <section class="page-header user-header">
+      <div class="eyebrow">COUNSELING RESULT</div>
+      <h1>\uCF54\uBE44\uC804 CS AI Core \uC0C1\uB2F4 \uACB0\uACFC\uC9C0</h1>
+      <p class="headline">${escapeHtml(TEMPLATE_HEADLINE[context.template])}</p>
+      <div class="summary-grid user-grid">
+        <article class="summary-card large">
+          <span class="label">\uB300\uD654 \uC81C\uBAA9</span>
+          <strong>${escapeHtml(context.conversationTitle)}</strong>
+          <span class="helper">\uCC98\uC74C \uC9C8\uBB38\uC744 \uAE30\uC900\uC73C\uB85C \uC0DD\uC131\uB41C \uC81C\uBAA9\uC785\uB2C8\uB2E4.</span>
+        </article>
+        <article class="summary-card">
+          <span class="label">\uBA54\uC2DC\uC9C0 \uC218</span>
+          <strong>${stats.totalMessages}</strong>
+          <span class="helper">\uC774\uBC88 \uC0C1\uB2F4\uC5D0 \uD3EC\uD568\uB41C \uC804\uCCB4 \uBA54\uC2DC\uC9C0</span>
+        </article>
+        <article class="summary-card">
+          <span class="label">\uB0B4\uBCF4\uB0B8 \uC2DC\uAC01</span>
+          <strong>${escapeHtml(context.exportedAt)}</strong>
+          <span class="helper">PDF \uC800\uC7A5 \uAE30\uC900 \uC2DC\uAC01</span>
+        </article>
+      </div>
+    </section>
+  `
+}
+
+function renderPrintableMessage(message: Message, context: ExportContext): string {
+  const link = absoluteUrl(message.linkUrl)
+  const manualBlock = renderManualSources(message, context.template)
+  const candidateBlock = context.template === "operator" ? renderTopCandidates(message) : ""
+  const templateClass = `${context.template}-${message.sender}`
+
+  return `
+    <section class="message ${message.sender} ${templateClass}">
+      <div class="message-head">
+        <div class="identity">
+          <div class="sender">${escapeHtml(formatSender(message, context.template))}</div>
+          <div class="timestamp">${escapeHtml(formatMessageDateTime(message.timestamp))}</div>
+        </div>
+        <div class="meta-chips">${renderMetaChips(message, context.template)}</div>
+      </div>
+      ${renderMessageContentHtml(message)}
+      ${link ? `<div class="link-row"><strong>\uCC38\uACE0 \uB9C1\uD06C</strong><a href="${escapeHtml(link)}" target="_blank" rel="noreferrer">${escapeHtml(link)}</a></div>` : ""}
+      ${manualBlock}
+      ${candidateBlock}
+    </section>
+  `
+}
 function buildPrintableHtml(messages: Message[], context: ExportContext): string {
-  const items = messages
-    .map((message) => {
-      const link = absoluteUrl(message.linkUrl)
-      return `
-        <section class="message ${message.sender}">
-          <div class="message-head">
-            <div>
-              <div class="sender">${escapeHtml(formatSender(message))}</div>
-              <div class="timestamp">${escapeHtml(formatMessageDateTime(message.timestamp))}</div>
-            </div>
-            ${renderMetaChips(message, context.template)}
-          </div>
-          ${renderMessageContentHtml(message)}
-          ${link ? `<div class="link-row"><strong>참고 링크</strong><a href="${escapeHtml(link)}" target="_blank" rel="noreferrer">${escapeHtml(link)}</a></div>` : ""}
-          ${renderManualSources(message, context.template)}
-          ${context.template === "operator" ? renderTopCandidates(message) : ""}
-        </section>
-      `
-    })
-    .join("")
+  const stats = collectStats(messages)
+  const items = messages.map((message) => renderPrintableMessage(message, context)).join("")
 
   return `<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <title>${escapeHtml(context.conversationTitle)} - 코비전 CS AI Core 대화 내보내기</title>
+  <title>${escapeHtml(context.conversationTitle)} - \uCF54\uBE44\uC804 CS AI Core \uB300\uD654 \uB0B4\uBCF4\uB0B4\uAE30</title>
   <style>
-    @page { margin: 16mm; }
+    @page { margin: 14mm; }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       color: #172033;
-      background: #f8fbff;
       font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
       line-height: 1.6;
+      background: #f6f8fc;
     }
-    main { max-width: 960px; margin: 0 auto; }
+    body.template-user {
+      background: linear-gradient(180deg, #f7fbff 0%, #eef4ff 100%);
+    }
+    body.template-operator {
+      background: #f3f5f9;
+    }
+    body.template-report {
+      background: #faf9f6;
+    }
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+    }
+    .eyebrow {
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #5b6b86;
+      margin-bottom: 10px;
+    }
     .page-header {
       margin-bottom: 24px;
-      padding: 18px 20px;
-      border: 1px solid #d8e4f2;
-      border-radius: 20px;
-      background: linear-gradient(135deg, #ffffff, #eef6ff);
-    }
-    h1 {
-      margin: 0 0 10px;
-      font-size: 22px;
-      line-height: 1.3;
-    }
-    .summary {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px 16px;
-      font-size: 12px;
-      color: #475569;
-    }
-    .message {
-      margin-bottom: 16px;
-      padding: 16px 18px;
-      border: 1px solid #dbe3ef;
-      border-radius: 18px;
-      background: #ffffff;
+      padding: 22px 24px;
+      border-radius: 24px;
       page-break-inside: avoid;
     }
-    .message.user {
+    .page-header h1 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.24;
+    }
+    .headline {
+      margin: 10px 0 0;
+      font-size: 13px;
+      color: #4f5d75;
+    }
+    .user-header {
+      border: 1px solid #d7e5ff;
+      background: linear-gradient(135deg, #ffffff 0%, #edf5ff 55%, #f6f9ff 100%);
+      box-shadow: 0 18px 34px rgba(57, 110, 193, 0.08);
+    }
+    .operator-header {
+      border: 1px solid #dbe1ea;
+      background: linear-gradient(145deg, #111827 0%, #1f2937 72%);
+      color: #f8fafc;
+      box-shadow: 0 24px 48px rgba(15, 23, 42, 0.22);
+    }
+    .operator-header .eyebrow,
+    .operator-header .headline {
+      color: rgba(226, 232, 240, 0.82);
+    }
+    .report-header {
+      border: 1px solid #e5ddcf;
+      background: linear-gradient(180deg, #fffdfa 0%, #f6f0e6 100%);
+      box-shadow: 0 16px 34px rgba(102, 84, 59, 0.08);
+    }
+    .summary-grid {
+      display: grid;
+      gap: 14px;
+      margin-top: 18px;
+    }
+    .user-grid {
+      grid-template-columns: 1.5fr 1fr 1fr;
+    }
+    .operator-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .summary-card {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 112px;
+      padding: 16px 18px;
+      border-radius: 20px;
+      border: 1px solid #dbe3ef;
+      background: rgba(255, 255, 255, 0.82);
+    }
+    .summary-card.large {
+      min-height: 128px;
+    }
+    .summary-card .label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #5b6b86;
+    }
+    .summary-card strong {
+      font-size: 20px;
+      line-height: 1.35;
+    }
+    .summary-card .helper {
+      margin-top: auto;
+      font-size: 11px;
+      color: #64748b;
+    }
+    .operator-grid .summary-card {
+      min-height: 132px;
+      background: rgba(15, 23, 42, 0.28);
+      border-color: rgba(148, 163, 184, 0.2);
+    }
+    .operator-grid .summary-card .label,
+    .operator-grid .summary-card .helper {
+      color: rgba(226, 232, 240, 0.8);
+    }
+    .operator-grid .summary-card strong {
+      color: #ffffff;
+      font-size: 18px;
+    }
+    .accent-blue { box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.24); }
+    .accent-violet { box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.24); }
+    .accent-amber { box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.24); }
+    .accent-slate { box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.24); }
+    .summary-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0;
+      margin-top: 18px;
+      overflow: hidden;
+      border: 1px solid #e5ddcf;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.7);
+    }
+    .summary-strip > div {
+      padding: 14px 16px;
+      border-right: 1px solid #ece3d6;
+    }
+    .summary-strip > div:last-child {
+      border-right: none;
+    }
+    .summary-strip strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #7a6851;
+    }
+    .summary-strip span {
+      font-size: 14px;
+      color: #2b2d31;
+    }
+    .messages.report-layout {
+      display: grid;
+      gap: 14px;
+      padding-left: 18px;
+      border-left: 2px solid #ddcfba;
+    }
+    .messages.default-layout,
+    .messages.operator-layout {
+      display: grid;
+      gap: 16px;
+    }
+    .message {
+      border-radius: 22px;
+      page-break-inside: avoid;
+    }
+    .template-user-user,
+    .template-user-bot {
+      padding: 18px 20px;
+      border: 1px solid #d9e5f7;
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 12px 26px rgba(36, 79, 164, 0.08);
+    }
+    .template-user-user {
       border-color: #cfe0ff;
-      background: #eff6ff;
+      background: linear-gradient(180deg, #f3f8ff, #ffffff);
+    }
+    .template-user-bot {
+      border-left: 6px solid #60a5fa;
+    }
+    .template-operator-user,
+    .template-operator-bot {
+      padding: 16px 18px;
+      border: 1px solid #d8dee9;
+      background: #ffffff;
+      box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+    }
+    .template-operator-user {
+      background: linear-gradient(180deg, #f8fafc, #eef2f7);
+    }
+    .template-operator-bot {
+      border-top: 5px solid #2563eb;
+      background: linear-gradient(180deg, #ffffff, #f8fbff);
+    }
+    .template-report-user,
+    .template-report-bot {
+      position: relative;
+      padding: 18px 20px;
+      border: 1px solid #e8ddca;
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: 0 10px 24px rgba(94, 76, 51, 0.08);
+    }
+    .template-report-user::before,
+    .template-report-bot::before {
+      content: "";
+      position: absolute;
+      left: -28px;
+      top: 28px;
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: #caa96a;
+      box-shadow: 0 0 0 5px #faf9f6;
+    }
+    .template-report-bot::before {
+      background: #2563eb;
     }
     .message-head {
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
+      gap: 14px;
       margin-bottom: 12px;
+      align-items: flex-start;
+    }
+    .identity {
+      min-width: 0;
     }
     .sender {
       font-size: 13px;
-      font-weight: 700;
+      font-weight: 800;
       color: #1d4ed8;
     }
+    .template-report-user .sender,
+    .template-report-bot .sender {
+      color: #3a2f1e;
+    }
+    .template-report-bot .sender {
+      color: #1e40af;
+    }
     .timestamp {
+      margin-top: 2px;
       font-size: 11px;
       color: #64748b;
-      margin-top: 2px;
+    }
+    .meta-chips {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
     .chip {
       display: inline-flex;
@@ -567,6 +866,10 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       font-size: 10px;
       color: #475569;
       white-space: nowrap;
+    }
+    .template-operator-bot .chip {
+      background: #eff6ff;
+      border-color: #bfdbfe;
     }
     .content.raw,
     .answer-section-body,
@@ -581,25 +884,46 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     }
     .answer-section {
       padding: 12px 14px;
-      border: 1px solid #d8e4f2;
-      border-radius: 14px;
+      border-radius: 16px;
+      border: 1px solid #dbe3ef;
       background: #f8fbff;
+    }
+    .template-user-bot .answer-section:nth-child(1) {
+      background: linear-gradient(180deg, #eef6ff, #ffffff);
+      border-color: #bfdbfe;
+    }
+    .template-user-bot .answer-section:nth-child(2) {
+      background: linear-gradient(180deg, #f8fbff, #ffffff);
+    }
+    .template-user-bot .answer-section:nth-child(3) {
+      background: linear-gradient(180deg, #f5fbf7, #ffffff);
+      border-color: #bbf7d0;
+    }
+    .template-report-bot .answer-section {
+      background: #fffdf7;
+      border-color: #eadfce;
     }
     .answer-section-title {
       margin-bottom: 8px;
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 800;
       color: #2563eb;
+    }
+    .template-report-bot .answer-section-title {
+      color: #7c5e32;
     }
     .answer-section-body {
       font-size: 12px;
+      color: #172033;
     }
     .link-row {
       margin-top: 12px;
       font-size: 12px;
       word-break: break-all;
     }
-    .link-row strong { margin-right: 8px; }
+    .link-row strong {
+      margin-right: 8px;
+    }
     .link-row a,
     .source-body a {
       color: #1d4ed8;
@@ -607,10 +931,20 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     }
     .source-block {
       margin-top: 14px;
-      padding: 12px 14px;
-      border: 1px solid #d8e4f2;
-      border-radius: 14px;
+      padding: 14px 16px;
+      border: 1px solid #dbe3ef;
+      border-radius: 18px;
       background: #fcfdff;
+    }
+    .template-user-bot .source-block {
+      background: linear-gradient(180deg, #f6fbff, #ffffff);
+    }
+    .template-operator-bot .source-block {
+      background: #f8fafc;
+    }
+    .template-report-bot .source-block {
+      background: #fffdfa;
+      border-color: #eadfce;
     }
     .source-block h4 {
       margin: 0 0 10px;
@@ -624,7 +958,7 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     }
     .source-list li,
     .candidate-list li {
-      margin-bottom: 10px;
+      margin-bottom: 12px;
       font-size: 11px;
     }
     .source-title {
@@ -648,11 +982,18 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       display: block;
       max-width: 100%;
       max-height: 360px;
-      margin-top: 8px;
+      margin-top: 10px;
       border: 1px solid #d8e4f2;
-      border-radius: 12px;
+      border-radius: 14px;
       object-fit: contain;
       background: #ffffff;
+    }
+    .template-user-bot .manual-preview {
+      max-height: 420px;
+      box-shadow: 0 10px 26px rgba(51, 99, 173, 0.1);
+    }
+    .template-operator-bot .manual-preview {
+      max-height: 260px;
     }
     .candidate-list strong {
       display: block;
@@ -664,20 +1005,23 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       color: #475569;
       font-size: 10px;
     }
+    @media print {
+      body {
+        background: #ffffff;
+      }
+      .page-header,
+      .message {
+        box-shadow: none !important;
+      }
+    }
   </style>
 </head>
-<body>
+<body class="template-${context.template}">
   <main>
-    <section class="page-header">
-      <h1>코비전 CS AI Core 대화 내보내기</h1>
-      <div class="summary">
-        <div><strong>대화 제목</strong> ${escapeHtml(context.conversationTitle)}</div>
-        <div><strong>템플릿</strong> ${escapeHtml(getChatExportTemplateLabel(context.template))}</div>
-        <div><strong>설명</strong> ${escapeHtml(TEMPLATE_DESCRIPTION[context.template])}</div>
-        <div><strong>내보낸 시각</strong> ${escapeHtml(context.exportedAt)}</div>
-      </div>
+    ${renderTemplateHeader(context, stats)}
+    <section class="messages ${context.template === "operator" ? "operator-layout" : context.template === "report" ? "report-layout" : "default-layout"}">
+      ${items}
     </section>
-    ${items}
   </main>
   <script>
     window.addEventListener("load", () => {
@@ -702,9 +1046,9 @@ function downloadFile(content: string, fileName: string, type: string): void {
 }
 
 function openPrintWindow(content: string): void {
-  const printWindow = window.open("", "_blank", "width=1100,height=820")
+  const printWindow = window.open("", "_blank", "width=1160,height=860")
   if (!printWindow) {
-    throw new Error("브라우저에서 인쇄 창을 열지 못했습니다. 팝업 차단 설정을 확인해 주세요.")
+    throw new Error("\uBE0C\uB77C\uC6B0\uC800\uC5D0\uC11C \uC778\uC1C4 \uCC3D\uC744 \uC5F4\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uD31D\uC5C5 \uCC28\uB2E8 \uC124\uC815\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694.")
   }
 
   printWindow.document.open()
@@ -729,7 +1073,7 @@ export function exportChatMessages(messages: Message[], request: ChatExportForma
 
   if (normalized.format === "pdf") {
     openPrintWindow(buildPrintableHtml(messages, context))
-    return "인쇄 화면"
+    return "\uC778\uC1C4 \uD654\uBA74"
   }
 
   const fileName = `${fileStem}.txt`
