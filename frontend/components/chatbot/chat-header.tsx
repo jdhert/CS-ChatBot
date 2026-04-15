@@ -135,6 +135,23 @@ function ExportSection({
     return "text-muted-foreground"
   }
 
+  const cardTitleClass = (variant: "pdf" | "other") =>
+    variant === "pdf" ? "text-slate-900" : "text-foreground"
+
+  const cardBodyClass = (variant: "pdf" | "other") =>
+    variant === "pdf" ? "text-slate-600" : "text-muted-foreground"
+
+  const cardBadgeClass = (variant: "pdf" | "other") =>
+    variant === "pdf"
+      ? "border-slate-300/90 bg-white/90 text-slate-600"
+      : "border-border/80 bg-background/85 text-muted-foreground"
+
+  const cardDividerClass = (variant: "pdf" | "other") =>
+    variant === "pdf" ? "bg-slate-300/80" : "bg-border/60"
+
+  const cardHintPillClass = (variant: "pdf" | "other") =>
+    variant === "pdf" ? "bg-slate-900/5 text-slate-600" : "bg-foreground/5 text-muted-foreground"
+
   return (
     <div className="space-y-1">
       <DropdownMenuLabel className="px-3 pt-1">{title}</DropdownMenuLabel>
@@ -162,27 +179,27 @@ function ExportSection({
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1 text-sm font-semibold leading-snug text-foreground">{item.label}</div>
+                    <div className={`min-w-0 flex-1 text-sm font-semibold leading-snug ${cardTitleClass(variant)}`}>{item.label}</div>
                     <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                       {item.tagline ? (
-                        <span className="inline-flex rounded-full border border-border/70 bg-background/80 px-2 py-0.5 text-[9px] font-semibold tracking-[0.04em] text-muted-foreground">
+                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[9px] font-semibold tracking-[0.04em] ${cardBadgeClass(variant)}`}>
                           {item.tagline}
                         </span>
                       ) : null}
                       {item.badge ? (
-                        <span className="inline-flex rounded-full border border-border/80 bg-background/85 px-2 py-0.5 text-[9px] font-semibold tracking-[0.04em] text-muted-foreground">
+                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[9px] font-semibold tracking-[0.04em] ${cardBadgeClass(variant)}`}>
                           {item.badge}
                         </span>
                       ) : null}
                     </div>
                   </div>
-                  <div className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">{item.description}</div>
-                  <div className="mt-2 h-px w-full bg-border/60" />
-                  <div className="mt-2 text-[10px] leading-relaxed text-muted-foreground/90">
+                  <div className={`mt-1.5 text-[11px] leading-relaxed ${cardBodyClass(variant)}`}>{item.description}</div>
+                  <div className={`mt-2 h-px w-full ${cardDividerClass(variant)}`} />
+                  <div className={`mt-2 text-[10px] leading-relaxed ${cardBodyClass(variant)}`}>
                     {variant === "pdf" ? "PDF로 바로 저장하거나 공유할 때 적합합니다." : "복사, 편집, 문서 공유에 적합합니다."}
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    <span className="inline-flex rounded-full bg-foreground/5 px-2 py-0.5 text-[9px] font-medium text-muted-foreground">
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-medium ${cardHintPillClass(variant)}`}>
                       {variant === "pdf" ? "저장용" : "편집용"}
                     </span>
                   </div>
