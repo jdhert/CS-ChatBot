@@ -1456,6 +1456,9 @@ export function buildServer(): FastifyInstance {
   });
 
   app.get("/test/chat", async (_request, reply) => {
+    if (process.env.NODE_ENV === "production") {
+      return reply.code(404).send({ error: "NOT_FOUND" });
+    }
     return reply.type("text/html; charset=utf-8").send(renderChatTestPage());
   });
 
