@@ -100,6 +100,9 @@ interface ExportContext {
   documentNumber: string
   releaseVersion: string
   buildStamp: string | null
+  departmentName: string
+  distributionTarget: string
+  approverName: string
 }
 
 interface ExportStats {
@@ -183,6 +186,18 @@ function resolveReleaseVersion(): string {
 function resolveBuildStamp(): string | null {
   const buildTime = process.env.NEXT_PUBLIC_APP_BUILD_TIME?.trim()
   return buildTime || null
+}
+
+function resolveReportDepartment(): string {
+  return process.env.NEXT_PUBLIC_REPORT_DEPARTMENT?.trim() || "CS 운영"
+}
+
+function resolveReportDistributionTarget(): string {
+  return process.env.NEXT_PUBLIC_REPORT_DISTRIBUTION?.trim() || "내부 공유용"
+}
+
+function resolveReportApprover(): string {
+  return process.env.NEXT_PUBLIC_REPORT_APPROVER?.trim() || "AI Core 자동 생성"
 }
 
 function formatMessageTime(timestamp: Date | string): string {
@@ -651,14 +666,18 @@ function renderOperatorDiagnostics(message: Message, context: ExportContext): st
       </div>
       <dl class="diagnostic-grid">
         ${rows
-          .map(
-            ([label, value]) => `
-              <div class="diagnostic-item priority-${getDiagnosticPriority(label, value, message)}">
-                <dt>${escapeHtml(label)}</dt>
+          .map(([label, value]) => {
+            const priority = getDiagnosticPriority(label, value, message)
+            return `
+              <div class="diagnostic-item priority-${priority}">
+                <dt>
+                  <span class="diagnostic-icon">${renderDiagnosticIcon(priority)}</span>
+                  <span class="diagnostic-label">${escapeHtml(label)}</span>
+                </dt>
                 <dd>${escapeHtml(value)}</dd>
               </div>
-            `,
-          )
+            `
+          })
           .join("")}
       </dl>
     </section>
@@ -775,6 +794,54 @@ function renderTemplateHeaderVisual(template: ChatExportTemplate): string {
         </defs>
       </svg>
     </div>
+  `
+}
+
+function renderDiagnosticIcon(priority: DiagnosticPriority): string {
+  if (priority === "good") {
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5" />
+        <path d="M8.5 12.2l2.2 2.3 4.8-5.3" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    `
+  }
+
+  if (priority === "medium") {
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" fill="#FEF9C3" stroke="#CA8A04" stroke-width="1.5" />
+        <path d="M12 7v5.5" stroke="#854D0E" stroke-width="2" stroke-linecap="round" />
+        <circle cx="12" cy="16.8" r="1.2" fill="#854D0E" />
+      </svg>
+    `
+  }
+
+  if (priority === "high") {
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 4l8 14H4l8-14z" fill="#FFEDD5" stroke="#EA580C" stroke-width="1.5" />
+        <path d="M12 9v4.5" stroke="#9A3412" stroke-width="2" stroke-linecap="round" />
+        <circle cx="12" cy="16.8" r="1.2" fill="#9A3412" />
+      </svg>
+    `
+  }
+
+  if (priority === "critical") {
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" fill="#FEE2E2" stroke="#DC2626" stroke-width="1.5" />
+        <path d="M9 9l6 6M15 9l-6 6" stroke="#991B1B" stroke-width="2" stroke-linecap="round" />
+      </svg>
+    `
+  }
+
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1.5" />
+      <path d="M12 8.5v3.6" stroke="#475569" stroke-width="2" stroke-linecap="round" />
+      <circle cx="12" cy="15.8" r="1.1" fill="#475569" />
+    </svg>
   `
 }
 
@@ -935,6 +1002,9 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
               <div class="report-meta-item"><span>company</span><strong>${escapeHtml(context.companyName)}</strong></div>
               <div class="report-meta-item"><span>document no.</span><strong>${escapeHtml(context.documentNumber)}</strong></div>
               <div class="report-meta-item"><span>release</span><strong>${escapeHtml(context.releaseVersion)}</strong></div>
+              <div class="report-meta-item"><span>department</span><strong>${escapeHtml(context.departmentName)}</strong></div>
+              <div class="report-meta-item"><span>distribution</span><strong>${escapeHtml(context.distributionTarget)}</strong></div>
+              <div class="report-meta-item"><span>approver</span><strong>${escapeHtml(context.approverName)}</strong></div>
               ${context.buildStamp ? `<div class="report-meta-item"><span>build time</span><strong>${escapeHtml(context.buildStamp)}</strong></div>` : ""}
             </div>
           </div>
@@ -1313,7 +1383,7 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     }
     .report-meta-list {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 10px;
       margin-top: 14px;
     }
@@ -2043,11 +2113,30 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       border-color: rgba(148, 163, 184, 0.24);
     }
     .diagnostic-item dt {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       font-size: 10px;
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: #64748b;
+    }
+    .diagnostic-icon {
+      display: inline-flex;
+      width: 18px;
+      height: 18px;
+      flex: 0 0 18px;
+      align-items: center;
+      justify-content: center;
+    }
+    .diagnostic-icon svg {
+      display: block;
+      width: 18px;
+      height: 18px;
+    }
+    .diagnostic-label {
+      min-width: 0;
     }
     .diagnostic-item dd {
       margin: 6px 0 0;
@@ -2209,6 +2298,9 @@ export function exportChatMessages(messages: Message[], request: ChatExportForma
     documentNumber: createDocumentNumber(normalized.template, exportedAtDate),
     releaseVersion: resolveReleaseVersion(),
     buildStamp: resolveBuildStamp(),
+    departmentName: resolveReportDepartment(),
+    distributionTarget: resolveReportDistributionTarget(),
+    approverName: resolveReportApprover(),
   }
 
   if (normalized.format === "md") {

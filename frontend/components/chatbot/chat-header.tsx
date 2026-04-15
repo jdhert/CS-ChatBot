@@ -38,20 +38,28 @@ type ExportMenuItem = {
   description: string
   request: ChatExportRequest
   badge?: string
-  tone?: "blue" | "violet" | "amber" | "slate"
+  tone?: "blue" | "violet" | "amber" | "slate" | "emerald"
   icon?: LucideIcon
   tagline?: string
 }
 
 const pdfExportItems: ExportMenuItem[] = [
   {
-    label: "\uC751\uB2F5 PDF",
+    label: "\uD575\uC2EC PDF",
     description: "\uD575\uC2EC \uC548\uB0B4 1\uD398\uC774\uC9C0\uD615",
     request: { format: "pdf", template: "user", scope: "latest_exchange", compactSummary: true },
     badge: "\uCD94\uCC9C",
     tone: "blue",
     icon: MessageSquareText,
     tagline: "\uAC1C\uC778 1P",
+  },
+  {
+    label: "\uC0C1\uB2F4 PDF",
+    description: "\uC9C8\uBB38\uACFC \uB2F5\uBCC0 \uD750\uB984 \uC804\uCCB4 \uC815\uB9AC",
+    request: { format: "pdf", template: "user", scope: "all", compactSummary: false },
+    tone: "emerald",
+    icon: FileText,
+    tagline: "\uAC1C\uC778 \uC77C\uBC18",
   },
   {
     label: "\uC6B4\uC601 PDF",
@@ -105,6 +113,7 @@ function ExportSection({
 }) {
   const toneClass = (tone?: ExportMenuItem["tone"]) => {
     if (tone === "blue") return "border-blue-200/80 bg-gradient-to-br from-blue-50 via-white to-blue-100/70 shadow-[0_8px_24px_rgba(59,130,246,0.10)] dark:border-blue-500/30 dark:bg-blue-500/10"
+    if (tone === "emerald") return "border-emerald-200/80 bg-gradient-to-br from-emerald-50 via-white to-teal-100/70 shadow-[0_8px_24px_rgba(16,185,129,0.10)] dark:border-emerald-500/30 dark:bg-emerald-500/10"
     if (tone === "violet") return "border-violet-200/80 bg-gradient-to-br from-violet-50 via-white to-fuchsia-100/70 shadow-[0_8px_24px_rgba(139,92,246,0.10)] dark:border-violet-500/30 dark:bg-violet-500/10"
     if (tone === "amber") return "border-amber-200/80 bg-gradient-to-br from-amber-50 via-white to-orange-100/70 shadow-[0_8px_24px_rgba(245,158,11,0.10)] dark:border-amber-500/30 dark:bg-amber-500/10"
     return "border-border bg-muted/40"
@@ -112,6 +121,7 @@ function ExportSection({
 
   const iconToneClass = (tone?: ExportMenuItem["tone"]) => {
     if (tone === "blue") return "bg-blue-600 text-white shadow-sm"
+    if (tone === "emerald") return "bg-emerald-600 text-white shadow-sm"
     if (tone === "violet") return "bg-violet-600 text-white shadow-sm"
     if (tone === "amber") return "bg-amber-500 text-white shadow-sm"
     return "bg-muted text-muted-foreground"
@@ -125,39 +135,50 @@ function ExportSection({
         <DropdownMenuItem
           key={item.label}
           onClick={() => onExportChat(item.request)}
-          className="min-h-0 cursor-pointer rounded-2xl px-1.5 py-1.5 focus:bg-transparent data-[highlighted]:bg-transparent"
+          className="min-h-0 cursor-pointer whitespace-normal rounded-2xl px-1.5 py-1.5 focus:bg-transparent data-[highlighted]:bg-transparent"
         >
           {(() => {
             const Icon = item.icon ?? FileText
             return (
               <div
-                className={`flex w-full min-w-0 items-start gap-3 rounded-2xl border px-3 py-3 md:px-3 md:py-2.5 ${
+                className={`flex w-full min-w-0 items-start gap-3 rounded-2xl border px-3.5 py-3 ${
                   variant === "pdf" ? toneClass(item.tone) : "border-border/80 bg-background/60"
                 }`}
               >
                 <div
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                  className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
                     variant === "pdf" ? iconToneClass(item.tone) : "bg-muted text-muted-foreground"
                   }`}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="h-[18px] w-[18px]" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <div className="truncate text-sm font-medium">{item.label}</div>
-                    {variant === "pdf" && item.tagline ? (
-                      <span className="hidden rounded-full bg-background/80 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground md:inline-flex">
-                        {item.tagline}
-                      </span>
-                    ) : null}
+                  <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1 text-sm font-semibold leading-snug text-foreground">{item.label}</div>
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                      {item.tagline ? (
+                        <span className="inline-flex rounded-full border border-border/70 bg-background/80 px-2 py-0.5 text-[9px] font-semibold tracking-[0.04em] text-muted-foreground">
+                          {item.tagline}
+                        </span>
+                      ) : null}
+                      {item.badge ? (
+                        <span className="inline-flex rounded-full border border-border/80 bg-background/85 px-2 py-0.5 text-[9px] font-semibold tracking-[0.04em] text-muted-foreground">
+                          {item.badge}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="mt-0.5 text-[10px] text-muted-foreground">{item.description}</div>
+                  <div className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">{item.description}</div>
+                  <div className="mt-2 h-px w-full bg-border/60" />
+                  <div className="mt-2 text-[10px] leading-relaxed text-muted-foreground/90">
+                    {variant === "pdf" ? "PDF로 바로 저장하거나 공유할 때 적합합니다." : "복사, 편집, 문서 공유에 적합합니다."}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className="inline-flex rounded-full bg-foreground/5 px-2 py-0.5 text-[9px] font-medium text-muted-foreground">
+                      {variant === "pdf" ? "저장용" : "편집용"}
+                    </span>
+                  </div>
                 </div>
-                {item.badge ? (
-                  <span className="shrink-0 rounded-full border border-border/80 bg-background/80 px-2 py-0.5 text-[10px] uppercase text-muted-foreground">
-                    {item.badge}
-                  </span>
-                ) : null}
               </div>
             )
           })()}
@@ -171,8 +192,8 @@ function ExportMenuItems({ onExportChat }: { onExportChat: (request: ChatExportR
   return (
     <>
       <ExportSection
-        title={"PDF 3\uC885"}
-        helper={"\uBC14\uB85C \uC4F0\uB294 PDF \uC800\uC7A5 \uBC29\uC2DD"}
+        title={"PDF 4\uC885"}
+        helper={"\uC6A9\uB3C4\uC5D0 \uB9DE\uAC8C \uACE0\uB974\uB294 PDF \uC800\uC7A5 \uBC29\uC2DD"}
         items={pdfExportItems}
         onExportChat={onExportChat}
         variant="pdf"
@@ -256,7 +277,10 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
                   <Download className="h-5 w-5" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[19rem] max-w-[calc(100vw-1rem)] rounded-2xl p-1.5 md:w-72">
+              <DropdownMenuContent
+                align="end"
+                className="max-h-[min(80vh,42rem)] w-[20rem] max-w-[calc(100vw-0.75rem)] overflow-y-auto rounded-2xl p-1.5 sm:w-[21.5rem] md:w-[22rem]"
+              >
                 <ExportMenuItems onExportChat={onExportChat} />
               </DropdownMenuContent>
             </DropdownMenu>
@@ -284,7 +308,10 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
               <MoreHorizontal className="h-5 w-5" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[19rem] max-w-[calc(100vw-1rem)] rounded-2xl p-1.5 md:w-72">
+          <DropdownMenuContent
+            align="end"
+            className="max-h-[min(80vh,42rem)] w-[20rem] max-w-[calc(100vw-0.75rem)] overflow-y-auto rounded-2xl p-1.5 sm:w-[21.5rem] md:w-[22rem]"
+          >
             <DropdownMenuLabel>{"\uBE60\uB978 \uBA54\uB274"}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
