@@ -46,12 +46,12 @@ type ExportMenuItem = {
 const pdfExportItems: ExportMenuItem[] = [
   {
     label: "\uC751\uB2F5 PDF",
-    description: "\uB9C8\uC9C0\uB9C9 \uC751\uB2F5 \uC800\uC7A5",
-    request: { format: "pdf", template: "user", scope: "latest_exchange" },
+    description: "\uD575\uC2EC \uC548\uB0B4 1\uD398\uC774\uC9C0\uD615",
+    request: { format: "pdf", template: "user", scope: "latest_exchange", compactSummary: true },
     badge: "\uCD94\uCC9C",
     tone: "blue",
     icon: MessageSquareText,
-    tagline: "\uAC1C\uC778\uC6A9",
+    tagline: "\uAC1C\uC778 1P",
   },
   {
     label: "\uC6B4\uC601 PDF",

@@ -11,6 +11,7 @@ export interface ChatExportRequest {
   includeSources?: boolean
   includeDiagnostics?: boolean
   includeManualPreviews?: boolean
+  compactSummary?: boolean
 }
 
 interface NormalizedChatExportRequest {
@@ -20,6 +21,7 @@ interface NormalizedChatExportRequest {
   includeSources: boolean
   includeDiagnostics: boolean
   includeManualPreviews: boolean
+  compactSummary: boolean
 }
 
 const FORMAT_LABEL: Record<ChatExportFormat, string> = {
@@ -93,6 +95,11 @@ interface ExportContext {
   includeSources: boolean
   includeDiagnostics: boolean
   includeManualPreviews: boolean
+  compactSummary: boolean
+  companyName: string
+  documentNumber: string
+  releaseVersion: string
+  buildStamp: string | null
 }
 
 interface ExportStats {
@@ -109,6 +116,7 @@ function getDefaultExportOptions(template: ChatExportTemplate): Omit<NormalizedC
       includeSources: true,
       includeDiagnostics: true,
       includeManualPreviews: true,
+      compactSummary: false,
     }
   }
 
@@ -118,6 +126,7 @@ function getDefaultExportOptions(template: ChatExportTemplate): Omit<NormalizedC
       includeSources: true,
       includeDiagnostics: false,
       includeManualPreviews: true,
+      compactSummary: false,
     }
   }
 
@@ -126,6 +135,7 @@ function getDefaultExportOptions(template: ChatExportTemplate): Omit<NormalizedC
     includeSources: true,
     includeDiagnostics: false,
     includeManualPreviews: true,
+    compactSummary: false,
   }
 }
 
@@ -145,11 +155,34 @@ function normalizeChatExportRequest(request: ChatExportFormat | ChatExportReques
     includeSources: request.includeSources ?? defaults.includeSources,
     includeDiagnostics: request.includeDiagnostics ?? defaults.includeDiagnostics,
     includeManualPreviews: request.includeManualPreviews ?? defaults.includeManualPreviews,
+    compactSummary: request.compactSummary ?? defaults.compactSummary,
   }
 }
 
 function formatExportedAt(): string {
   return new Date().toLocaleString("ko-KR")
+}
+
+function createDocumentNumber(template: ChatExportTemplate, date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0")
+  const stamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}`
+  const prefix = template === "operator" ? "OPS" : template === "report" ? "RPT" : "USR"
+  return `COVI-${prefix}-${stamp}`
+}
+
+function resolveReleaseVersion(): string {
+  const sha = process.env.NEXT_PUBLIC_APP_COMMIT_SHA?.trim()
+  if (sha) return `commit ${sha.slice(0, 7)}`
+
+  const buildTime = process.env.NEXT_PUBLIC_APP_BUILD_TIME?.trim()
+  if (buildTime) return buildTime
+
+  return "local-preview"
+}
+
+function resolveBuildStamp(): string | null {
+  const buildTime = process.env.NEXT_PUBLIC_APP_BUILD_TIME?.trim()
+  return buildTime || null
 }
 
 function formatMessageTime(timestamp: Date | string): string {
@@ -530,6 +563,7 @@ function renderMetaChips(message: Message, context: ExportContext): string {
 
 function renderManualSources(message: Message, context: ExportContext): string {
   if (!context.includeSources) return ""
+  if (context.template === "user" && context.compactSummary) return ""
 
   const template = context.template
   const candidates = Array.isArray(message.manualCandidates)
@@ -786,7 +820,7 @@ function renderMessageContentHtml(message: Message, context: ExportContext): str
     context.template === "report"
       ? sections.slice(0, Math.min(sections.length, 3))
       : context.template === "user"
-        ? sections.slice(0, Math.min(sections.length, 4))
+        ? sections.slice(0, Math.min(sections.length, context.compactSummary ? 2 : 4))
         : sections
 
   return `
@@ -801,7 +835,13 @@ function renderMessageContentHtml(message: Message, context: ExportContext): str
           `,
         )
         .join("")}
-      ${context.template === "report" && sections.length > visibleSections.length ? `<div class="answer-overflow-note">\uB098\uBA38\uC9C0 \uC138\uBD80 \uC808\uCC28\uB294 \uC6B4\uC601\uC790\uC6A9 \uB610\uB294 \uC0AC\uC6A9\uC790\uC6A9 \uB0B4\uBCF4\uB0B4\uAE30\uC5D0\uC11C \uD655\uC778\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.</div>` : ""}
+      ${
+        context.template === "report" && sections.length > visibleSections.length
+          ? `<div class="answer-overflow-note">\uB098\uBA38\uC9C0 \uC138\uBD80 \uC808\uCC28\uB294 \uC6B4\uC601\uC790\uC6A9 \uB610\uB294 \uC0AC\uC6A9\uC790\uC6A9 \uB0B4\uBCF4\uB0B4\uAE30\uC5D0\uC11C \uD655\uC778\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.</div>`
+          : context.template === "user" && context.compactSummary && sections.length > visibleSections.length
+            ? `<div class="answer-overflow-note">\uD575\uC2EC \uC548\uB0B4 1\uD398\uC774\uC9C0 \uD615\uC2DD\uC73C\uB85C \uCD95\uC57D\uB41C \uBC84\uC804\uC785\uB2C8\uB2E4.</div>`
+            : ""
+      }
     </div>
   `
 }
@@ -840,22 +880,22 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
         </div>
         <div class="summary-grid operator-grid">
           <article class="summary-card accent-blue">
-            <span class="label">\uB300\uD654 \uC81C\uBAA9</span>
+            <span class="label">\uC138\uC158 \uC2DD\uBCC4</span>
             <strong>${escapeHtml(context.conversationTitle)}</strong>
-            <span class="helper">\uC0C1\uB2F4 \uC138\uC158 \uC2DD\uBCC4\uC6A9 \uC81C\uBAA9</span>
+            <span class="helper">\uC6B4\uC601 \uD310\uB2E8 \uAE30\uC900 \uC138\uC158 \uC81C\uBAA9</span>
           </article>
           <article class="summary-card accent-violet">
-            <span class="label">\uBA54\uC2DC\uC9C0 \uAD6C\uC131</span>
+            <span class="label">\uB300\uD654 \uD750\uB984</span>
             <strong>${stats.userMessages} / ${stats.botMessages}</strong>
-            <span class="helper">\uC0AC\uC6A9\uC790 / AI \uC751\uB2F5</span>
+            <span class="helper">\uC0AC\uC6A9\uC790 \uC785\uB825 / AI \uC751\uB2F5 \uAD6C\uC131</span>
           </article>
           <article class="summary-card accent-amber">
-            <span class="label">\uB9E4\uB274\uC5BC \uD6C4\uBCF4</span>
+            <span class="label">\uC99D\uBE59 \uC5F0\uACB0</span>
             <strong>${stats.manualReferences}</strong>
             <span class="helper">\uB2F5\uBCC0\uC5D0 \uC5F0\uACB0\uB41C \uCC38\uACE0 \uCE74\uB4DC \uC218</span>
           </article>
           <article class="summary-card accent-slate">
-            <span class="label">\uBC94\uC704 / \uC2DC\uAC01</span>
+            <span class="label">\uAE30\uB85D \uC2DC\uAC01</span>
             <strong>${escapeHtml(getScopeLabel(context.scope))}</strong>
             <span class="helper">${escapeHtml(context.exportedAt)}</span>
           </article>
@@ -882,8 +922,21 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
         <div class="report-cover">
           <div class="report-cover-copy">
             <div class="report-cover-kicker">\uBE0C\uB9AC\uD551 \uCEE4\uBC84</div>
+            <div class="report-brand">
+              <span class="report-brand-mark">C</span>
+              <div class="report-brand-copy">
+                <strong>COVISION</strong>
+                <span>CS AI Core Shareable Brief</span>
+              </div>
+            </div>
             <strong>${escapeHtml(context.conversationTitle)}</strong>
             <p>\uD575\uC2EC \uB0B4\uC6A9\uACFC \uACF5\uC720 \uD3EC\uC778\uD2B8\uB97C \uC9E7\uACE0 \uBC14\uB85C \uC4F8 \uC218 \uC788\uB294 \uD615\uC2DD\uC73C\uB85C \uC815\uB9AC\uD55C \uBCF4\uACE0\uC6A9 \uD45C\uC9C0\uC785\uB2C8\uB2E4.</p>
+            <div class="report-meta-list">
+              <div class="report-meta-item"><span>company</span><strong>${escapeHtml(context.companyName)}</strong></div>
+              <div class="report-meta-item"><span>document no.</span><strong>${escapeHtml(context.documentNumber)}</strong></div>
+              <div class="report-meta-item"><span>release</span><strong>${escapeHtml(context.releaseVersion)}</strong></div>
+              ${context.buildStamp ? `<div class="report-meta-item"><span>build time</span><strong>${escapeHtml(context.buildStamp)}</strong></div>` : ""}
+            </div>
           </div>
           <div class="report-cover-side">
             ${renderTemplateHeaderVisual("report")}
@@ -904,9 +957,9 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
           </div>
         </div>
         <div class="summary-strip">
-          <div><strong>\uB300\uD654 \uC81C\uBAA9</strong><span>${escapeHtml(context.conversationTitle)}</span></div>
-          <div><strong>\uC694\uC57D</strong><span>\uC9C8\uC758 ${stats.userMessages}\uAC74 / \uC751\uB2F5 ${stats.botMessages}\uAC74</span></div>
-          <div><strong>\uBC94\uC704</strong><span>${escapeHtml(getScopeLabel(context.scope))}</span></div>
+          <div><strong>brief</strong><span>${escapeHtml(context.conversationTitle)}</span></div>
+          <div><strong>volume</strong><span>\uC9C8\uC758 ${stats.userMessages}\uAC74 / \uC751\uB2F5 ${stats.botMessages}\uAC74</span></div>
+          <div><strong>scope</strong><span>${escapeHtml(getScopeLabel(context.scope))}</span></div>
         </div>
       </section>
     `
@@ -943,19 +996,19 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
       </div>
       <div class="summary-grid user-grid">
         <article class="summary-card large">
-          <span class="label">\uB300\uD654 \uC81C\uBAA9</span>
+          <span class="label">\uC0C1\uB2F4 \uC8FC\uC81C</span>
           <strong>${escapeHtml(context.conversationTitle)}</strong>
-          <span class="helper">\uCC98\uC74C \uC9C8\uBB38\uC744 \uAE30\uC900\uC73C\uB85C \uC0DD\uC131\uB41C \uC81C\uBAA9\uC785\uB2C8\uB2E4.</span>
+          <span class="helper">\uC0AC\uC6A9\uC790\uAC00 \uBC14\uB85C \uD655\uC778\uD560 \uD575\uC2EC \uBB38\uC758 \uC8FC\uC81C\uC785\uB2C8\uB2E4.</span>
         </article>
         <article class="summary-card">
-          <span class="label">\uBA54\uC2DC\uC9C0 \uC218</span>
+          <span class="label">\uD3EC\uD568 \uBA54\uC2DC\uC9C0</span>
           <strong>${stats.totalMessages}</strong>
-          <span class="helper">\uC774\uBC88 \uC0C1\uB2F4\uC5D0 \uD3EC\uD568\uB41C \uC804\uCCB4 \uBA54\uC2DC\uC9C0</span>
+          <span class="helper">\uC9C8\uC758 / \uB2F5\uBCC0 \uD750\uB984 \uC911 \uB0B4\uBCF4\uB0B8 \uBD84\uB7C9</span>
         </article>
         <article class="summary-card">
-          <span class="label">\uBC94\uC704</span>
+          <span class="label">\uD655\uC778 \uBC94\uC704</span>
           <strong>${escapeHtml(getScopeLabel(context.scope))}</strong>
-          <span class="helper">${escapeHtml(context.exportedAt)}</span>
+          <span class="helper">${context.compactSummary ? "\uD575\uC2EC \uC548\uB0B4 1\uD398\uC774\uC9C0 \uD615" : escapeHtml(context.exportedAt)}</span>
         </article>
       </div>
     </section>
@@ -1219,10 +1272,71 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       line-height: 1.32;
       color: #4d3920;
     }
+    .report-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .report-brand-mark {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #8a6a38, #d6b98b);
+      color: #fffdfa;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+    .report-brand-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .report-brand-copy strong {
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #8a6a38;
+    }
+    .report-brand-copy span {
+      font-size: 11px;
+      color: #7a6851;
+    }
     .report-cover-copy p {
       margin: 12px 0 0;
       font-size: 12px;
       color: #7a6851;
+    }
+    .report-meta-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .report-meta-item {
+      padding: 10px 12px;
+      border-radius: 16px;
+      border: 1px solid #e5d7bf;
+      background: rgba(255, 255, 255, 0.78);
+    }
+    .report-meta-item span {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #8a6a38;
+    }
+    .report-meta-item strong {
+      display: block;
+      font-size: 12px;
+      line-height: 1.45;
+      color: #4d3920;
+      word-break: break-word;
     }
     .report-cover-side {
       display: flex;
@@ -1980,6 +2094,31 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       font-size: 11px;
       color: #64748b;
     }
+    body.compact-summary .page-header {
+      padding: 20px 22px;
+    }
+    body.compact-summary .user-hero {
+      gap: 14px;
+      padding: 14px 16px;
+    }
+    body.compact-summary .summary-card {
+      min-height: 94px;
+      padding: 14px 16px;
+    }
+    body.compact-summary .template-user-user,
+    body.compact-summary .template-user-bot {
+      padding: 16px 18px;
+    }
+    body.compact-summary .template-user-bot .answer-section {
+      padding: 10px 12px;
+    }
+    body.compact-summary .template-user-bot .manual-spotlight {
+      padding: 14px;
+      grid-template-columns: minmax(0, 1fr) minmax(190px, 0.7fr);
+    }
+    body.compact-summary .template-user-bot .manual-spotlight-image {
+      max-height: 220px;
+    }
     .candidate-list strong {
       display: block;
       margin-bottom: 4px;
@@ -2012,7 +2151,7 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     }
   </style>
 </head>
-<body class="template-${context.template}">
+<body class="template-${context.template}${context.compactSummary ? " compact-summary" : ""}">
   <main>
     ${renderTemplateHeader(context, stats)}
     <section class="messages ${context.template === "operator" ? "operator-layout" : context.template === "report" ? "report-layout" : "default-layout"}">
@@ -2056,14 +2195,20 @@ export function exportChatMessages(messages: Message[], request: ChatExportForma
   const normalized = normalizeChatExportRequest(request)
   const fileStem = `${createFileStem()}_${normalized.template}`
   const exportMessages = resolveExportMessages(messages, normalized.scope)
+  const exportedAtDate = new Date()
   const context: ExportContext = {
     template: normalized.template,
-    exportedAt: formatExportedAt(),
-    conversationTitle: getConversationTitle(exportMessages),
+    exportedAt: exportedAtDate.toLocaleString("ko-KR"),
+    conversationTitle: getConversationTitle(messages),
     scope: normalized.scope,
     includeSources: normalized.includeSources,
     includeDiagnostics: normalized.includeDiagnostics,
     includeManualPreviews: normalized.includeManualPreviews,
+    compactSummary: normalized.compactSummary,
+    companyName: "Covision",
+    documentNumber: createDocumentNumber(normalized.template, exportedAtDate),
+    releaseVersion: resolveReleaseVersion(),
+    buildStamp: resolveBuildStamp(),
   }
 
   if (normalized.format === "md") {
