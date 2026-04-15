@@ -1,7 +1,21 @@
 ﻿"use client"
 
 import Link from "next/link"
-import { Bot, Download, FileText, Menu, Moon, MoreHorizontal, ScrollText, Search, Sun } from "lucide-react"
+import {
+  Bot,
+  Download,
+  FileText,
+  type LucideIcon,
+  Menu,
+  MessageSquareText,
+  Moon,
+  MoreHorizontal,
+  Presentation,
+  ScrollText,
+  Search,
+  ShieldCheck,
+  Sun,
+} from "lucide-react"
 import { getChatExportFormatLabel, type ChatExportRequest } from "@/lib/chat-export"
 import {
   DropdownMenu,
@@ -25,6 +39,8 @@ type ExportMenuItem = {
   request: ChatExportRequest
   badge?: string
   tone?: "blue" | "violet" | "amber" | "slate"
+  icon?: LucideIcon
+  tagline?: string
 }
 
 const pdfExportItems: ExportMenuItem[] = [
@@ -34,18 +50,24 @@ const pdfExportItems: ExportMenuItem[] = [
     request: { format: "pdf", template: "user", scope: "latest_exchange" },
     badge: "\uCD94\uCC9C",
     tone: "blue",
+    icon: MessageSquareText,
+    tagline: "\uAC1C\uC778\uC6A9",
   },
   {
     label: "\uC6B4\uC601 PDF",
     description: "\uC9C4\uB2E8 \uC815\uBCF4 \uD3EC\uD568",
     request: { format: "pdf", template: "operator", scope: "all", includeDiagnostics: true },
     tone: "violet",
+    icon: ShieldCheck,
+    tagline: "\uC6B4\uC601\uC6A9",
   },
   {
     label: "\uBCF4\uACE0 PDF",
     description: "\uACF5\uC720\uC6A9 \uBE0C\uB9AC\uD551",
     request: { format: "pdf", template: "report", scope: "latest_exchange" },
     tone: "amber",
+    icon: Presentation,
+    tagline: "\uACF5\uC720\uC6A9",
   },
 ]
 
@@ -56,6 +78,7 @@ const otherExportItems: ExportMenuItem[] = [
     request: { format: "txt", template: "user", scope: "all" },
     badge: getChatExportFormatLabel("txt"),
     tone: "slate",
+    icon: FileText,
   },
   {
     label: "MD",
@@ -63,6 +86,7 @@ const otherExportItems: ExportMenuItem[] = [
     request: { format: "md", template: "user", scope: "all" },
     badge: getChatExportFormatLabel("md"),
     tone: "slate",
+    icon: ScrollText,
   },
 ]
 
@@ -80,10 +104,17 @@ function ExportSection({
   variant?: "pdf" | "other"
 }) {
   const toneClass = (tone?: ExportMenuItem["tone"]) => {
-    if (tone === "blue") return "border-blue-200/70 bg-blue-50/60 dark:border-blue-500/30 dark:bg-blue-500/10"
-    if (tone === "violet") return "border-violet-200/70 bg-violet-50/60 dark:border-violet-500/30 dark:bg-violet-500/10"
-    if (tone === "amber") return "border-amber-200/70 bg-amber-50/60 dark:border-amber-500/30 dark:bg-amber-500/10"
+    if (tone === "blue") return "border-blue-200/80 bg-gradient-to-br from-blue-50 via-white to-blue-100/70 shadow-[0_8px_24px_rgba(59,130,246,0.10)] dark:border-blue-500/30 dark:bg-blue-500/10"
+    if (tone === "violet") return "border-violet-200/80 bg-gradient-to-br from-violet-50 via-white to-fuchsia-100/70 shadow-[0_8px_24px_rgba(139,92,246,0.10)] dark:border-violet-500/30 dark:bg-violet-500/10"
+    if (tone === "amber") return "border-amber-200/80 bg-gradient-to-br from-amber-50 via-white to-orange-100/70 shadow-[0_8px_24px_rgba(245,158,11,0.10)] dark:border-amber-500/30 dark:bg-amber-500/10"
     return "border-border bg-muted/40"
+  }
+
+  const iconToneClass = (tone?: ExportMenuItem["tone"]) => {
+    if (tone === "blue") return "bg-blue-600 text-white shadow-sm"
+    if (tone === "violet") return "bg-violet-600 text-white shadow-sm"
+    if (tone === "amber") return "bg-amber-500 text-white shadow-sm"
+    return "bg-muted text-muted-foreground"
   }
 
   return (
@@ -96,6 +127,9 @@ function ExportSection({
           onClick={() => onExportChat(item.request)}
           className="min-h-0 cursor-pointer rounded-2xl px-1.5 py-1.5 focus:bg-transparent data-[highlighted]:bg-transparent"
         >
+          {(() => {
+            const Icon = item.icon ?? FileText
+            return (
           <div
             className={`flex w-full min-w-0 items-start gap-3 rounded-2xl border px-3 py-3 md:px-3 md:py-2.5 ${
               variant === "pdf" ? toneClass(item.tone) : "border-border/80 bg-background/60"
@@ -103,13 +137,20 @@ function ExportSection({
           >
             <div
               className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                variant === "pdf" ? "bg-background/80 text-foreground shadow-sm" : "bg-muted text-muted-foreground"
+                variant === "pdf" ? iconToneClass(item.tone) : "bg-muted text-muted-foreground"
               }`}
             >
-              <FileText className="h-4 w-4" />
+              <Icon className="h-4 w-4" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">{item.label}</div>
+              <div className="flex items-center gap-2">
+                <div className="truncate text-sm font-medium">{item.label}</div>
+                {variant === "pdf" && item.tagline ? (
+                  <span className="hidden rounded-full bg-background/80 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground md:inline-flex">
+                    {item.tagline}
+                  </span>
+                ) : null}
+              </div>
               <div className="mt-0.5 text-[10px] text-muted-foreground">{item.description}</div>
             </div>
             {item.badge ? (
@@ -118,6 +159,8 @@ function ExportSection({
               </span>
             ) : null}
           </div>
+            )
+          })()}
         </DropdownMenuItem>
       ))}
     </div>
