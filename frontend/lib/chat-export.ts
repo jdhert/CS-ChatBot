@@ -609,11 +609,17 @@ function renderOperatorDiagnostics(message: Message, context: ExportContext): st
   return `
     <section class="diagnostic-block">
       <h4>\uC9C4\uB2E8 \uC694\uC57D</h4>
+      <div class="diagnostic-legend">
+        <span class="legend-chip priority-good">\uC548\uC815</span>
+        <span class="legend-chip priority-medium">\uC8FC\uC758</span>
+        <span class="legend-chip priority-high">\uD655\uC778 \uD544\uC694</span>
+        <span class="legend-chip priority-critical">\uC6B0\uC120 \uC810\uAC80</span>
+      </div>
       <dl class="diagnostic-grid">
         ${rows
           .map(
             ([label, value]) => `
-              <div class="diagnostic-item">
+              <div class="diagnostic-item priority-${getDiagnosticPriority(label, value, message)}">
                 <dt>${escapeHtml(label)}</dt>
                 <dd>${escapeHtml(value)}</dd>
               </div>
@@ -681,6 +687,95 @@ function renderReportBrief(message: Message): string {
   `
 }
 
+function renderTemplateHeaderVisual(template: ChatExportTemplate): string {
+  if (template === "operator") {
+    return `
+      <div class="header-visual operator-visual" aria-hidden="true">
+        <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="16" y="18" width="88" height="84" rx="22" fill="url(#opsBg)" />
+          <rect x="30" y="34" width="58" height="8" rx="4" fill="#DBEAFE" fill-opacity="0.9" />
+          <rect x="30" y="50" width="44" height="8" rx="4" fill="#93C5FD" fill-opacity="0.9" />
+          <rect x="30" y="66" width="32" height="8" rx="4" fill="#60A5FA" fill-opacity="0.9" />
+          <circle cx="86" cy="70" r="14" fill="#F59E0B" />
+          <path d="M82 70l3 3 7-8" stroke="#0F172A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+          <defs>
+            <linearGradient id="opsBg" x1="16" y1="18" x2="104" y2="102" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#0F172A" />
+              <stop offset="1" stop-color="#2563EB" />
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+    `
+  }
+
+  if (template === "report") {
+    return `
+      <div class="header-visual report-visual" aria-hidden="true">
+        <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="18" y="16" width="84" height="88" rx="22" fill="#FFF8EE" stroke="#D6B98B" stroke-width="2" />
+          <path d="M36 42h48" stroke="#8A6A38" stroke-width="6" stroke-linecap="round" />
+          <path d="M36 58h48" stroke="#B68A4A" stroke-width="6" stroke-linecap="round" />
+          <path d="M36 74h30" stroke="#D6B98B" stroke-width="6" stroke-linecap="round" />
+          <circle cx="84" cy="82" r="10" fill="#2563EB" fill-opacity="0.12" stroke="#2563EB" stroke-width="2" />
+          <path d="M79 82h10" stroke="#2563EB" stroke-width="3" stroke-linecap="round" />
+        </svg>
+      </div>
+    `
+  }
+
+  return `
+    <div class="header-visual user-visual" aria-hidden="true">
+      <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="16" y="16" width="88" height="88" rx="28" fill="url(#userBg)" />
+        <path d="M40 46h40" stroke="white" stroke-width="7" stroke-linecap="round" />
+        <path d="M40 62h28" stroke="white" stroke-width="7" stroke-linecap="round" opacity="0.9" />
+        <path d="M40 78h18" stroke="white" stroke-width="7" stroke-linecap="round" opacity="0.75" />
+        <circle cx="84" cy="78" r="10" fill="#BFDBFE" />
+        <path d="M81 78l2 2 5-5" stroke="#1D4ED8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+        <defs>
+          <linearGradient id="userBg" x1="16" y1="16" x2="104" y2="104" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#2563EB" />
+            <stop offset="1" stop-color="#60A5FA" />
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+  `
+}
+
+type DiagnosticPriority = "good" | "medium" | "high" | "critical" | "neutral"
+
+function getDiagnosticPriority(
+  label: string,
+  value: string,
+  message: Message,
+): DiagnosticPriority {
+  if (label === "\uB2F5\uBCC0 \uCD9C\uCC98") {
+    if (message.answerSource === "proxy_error" || message.answerSource === "no_match") return "critical"
+    if (message.answerSource === "clarification") return "high"
+    if (message.answerSource === "deterministic_fallback" || message.answerSource === "rule_only") return "medium"
+    return "good"
+  }
+
+  if (label === "\uAC80\uC0C9 \uBAA8\uB4DC") {
+    if (message.retrievalMode === "hybrid" || message.retrievalMode === "manual") return "good"
+    if (message.retrievalMode === "rule_only") return "medium"
+    return "neutral"
+  }
+
+  if (label === "\uC2E0\uB8B0\uB3C4") {
+    const confidence = typeof message.confidence === "number" ? message.confidence : null
+    if (confidence === null) return "neutral"
+    if (confidence < 0.5) return "critical"
+    if (confidence < 0.7) return "high"
+    if (confidence < 0.85) return "medium"
+    return "good"
+  }
+
+  return "neutral"
+}
+
 function renderMessageContentHtml(message: Message, context: ExportContext): string {
   const sections = parseStructuredAnswerSections(message.content)
   if (sections.length === 0) {
@@ -736,9 +831,12 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
         </div>
         <h1>\uCF54\uBE44\uC804 CS AI Core \uC6B4\uC601 \uC9C4\uB2E8 \uBD84\uC11D \uB9AC\uD3EC\uD2B8</h1>
         <p class="headline">${escapeHtml(TEMPLATE_HEADLINE[context.template])}</p>
-        <div class="operator-callout">
-          <div class="operator-callout-label">OPERATOR CHECKLIST</div>
-          <div class="operator-callout-body">\uAC80\uC0C9 \uACBD\uB85C, \uB9E4\uCE6D \uADFC\uAC70, \uCC38\uACE0 \uBB38\uC11C, \uC9C4\uB2E8 \uD6C4\uBCF4\uB97C \uD55C \uBC88\uC5D0 \uD655\uC778\uD558\uB294 \uC6B4\uC601 \uC6A9\uB3C4 \uBB38\uC11C\uC785\uB2C8\uB2E4.</div>
+        <div class="header-split operator-split">
+          <div class="operator-callout">
+            <div class="operator-callout-label">OPERATOR CHECKLIST</div>
+            <div class="operator-callout-body">\uAC80\uC0C9 \uACBD\uB85C, \uB9E4\uCE6D \uADFC\uAC70, \uCC38\uACE0 \uBB38\uC11C, \uC9C4\uB2E8 \uD6C4\uBCF4\uB97C \uD55C \uBC88\uC5D0 \uD655\uC778\uD558\uB294 \uC6B4\uC601 \uC6A9\uB3C4 \uBB38\uC11C\uC785\uB2C8\uB2E4.</div>
+          </div>
+          ${renderTemplateHeaderVisual("operator")}
         </div>
         <div class="summary-grid operator-grid">
           <article class="summary-card accent-blue">
@@ -781,18 +879,28 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
         </div>
         <h1>\uCF54\uBE44\uC804 CS AI Core \uACF5\uC720 \uBE0C\uB9AC\uD551 \uC694\uC57D\uBCF8</h1>
         <p class="headline">${escapeHtml(TEMPLATE_HEADLINE[context.template])}</p>
-        <div class="report-deck">
-          <div class="report-deck-item">
-            <span class="report-deck-label">topic</span>
+        <div class="report-cover">
+          <div class="report-cover-copy">
+            <div class="report-cover-kicker">\uBE0C\uB9AC\uD551 \uCEE4\uBC84</div>
             <strong>${escapeHtml(context.conversationTitle)}</strong>
+            <p>\uD575\uC2EC \uB0B4\uC6A9\uACFC \uACF5\uC720 \uD3EC\uC778\uD2B8\uB97C \uC9E7\uACE0 \uBC14\uB85C \uC4F8 \uC218 \uC788\uB294 \uD615\uC2DD\uC73C\uB85C \uC815\uB9AC\uD55C \uBCF4\uACE0\uC6A9 \uD45C\uC9C0\uC785\uB2C8\uB2E4.</p>
           </div>
-          <div class="report-deck-item">
-            <span class="report-deck-label">audience</span>
-            <strong>\uACF5\uC720 / \uBCF4\uACE0</strong>
-          </div>
-          <div class="report-deck-item">
-            <span class="report-deck-label">snapshot</span>
-            <strong>${escapeHtml(context.exportedAt)}</strong>
+          <div class="report-cover-side">
+            ${renderTemplateHeaderVisual("report")}
+            <div class="report-deck">
+              <div class="report-deck-item">
+                <span class="report-deck-label">topic</span>
+                <strong>${escapeHtml(context.conversationTitle)}</strong>
+              </div>
+              <div class="report-deck-item">
+                <span class="report-deck-label">audience</span>
+                <strong>\uACF5\uC720 / \uBCF4\uACE0</strong>
+              </div>
+              <div class="report-deck-item">
+                <span class="report-deck-label">snapshot</span>
+                <strong>${escapeHtml(context.exportedAt)}</strong>
+              </div>
+            </div>
           </div>
         </div>
         <div class="summary-strip">
@@ -824,10 +932,13 @@ function renderTemplateHeader(context: ExportContext, stats: ExportStats): strin
           <strong>\uD575\uC2EC \uB2F5\uBCC0\uACFC \uCC38\uACE0 \uD654\uBA74\uC744 \uD55C \uBB38\uC11C\uC5D0 \uC815\uB9AC\uD588\uC2B5\uB2C8\uB2E4.</strong>
           <span>\uC0AC\uC6A9\uC790\uAC00 \uBC14\uB85C \uD655\uC778\uD558\uACE0 \uB530\uB77C\uD560 \uC218 \uC788\uB3C4\uB85D \uC0C1\uB2F4 \uC2DC\uAC01, \uBC94\uC704, \uCC38\uACE0 \uC815\uBCF4\uB97C \uAC04\uACB0\uD558\uAC8C \uBB36\uC5C8\uC2B5\uB2C8\uB2E4.</span>
         </div>
-        <div class="user-pill-list">
-          <span class="user-pill">\uC9C8\uBB38 ${stats.userMessages}\uAC74</span>
-          <span class="user-pill">\uB2F5\uBCC0 ${stats.botMessages}\uAC74</span>
-          <span class="user-pill">${escapeHtml(getScopeLabel(context.scope))}</span>
+        <div class="user-hero-side">
+          ${renderTemplateHeaderVisual("user")}
+          <div class="user-pill-list">
+            <span class="user-pill">\uC9C8\uBB38 ${stats.userMessages}\uAC74</span>
+            <span class="user-pill">\uB2F5\uBCC0 ${stats.botMessages}\uAC74</span>
+            <span class="user-pill">${escapeHtml(getScopeLabel(context.scope))}</span>
+          </div>
         </div>
       </div>
       <div class="summary-grid user-grid">
@@ -943,6 +1054,13 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       min-width: 0;
       flex: 1;
     }
+    .header-split {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 180px;
+      gap: 18px;
+      align-items: stretch;
+      margin-top: 18px;
+    }
     .header-caption {
       font-size: 11px;
       font-weight: 600;
@@ -973,6 +1091,20 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       font-size: 20px;
       line-height: 1;
       letter-spacing: 0.04em;
+    }
+    .header-visual {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 150px;
+      border-radius: 22px;
+      border: 1px solid transparent;
+      overflow: hidden;
+    }
+    .header-visual svg {
+      width: 100%;
+      height: auto;
+      max-width: 132px;
     }
     .headline {
       margin: 10px 0 0;
@@ -1020,6 +1152,12 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       font-size: 12px;
       color: #4f6b95;
     }
+    .user-hero-side {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      justify-content: center;
+    }
     .user-pill-list {
       display: flex;
       flex-direction: column;
@@ -1038,6 +1176,10 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       font-weight: 700;
       color: #1d4ed8;
     }
+    .operator-visual {
+      border-color: rgba(96, 165, 250, 0.16);
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.22), rgba(15, 23, 42, 0.06));
+    }
     .operator-callout {
       padding: 14px 16px;
       border-radius: 18px;
@@ -1050,6 +1192,47 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
     .operator-callout-body {
       font-size: 12px;
       color: rgba(226, 232, 240, 0.92);
+    }
+    .report-cover {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+      gap: 18px;
+      margin-top: 18px;
+      padding: 18px;
+      border-radius: 24px;
+      border: 1px solid #e5d7bf;
+      background: linear-gradient(135deg, rgba(255, 252, 246, 0.96), rgba(248, 240, 226, 0.94));
+      box-shadow: 0 14px 28px rgba(122, 104, 81, 0.08);
+    }
+    .report-cover-kicker {
+      display: inline-flex;
+      margin-bottom: 8px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #8a6a38;
+    }
+    .report-cover-copy strong {
+      display: block;
+      font-size: 24px;
+      line-height: 1.32;
+      color: #4d3920;
+    }
+    .report-cover-copy p {
+      margin: 12px 0 0;
+      font-size: 12px;
+      color: #7a6851;
+    }
+    .report-cover-side {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .report-visual {
+      min-height: 164px;
+      border-color: rgba(182, 138, 74, 0.18);
+      background: linear-gradient(180deg, rgba(255, 248, 238, 0.96), rgba(255, 255, 255, 0.9));
     }
     .report-deck {
       display: grid;
@@ -1070,6 +1253,11 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       font-size: 14px;
       line-height: 1.45;
       color: #4d3920;
+    }
+    .user-visual {
+      min-height: 152px;
+      border-color: rgba(96, 165, 250, 0.18);
+      background: linear-gradient(180deg, rgba(239, 246, 255, 0.96), rgba(255, 255, 255, 0.88));
     }
     .user-badge {
       background: linear-gradient(135deg, #2563eb, #60a5fa);
@@ -1673,11 +1861,72 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       gap: 10px;
       margin: 0;
     }
+    .diagnostic-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 0 0 12px;
+    }
+    .legend-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      border: 1px solid transparent;
+    }
     .diagnostic-item {
       padding: 10px 12px;
       border-radius: 14px;
       background: #ffffff;
       border: 1px solid #e2e8f0;
+    }
+    .priority-good {
+      background: rgba(220, 252, 231, 0.9);
+      border-color: rgba(34, 197, 94, 0.24);
+      color: #166534;
+    }
+    .priority-medium {
+      background: rgba(254, 249, 195, 0.9);
+      border-color: rgba(234, 179, 8, 0.24);
+      color: #854d0e;
+    }
+    .priority-high {
+      background: rgba(255, 237, 213, 0.92);
+      border-color: rgba(249, 115, 22, 0.24);
+      color: #9a3412;
+    }
+    .priority-critical {
+      background: rgba(254, 226, 226, 0.92);
+      border-color: rgba(239, 68, 68, 0.24);
+      color: #991b1b;
+    }
+    .priority-neutral {
+      background: rgba(241, 245, 249, 0.92);
+      border-color: rgba(148, 163, 184, 0.24);
+      color: #475569;
+    }
+    .diagnostic-item.priority-good {
+      background: linear-gradient(180deg, rgba(220, 252, 231, 0.85), #ffffff);
+      border-color: rgba(34, 197, 94, 0.26);
+    }
+    .diagnostic-item.priority-medium {
+      background: linear-gradient(180deg, rgba(254, 249, 195, 0.82), #ffffff);
+      border-color: rgba(234, 179, 8, 0.28);
+    }
+    .diagnostic-item.priority-high {
+      background: linear-gradient(180deg, rgba(255, 237, 213, 0.88), #ffffff);
+      border-color: rgba(249, 115, 22, 0.28);
+    }
+    .diagnostic-item.priority-critical {
+      background: linear-gradient(180deg, rgba(254, 226, 226, 0.9), #ffffff);
+      border-color: rgba(239, 68, 68, 0.32);
+    }
+    .diagnostic-item.priority-neutral {
+      background: linear-gradient(180deg, rgba(241, 245, 249, 0.94), #ffffff);
+      border-color: rgba(148, 163, 184, 0.24);
     }
     .diagnostic-item dt {
       font-size: 10px;
@@ -1754,6 +2003,8 @@ function buildPrintableHtml(messages: Message[], context: ExportContext): string
       }
     }
     @media (max-width: 900px) {
+      .header-split,
+      .report-cover,
       .user-hero,
       .report-deck {
         grid-template-columns: 1fr;
