@@ -1,16 +1,8 @@
 #!/usr/bin/env node
-import pg from "pg";
+import "dotenv/config";
+import { createPool } from "./db-config.mjs";
 
-const { Pool } = pg;
-
-const pool = new Pool({
-  host: "DB_HOST_REMOVED",
-  port: 5432,
-  database: "ai2",
-  user: "novian",
-  password: "REMOVED",
-  ssl: false
-});
+const pool = createPool();
 
 async function checkChunkStability() {
   try {

@@ -6,11 +6,11 @@ const { Pool } = pg;
 
 async function main() {
   const pool = new Pool({
-    host: process.env.VECTOR_DB_HOST ?? "DB_HOST_REMOVED",
+    host: process.env.VECTOR_DB_HOST ?? "localhost",
     port: Number.parseInt(process.env.VECTOR_DB_PORT ?? "5432", 10),
     database: process.env.VECTOR_DB_NAME ?? "ai2",
-    user: process.env.VECTOR_DB_USER ?? "novian",
-    password: process.env.VECTOR_DB_PASSWORD ?? "REMOVED",
+    user: process.env.VECTOR_DB_USER,
+    password: process.env.VECTOR_DB_PASSWORD,
     ssl: process.env.VECTOR_DB_SSL === "true"
   });
 

@@ -1,14 +1,8 @@
 #!/usr/bin/env node
-import pg from 'pg';
-const { Pool } = pg;
+import "dotenv/config";
+import { createPool } from "./db-config.mjs";
 
-const pool = new Pool({
-  host: 'DB_HOST_REMOVED',
-  port: 5432,
-  database: 'ai2',
-  user: 'novian',
-  password: 'REMOVED'
-});
+const pool = createPool();
 
 async function searchMultilang() {
   const client = await pool.connect();
