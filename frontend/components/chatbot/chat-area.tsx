@@ -71,7 +71,7 @@ export function ChatArea({
   }
 
   return (
-    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
+    <div className="relative isolate flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
       <ChatHeader
         isDarkMode={isDarkMode}
         onToggleDarkMode={onToggleDarkMode}
@@ -79,7 +79,7 @@ export function ChatArea({
         onOpenSidebar={onOpenSidebar}
       />
 
-      <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div ref={scrollContainerRef} className="z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="flex flex-col gap-4 px-4 py-5 md:p-6">
           {messages.length === 0 ? (
             <>
