@@ -1,6 +1,7 @@
 ﻿"use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   Bot,
   Download,
@@ -384,6 +385,8 @@ function ExportMenuItems({ onExportChat }: { onExportChat: (request: ChatExportR
 }
 
 export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenSidebar }: ChatHeaderProps) {
+  const router = useRouter()
+
   return (
     <header className="sticky top-0 z-40 flex shrink-0 items-center justify-between border-b border-border bg-card/95 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-card/88 md:px-6 md:py-4">
       <div className="flex min-w-0 items-center gap-2 md:gap-3">
@@ -414,25 +417,27 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1 md:gap-2">
-        <Link
-          href="/search"
-          className="flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:h-9 md:w-9 md:rounded-lg"
+      <div className="relative z-50 flex shrink-0 items-center gap-1 md:gap-2">
+        <button
+          onClick={() => router.push("/search")}
+          className="relative z-50 flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:h-9 md:w-9 md:rounded-lg"
           aria-label={"\uAC80\uC0C9"}
           title={"\uAC80\uC0C9"}
+          type="button"
         >
           <Search className="h-5 w-5" />
-        </Link>
+        </button>
 
-        <div className="hidden items-center gap-2 md:flex">
-          <Link
-            href="/logs"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+        <div className="relative z-50 hidden items-center gap-2 md:flex">
+          <button
+            onClick={() => router.push("/logs")}
+            className="relative z-50 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             aria-label={"\uB85C\uADF8 \uB300\uC2DC\uBCF4\uB4DC"}
             title={"\uB85C\uADF8 \uB300\uC2DC\uBCF4\uB4DC"}
+            type="button"
           >
             <ScrollText className="h-5 w-5" />
-          </Link>
+          </button>
 
           {onExportChat ? (
             <DropdownMenu>
