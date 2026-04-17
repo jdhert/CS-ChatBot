@@ -385,7 +385,7 @@ function ExportMenuItems({ onExportChat }: { onExportChat: (request: ChatExportR
 
 export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenSidebar }: ChatHeaderProps) {
   return (
-    <header className="relative z-30 flex shrink-0 items-center justify-between border-b border-border bg-card px-3 py-3 md:px-6 md:py-4">
+    <header className="sticky top-0 z-40 flex shrink-0 items-center justify-between border-b border-border bg-card/95 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-card/88 md:px-6 md:py-4">
       <div className="flex min-w-0 items-center gap-2 md:gap-3">
         {onOpenSidebar ? (
           <button
