@@ -431,28 +431,28 @@ function getSectionTone(title: string): {
   if (/적용|방법|절차|순서|경로/.test(normalized)) {
     return {
       icon: Layers3,
-      titleClassName: "text-sky-600 dark:text-sky-300",
+      titleClassName: "text-primary",
       cardClassName: "border-sky-500/15 bg-sky-500/5",
     }
   }
   if (/확인|포인트|체크/.test(normalized)) {
     return {
       icon: ClipboardCheck,
-      titleClassName: "text-emerald-600 dark:text-emerald-300",
+      titleClassName: "text-primary",
       cardClassName: "border-emerald-500/15 bg-emerald-500/5",
     }
   }
   if (/참고|링크|출처/.test(normalized)) {
     return {
       icon: Link2,
-      titleClassName: "text-violet-600 dark:text-violet-300",
+      titleClassName: "text-primary",
       cardClassName: "border-violet-500/15 bg-violet-500/5",
     }
   }
 
   return {
     icon: ScrollText,
-    titleClassName: "text-foreground",
+    titleClassName: "text-primary",
     cardClassName: "border-border bg-muted/40",
   }
 }
@@ -494,85 +494,47 @@ function AnswerMetaPills({
   )
 }
 
-function StructuredAnswerSections({ content }: { content: string }) {
+function StructuredAnswerSections({
+  content,
+  suppressReferenceSection = false,
+}: {
+  content: string
+  suppressReferenceSection?: boolean
+}) {
   const sections = parseStructuredAnswerSections(content)
-  const [expandedTitles, setExpandedTitles] = useState<Set<string>>(
-    () => new Set(sections.slice(0, 1).map((section) => section.title)),
-  )
-
-  useEffect(() => {
-    if (sections.length === 0) {
-      setExpandedTitles(new Set())
-      return
-    }
-
-    setExpandedTitles((current) => {
-      const titles = new Set(sections.map((section) => section.title))
-      const next = new Set([...current].filter((title) => titles.has(title)))
-      if (next.size === 0) {
-        next.add(sections[0]!.title)
-      }
-      return next
-    })
-  }, [sections])
 
   if (sections.length === 0) {
     return <BotMessageContent content={content} />
   }
 
-  const toggleSection = (title: string) => {
-    setExpandedTitles((current) => {
-      const next = new Set(current)
-      if (next.has(title)) {
-        next.delete(title)
-      } else {
-        next.add(title)
-      }
-      return next
-    })
-  }
+  const detailSections = sections
+    .slice(1)
+    .filter((section) => !(suppressReferenceSection && /참고|링크|출처/.test(section.title.replace(/\s+/g, ""))))
+  if (detailSections.length === 0) return null
 
   return (
-    <div className="space-y-2">
-      {sections.map((section, index) => {
+    <div className="space-y-3 rounded-[1.25rem] border border-border bg-card px-4 py-3.5 shadow-sm">
+      {detailSections.map((section, index) => {
         const tone = getSectionTone(section.title)
         const Icon = tone.icon
-        const isExpanded = expandedTitles.has(section.title)
 
         return (
           <section
             key={`${section.title}-${index}`}
-            className={cn("rounded-2xl border px-3.5 py-3 shadow-sm", tone.cardClassName)}
+            className={cn(index > 0 && "border-t border-border/70 pt-3")}
           >
-            <button
-              type="button"
-              onClick={() => toggleSection(section.title)}
-              className="flex w-full items-start gap-2 text-left"
-            >
-              <div
-                className={cn(
-                  "flex min-w-0 flex-1 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em]",
-                  tone.titleClassName,
-                )}
-              >
-                <Icon className="h-3.5 w-3.5 shrink-0" />
-                <span className="line-clamp-2 break-words pr-2">{section.title}</span>
-              </div>
-              {isExpanded ? (
-                <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
-              ) : (
-                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <div
+              className={cn(
+                "mb-2 flex min-w-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em]",
+                tone.titleClassName,
               )}
-            </button>
-            {isExpanded ? (
-              <div className="mt-2.5 text-sm leading-relaxed">
-                <BotMessageContent content={section.body} />
-              </div>
-            ) : (
-              <p className="mt-2.5 line-clamp-2 text-xs text-muted-foreground">
-                {section.body.replace(/\s+/g, " ").trim()}
-              </p>
-            )}
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              <span className="break-words">{section.title}</span>
+            </div>
+            <div className="text-sm leading-7 text-foreground">
+              <BotMessageContent content={section.body} />
+            </div>
           </section>
         )
       })}
@@ -596,33 +558,28 @@ function AnswerOverviewCard({
   return (
     <div
       className={cn(
-        "mb-3 overflow-hidden rounded-[1.35rem] border shadow-[0_14px_34px_rgba(15,23,42,0.06)]",
+        "mb-3 overflow-hidden rounded-[1.35rem] border bg-card shadow-sm",
         isManualAnswer
-          ? "border-sky-500/25 bg-gradient-to-br from-sky-500/12 via-background to-cyan-500/8"
-          : "border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background",
+          ? "border-sky-500/20"
+          : "border-primary/15",
       )}
     >
-      <div className="border-b border-border/60 px-4 py-3.5">
+      <div className="px-4 py-3.5">
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]",
-              isManualAnswer ? "bg-sky-500/12 text-sky-700 dark:text-sky-300" : "bg-primary/10 text-primary",
+              "inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]",
+              isManualAnswer ? "text-sky-700 dark:text-sky-300" : "text-primary",
             )}
           >
             {isManualAnswer ? <BookOpen className="h-3 w-3" /> : <Sparkles className="h-3 w-3" />}
-            {isManualAnswer ? "문서 기준 요약" : "답변 요약"}
+            {isManualAnswer ? "문서 기준 답변" : "핵심 답변"}
           </span>
           {primarySection ? (
             <span className="text-[11px] font-medium text-muted-foreground">{primarySection.title}</span>
           ) : null}
         </div>
         <p className="mt-2.5 break-words text-base font-semibold leading-7 text-foreground">{summaryText}</p>
-        <p className="mt-2 text-xs leading-5 text-muted-foreground">
-          {isManualAnswer
-            ? "필요하면 아래 절차와 화면 미리보기까지 이어서 확인해 주세요."
-            : "아래에서 적용 방법과 확인 포인트만 이어서 보면 됩니다."}
-        </p>
       </div>
     </div>
   )
@@ -853,7 +810,7 @@ function ManualAnswerPanel({
           </span>
         </div>
         <div className="mt-3">
-          <StructuredAnswerSections content={content} />
+          <StructuredAnswerSections content={content} suppressReferenceSection={Boolean(primaryManualCandidate.linkUrl)} />
         </div>
       </div>
     </div>
@@ -1415,7 +1372,7 @@ export function ChatMessage({ message, onSuggestedQuestion, onRetry, onEditQuest
               ) : (
                 <>
                   <AnswerOverviewCard message={message} content={contentToDisplay} />
-                  <StructuredAnswerSections content={contentToDisplay} />
+                  <StructuredAnswerSections content={contentToDisplay} suppressReferenceSection={Boolean(message.linkUrl)} />
                 </>
               )}
             </>
