@@ -49,6 +49,12 @@ export function ChatArea({
   ).slice(0, 3)
 
   useEffect(() => {
+    if (messages.length === 0) {
+      setShowScrollToBottom(false)
+      scrollContainerRef.current?.scrollTo({ top: 0 })
+      return
+    }
+
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, isTyping])
 
@@ -138,7 +144,7 @@ export function ChatArea({
       <div
         className={cn(
           "pointer-events-none absolute inset-x-0 bottom-28 z-10 flex justify-center px-4 transition-all md:bottom-24",
-          showScrollToBottom ? "opacity-100" : "translate-y-2 opacity-0",
+          showScrollToBottom && messages.length > 0 ? "opacity-100" : "translate-y-2 opacity-0",
         )}
       >
         <button
