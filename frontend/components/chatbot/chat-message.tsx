@@ -868,13 +868,13 @@ function ManualPreviewDialog({
           </button>
         )}
       </DialogTrigger>
-      <DialogContent className="h-[92dvh] max-h-[92dvh] w-[96vw] max-w-[96vw] overflow-hidden p-0 sm:max-w-[96vw]">
+      <DialogContent className="grid h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-none grid-rows-[auto_minmax(0,1fr)] overflow-hidden p-0 sm:h-[92dvh] sm:max-h-[92dvh] sm:w-[96vw] sm:max-w-[96vw]">
         <DialogHeader className="border-b border-border px-4 pb-3 pt-4 md:px-6 md:pt-5">
           <div className="flex min-w-0 items-start justify-between gap-4 pr-8">
             <div className="min-w-0">
               <DialogTitle className="truncate text-base md:text-lg">{activeCandidate.title}</DialogTitle>
-              <DialogDescription className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                <span>{activeCandidate.sourceLabel ?? activeCandidate.sectionTitle ?? "매뉴얼 화면 미리보기"}</span>
+              <DialogDescription className="mt-2 flex min-w-0 flex-wrap items-center gap-2 text-xs">
+                <span className="max-w-full truncate">{activeCandidate.sourceLabel ?? activeCandidate.sectionTitle ?? "매뉴얼 화면 미리보기"}</span>
                 {typeof activeCandidate.previewPageNumber === "number" ? (
                   <span>p.{activeCandidate.previewPageNumber}</span>
                 ) : null}
@@ -885,21 +885,21 @@ function ManualPreviewDialog({
               href={activeCandidate.previewImageUrl!}
               target="_blank"
               rel="noreferrer"
-              className="hidden shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent md:inline-flex"
+              className="hidden shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent sm:inline-flex"
             >
               원본 이미지 열기
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
           </div>
         </DialogHeader>
-        <div className="grid min-h-0 flex-1 gap-0 md:h-[calc(92dvh-5.5rem)] md:grid-cols-[minmax(0,1fr)_18rem]">
-          <div className="relative min-h-0 overflow-auto bg-black/95 p-3 md:p-5">
+        <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-0 md:h-[calc(92dvh-5.5rem)] md:grid-cols-[minmax(0,1fr)_18rem] md:grid-rows-none">
+          <div className="relative flex min-h-0 items-center justify-center overflow-auto bg-slate-950 p-2 md:p-5">
             {previewCandidates.length > 1 ? (
               <>
                 <button
                   type="button"
                   onClick={() => move(-1)}
-                  className="absolute left-4 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white transition-colors hover:bg-black/80"
+                  className="absolute left-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white transition-colors hover:bg-black/80 md:left-4 md:h-10 md:w-10"
                   aria-label="이전 화면"
                 >
                   <ChevronLeft className="h-5 w-5" />
@@ -907,7 +907,7 @@ function ManualPreviewDialog({
                 <button
                   type="button"
                   onClick={() => move(1)}
-                  className="absolute right-4 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white transition-colors hover:bg-black/80"
+                  className="absolute right-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white transition-colors hover:bg-black/80 md:right-4 md:h-10 md:w-10"
                   aria-label="다음 화면"
                 >
                   <ChevronRight className="h-5 w-5" />
@@ -917,20 +917,31 @@ function ManualPreviewDialog({
             <img
               src={activeCandidate.previewImageUrl!}
               alt={`${activeCandidate.title} 매뉴얼 확대 미리보기`}
-              className="mx-auto h-[70dvh] w-auto max-w-none rounded-xl bg-white object-contain shadow-2xl md:h-[calc(92dvh-8.5rem)]"
+              className="max-h-[calc(100dvh-15rem)] w-auto max-w-full rounded-xl bg-white object-contain shadow-2xl md:max-h-[calc(92dvh-8.5rem)] md:max-w-none"
             />
           </div>
           {previewCandidates.length > 1 ? (
             <div className="min-h-0 border-t border-border bg-card p-3 md:border-l md:border-t-0">
-              <p className="mb-2 text-xs font-semibold text-foreground">관련 화면</p>
-              <div className="flex gap-2 overflow-auto md:block md:max-h-[calc(92dvh-8.5rem)] md:space-y-2">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold text-foreground">관련 화면</p>
+                <a
+                  href={activeCandidate.previewImageUrl!}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground sm:hidden"
+                >
+                  원본 열기
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+              <div className="flex gap-2 overflow-x-auto overflow-y-hidden pb-1 md:block md:max-h-[calc(92dvh-8.5rem)] md:space-y-2 md:overflow-auto md:pb-0">
                 {previewCandidates.map((candidate, index) => (
                   <button
                     key={candidate.chunkId}
                     type="button"
                     onClick={() => setActiveIndex(index)}
                     className={cn(
-                      "flex min-w-56 items-start gap-2 rounded-xl border p-2 text-left transition-colors md:w-full md:min-w-0",
+                      "flex min-w-[13rem] items-start gap-2 rounded-xl border p-2 text-left transition-colors md:w-full md:min-w-0",
                       index === safeIndex
                         ? "border-sky-500/40 bg-sky-500/10"
                         : "border-border bg-background hover:bg-accent",
