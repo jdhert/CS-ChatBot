@@ -12,10 +12,12 @@ export async function POST(request: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(request.headers.get("cookie") ? { cookie: request.headers.get("cookie") as string } : {}),
       },
       body: JSON.stringify(body),
       cache: "no-store",
     })
+    const setCookie = response.headers.get("set-cookie")
 
     if (!response.ok) {
       const errorText = await response.text()
@@ -23,6 +25,7 @@ export async function POST(request: NextRequest) {
         status: response.status,
         headers: {
           "Content-Type": "application/json",
+          ...(setCookie ? { "Set-Cookie": setCookie } : {}),
         },
       })
     }
@@ -32,6 +35,7 @@ export async function POST(request: NextRequest) {
       return new Response(response.body, {
         headers: {
           "Content-Type": "application/json",
+          ...(setCookie ? { "Set-Cookie": setCookie } : {}),
         },
       })
     }
@@ -41,6 +45,7 @@ export async function POST(request: NextRequest) {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
+        ...(setCookie ? { "Set-Cookie": setCookie } : {}),
       },
     })
   } catch (error) {

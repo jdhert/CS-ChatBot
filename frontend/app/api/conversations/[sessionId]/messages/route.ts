@@ -3,7 +3,7 @@ import { NextRequest } from "next/server"
 const DEFAULT_AI_CORE_URL = "http://127.0.0.1:3101"
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
   const { sessionId } = await params
@@ -12,14 +12,19 @@ export async function GET(
   try {
     const response = await fetch(`${baseUrl}/conversations/${encodeURIComponent(sessionId)}/messages`, {
       method: "GET",
+      headers: {
+        ...(request.headers.get("cookie") ? { cookie: request.headers.get("cookie") as string } : {}),
+      },
       cache: "no-store",
     })
 
     const text = await response.text()
+    const setCookie = response.headers.get("set-cookie")
     return new Response(text, {
       status: response.status,
       headers: {
         "Content-Type": "application/json",
+        ...(setCookie ? { "Set-Cookie": setCookie } : {}),
       },
     })
   } catch (error) {

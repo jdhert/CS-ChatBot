@@ -22,15 +22,20 @@ export async function DELETE(
       `${baseUrl}/conversations/${encodeURIComponent(sessionId)}${suffix}`,
       {
         method: "DELETE",
+        headers: {
+          ...(request.headers.get("cookie") ? { cookie: request.headers.get("cookie") as string } : {}),
+        },
         cache: "no-store",
       },
     )
 
     const text = await response.text()
+    const setCookie = response.headers.get("set-cookie")
     return new Response(text, {
       status: response.status,
       headers: {
         "Content-Type": "application/json",
+        ...(setCookie ? { "Set-Cookie": setCookie } : {}),
       },
     })
   } catch (error) {
@@ -67,6 +72,7 @@ export async function PATCH(
         method: "PATCH",
         headers: {
           "Content-Type": request.headers.get("Content-Type") ?? "application/json",
+          ...(request.headers.get("cookie") ? { cookie: request.headers.get("cookie") as string } : {}),
         },
         body,
         cache: "no-store",
@@ -74,10 +80,12 @@ export async function PATCH(
     )
 
     const text = await response.text()
+    const setCookie = response.headers.get("set-cookie")
     return new Response(text, {
       status: response.status,
       headers: {
         "Content-Type": "application/json",
+        ...(setCookie ? { "Set-Cookie": setCookie } : {}),
       },
     })
   } catch (error) {

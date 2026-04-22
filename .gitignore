@@ -33,6 +33,7 @@ Thumbs.db
 
 # Database
 sqlite_storage/
+db_export/
 *.db
 *.sqlite
 
@@ -59,6 +60,7 @@ workspace-fastify/tmp/manual-preview/
 # Storage
 notebook_storage/
 public/uploads/
+stor/
 
 # Archive
 ARCHIVE/

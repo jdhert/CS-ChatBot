@@ -24,14 +24,19 @@ export async function GET(request: NextRequest) {
   try {
     const response = await fetch(`${baseUrl}/conversations?${params.toString()}`, {
       method: "GET",
+      headers: {
+        ...(request.headers.get("cookie") ? { cookie: request.headers.get("cookie") as string } : {}),
+      },
       cache: "no-store",
     })
 
     const text = await response.text()
+    const setCookie = response.headers.get("set-cookie")
     return new Response(text, {
       status: response.status,
       headers: {
         "Content-Type": "application/json",
+        ...(setCookie ? { "Set-Cookie": setCookie } : {}),
       },
     })
   } catch (error) {

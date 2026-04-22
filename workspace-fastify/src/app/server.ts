@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import fastifyCors from "@fastify/cors";
 import { createReadStream } from "node:fs";
 import { stat as statFile } from "node:fs/promises";
@@ -89,6 +89,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 interface ConversationSessionInput {
   clientSessionId?: string | null;
   userKey?: string | null;
+  legacyUserKey?: string | null;
   title?: string | null;
 }
 
@@ -112,6 +113,12 @@ interface ConversationPersistenceContext {
   conversationId: string;
   userMessageId: string;
   assistantMessageId: string;
+}
+
+interface ConversationIdentity {
+  ownerKey: string;
+  legacyUserKey: string | null;
+  setCookieHeader: string | null;
 }
 
 type EmbeddingCoverageAlertLevel = "ok" | "warning" | "critical";
@@ -183,15 +190,93 @@ function buildConversationTitle(query: string): string {
   return titleSource.length > 40 ? `${titleSource.slice(0, 40)}...` : titleSource;
 }
 
+const ANONYMOUS_USER_COOKIE = "covi_ai_anon_user";
+const ANONYMOUS_USER_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
+const USER_KEY_MAX_LENGTH = 128;
+
+function normalizeUserKey(value: string | null | undefined): string | null {
+  const normalized = value?.trim();
+  if (!normalized || normalized.length > USER_KEY_MAX_LENGTH) {
+    return null;
+  }
+  return normalized;
+}
+
+function parseCookieHeader(raw: string | undefined): Map<string, string> {
+  const cookies = new Map<string, string>();
+  if (!raw) {
+    return cookies;
+  }
+
+  for (const part of raw.split(";")) {
+    const [name, ...valueParts] = part.split("=");
+    const key = name?.trim();
+    if (!key) {
+      continue;
+    }
+    const value = valueParts.join("=").trim();
+    try {
+      cookies.set(key, decodeURIComponent(value));
+    } catch {
+      cookies.set(key, value);
+    }
+  }
+  return cookies;
+}
+
+function isValidAnonymousOwnerKey(value: string | null | undefined): value is string {
+  return typeof value === "string" && /^anon-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function buildAnonymousUserCookie(ownerKey: string): string {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return [
+    `${ANONYMOUS_USER_COOKIE}=${encodeURIComponent(ownerKey)}`,
+    "Path=/",
+    `Max-Age=${ANONYMOUS_USER_MAX_AGE_SECONDS}`,
+    "HttpOnly",
+    "SameSite=Lax",
+    secure
+  ].filter(Boolean).join("; ");
+}
+
+function allowLegacyConversationUserKey(): boolean {
+  return parseEnvBoolean(process.env.CONVERSATION_LEGACY_USERKEY_ENABLED, true);
+}
+
+function resolveConversationIdentity(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  clientUserKey?: string | null
+): ConversationIdentity {
+  const cookies = parseCookieHeader(firstHeaderValue(request.headers.cookie) ?? undefined);
+  const cookieOwnerKey = cookies.get(ANONYMOUS_USER_COOKIE) ?? null;
+  const hasValidCookie = isValidAnonymousOwnerKey(cookieOwnerKey);
+  const ownerKey = hasValidCookie ? cookieOwnerKey : `anon-${crypto.randomUUID()}`;
+  const setCookieHeader = hasValidCookie ? null : buildAnonymousUserCookie(ownerKey);
+  if (setCookieHeader) {
+    reply.header("set-cookie", setCookieHeader);
+  }
+
+  const normalizedLegacyUserKey = normalizeUserKey(clientUserKey);
+  const legacyUserKey =
+    allowLegacyConversationUserKey() && normalizedLegacyUserKey !== ownerKey
+      ? normalizedLegacyUserKey
+      : null;
+
+  return { ownerKey, legacyUserKey, setCookieHeader };
+}
+
 async function ensureConversationSession(input: ConversationSessionInput): Promise<string> {
   const pool = getVectorPool();
   const clientSessionId = input.clientSessionId?.trim() || null;
-  const userKey = input.userKey?.trim() || null;
+  const userKey = normalizeUserKey(input.userKey);
+  const legacyUserKey = normalizeUserKey(input.legacyUserKey);
   const title = input.title?.trim() || null;
 
   if (clientSessionId) {
-    const existing = await pool.query<{ session_id: string }>(
-      `select session_id
+    const existing = await pool.query<{ session_id: string; user_key: string | null }>(
+      `select session_id, user_key
          from ai_core.conversation_session
         where client_session_id = $1
         limit 1`,
@@ -200,9 +285,17 @@ async function ensureConversationSession(input: ConversationSessionInput): Promi
 
     if (existing.rowCount && existing.rows[0]?.session_id) {
       const sessionId = existing.rows[0].session_id;
+      const existingUserKey = existing.rows[0].user_key;
+      const canClaimExisting =
+        existingUserKey === null ||
+        existingUserKey === userKey ||
+        (legacyUserKey !== null && existingUserKey === legacyUserKey);
+      if (!canClaimExisting) {
+        throw new Error("CONVERSATION_OWNER_MISMATCH");
+      }
       await pool.query(
         `update ai_core.conversation_session
-            set user_key = coalesce(user_key, $2),
+            set user_key = coalesce($2, user_key),
                 title = coalesce(title, $3),
                 updated_at = now()
           where session_id = $1`,
@@ -293,6 +386,7 @@ async function appendConversationMessage(input: ConversationMessageInput): Promi
 async function startConversationPersistence(input: {
   clientSessionId?: string | null;
   userKey?: string | null;
+  legacyUserKey?: string | null;
   title: string;
   query: string;
   retrievalScope: RetrievalScope;
@@ -300,6 +394,7 @@ async function startConversationPersistence(input: {
   const conversationId = await ensureConversationSession({
     clientSessionId: input.clientSessionId,
     userKey: input.userKey,
+    legacyUserKey: input.legacyUserKey,
     title: input.title,
   });
 
@@ -1542,6 +1637,7 @@ export function buildServer(): FastifyInstance {
     const conversationHistory = sanitizeHistory(request.body?.conversationHistory);
     const clientConversationId = request.body?.conversationId?.trim() || null;
     const userKey = request.body?.userKey?.trim() || null;
+    const conversationIdentity = resolveConversationIdentity(request, reply, userKey);
     let persistenceContext: ConversationPersistenceContext | null = null;
 
     if (!query) {
@@ -1570,7 +1666,8 @@ export function buildServer(): FastifyInstance {
       try {
         persistenceContext = await startConversationPersistence({
           clientSessionId: clientConversationId,
-          userKey,
+          userKey: conversationIdentity.ownerKey,
+          legacyUserKey: conversationIdentity.legacyUserKey,
           title: buildConversationTitle(query),
           query,
           retrievalScope: scope,
@@ -1834,6 +1931,7 @@ export function buildServer(): FastifyInstance {
     const conversationHistory = sanitizeHistory(request.body?.conversationHistory);
     const clientConversationId = request.body?.conversationId?.trim() || null;
     const userKey = request.body?.userKey?.trim() || null;
+    const conversationIdentity = resolveConversationIdentity(request, reply, userKey);
     let persistenceContext: ConversationPersistenceContext | null = null;
     let persistenceMs = 0;
 
@@ -1871,7 +1969,8 @@ export function buildServer(): FastifyInstance {
       const persistenceStartedAt = Date.now();
       persistenceContext = await startConversationPersistence({
         clientSessionId: clientConversationId,
-        userKey,
+        userKey: conversationIdentity.ownerKey,
+        legacyUserKey: conversationIdentity.legacyUserKey,
         title: buildConversationTitle(query),
         query,
         retrievalScope: scope,
@@ -1923,6 +2022,7 @@ export function buildServer(): FastifyInstance {
         "Cache-Control": "no-cache, no-transform",
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no",
+        ...(conversationIdentity.setCookieHeader ? { "Set-Cookie": conversationIdentity.setCookieHeader } : {}),
       });
       reply.raw.write(`data: ${JSON.stringify({ type: "metadata", data: cachedMetadata })}\n\n`);
       reply.raw.write(`data: ${JSON.stringify({ type: "chunk", data: cachedResult.fullText })}\n\n`);
@@ -2042,7 +2142,8 @@ export function buildServer(): FastifyInstance {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
         "Connection": "keep-alive",
-        "X-Accel-Buffering": "no"
+        "X-Accel-Buffering": "no",
+        ...(conversationIdentity.setCookieHeader ? { "Set-Cookie": conversationIdentity.setCookieHeader } : {})
       });
 
       // metadata를 먼저 전송해 프론트에서 링크와 상태를 즉시 표시할 수 있게 함
@@ -2486,33 +2587,38 @@ export function buildServer(): FastifyInstance {
     const qs = request.query as Record<string, string>;
     const clientSessionId = qs.clientSessionId?.trim() || null;
     const userKey = qs.userKey?.trim() || null;
+    const conversationIdentity = resolveConversationIdentity(request, reply, userKey);
     const search = qs.search?.trim() || null;
     const offset = Math.max(parseInt(qs.offset ?? "0", 10) || 0, 0);
     const days = Math.min(Math.max(parseInt(qs.days ?? "0", 10) || 0, 0), 365);
     const limit = Math.min(Math.max(parseInt(qs.limit ?? "20", 10) || 20, 1), 100);
     const includeMessages = (qs.includeMessages ?? "").trim().toLowerCase() === "true";
-    if (!clientSessionId && !userKey) {
-      return reply.code(400).send({
-        error: "INVALID_QUERY",
-        message: "`clientSessionId` or `userKey` is required."
-      });
-    }
     const pool = getVectorPool();
     try {
+      if (conversationIdentity.legacyUserKey) {
+        await pool.query(
+          `update ai_core.conversation_session
+              set user_key = $1,
+                  updated_at = now()
+            where user_key = $2`,
+          [conversationIdentity.ownerKey, conversationIdentity.legacyUserKey]
+        );
+      }
+
       const conditions: string[] = [];
       const identityConditions: string[] = [];
       const params: unknown[] = [];
       if (clientSessionId) {
         params.push(clientSessionId);
-        identityConditions.push(`cs.client_session_id = $${params.length}`);
+        conditions.push(`cs.client_session_id = $${params.length}`);
       }
-      if (userKey) {
-        params.push(userKey);
+      params.push(conversationIdentity.ownerKey);
+      identityConditions.push(`cs.user_key = $${params.length}`);
+      if (conversationIdentity.legacyUserKey) {
+        params.push(conversationIdentity.legacyUserKey);
         identityConditions.push(`cs.user_key = $${params.length}`);
       }
-      if (identityConditions.length > 0) {
-        conditions.push(`(${identityConditions.join(" or ")})`);
-      }
+      conditions.push(`(${identityConditions.join(" or ")})`);
       if (days > 0) {
         params.push(days);
         conditions.push(`cs.updated_at >= now() - ($${params.length}::int * interval '1 day')`);
@@ -2602,6 +2708,8 @@ export function buildServer(): FastifyInstance {
 
   app.get<{ Params: { sessionId: string } }>("/conversations/:sessionId/messages", async (request, reply) => {
     const sessionId = request.params?.sessionId?.trim();
+    const qs = request.query as Record<string, string> | undefined;
+    const conversationIdentity = resolveConversationIdentity(request, reply, qs?.userKey?.trim() || null);
     if (!sessionId) {
       return reply.code(400).send({
         error: "INVALID_SESSION_ID",
@@ -2611,13 +2719,22 @@ export function buildServer(): FastifyInstance {
     const pool = getVectorPool();
     try {
       const result = await pool.query(
-        `select message_id, session_id, turn_index, role, content, status,
-                answer_source, retrieval_mode, confidence, best_require_id, best_scc_id,
-                similar_issue_url, log_uuid, metadata, created_at
-           from ai_core.conversation_message
-          where session_id = $1
+        `select cm.message_id, cm.session_id, cm.turn_index, cm.role, cm.content, cm.status,
+                cm.answer_source, cm.retrieval_mode, cm.confidence, cm.best_require_id, cm.best_scc_id,
+                cm.similar_issue_url, cm.log_uuid, cm.metadata, cm.created_at
+           from ai_core.conversation_message cm
+          where cm.session_id = $1
+            and exists (
+              select 1
+                from ai_core.conversation_session cs
+               where cs.session_id = cm.session_id
+                 and (
+                   cs.user_key = $2
+                   or ($3::text is not null and cs.user_key = $3::text)
+                 )
+            )
           order by turn_index asc, created_at asc`,
-        [sessionId]
+        [sessionId, conversationIdentity.ownerKey, conversationIdentity.legacyUserKey]
       );
       return reply.code(200).send({ rows: result.rows });
     } catch (error) {
@@ -2629,6 +2746,7 @@ export function buildServer(): FastifyInstance {
   app.patch<{ Params: { clientSessionId: string }; Body: { title?: string } }>("/conversations/:clientSessionId", async (request, reply) => {
     const clientSessionId = request.params?.clientSessionId?.trim();
     const userKey = (request.query as Record<string, string> | undefined)?.userKey?.trim() || null;
+    const conversationIdentity = resolveConversationIdentity(request, reply, userKey);
     const title = request.body?.title?.trim() ?? "";
 
     if (!clientSessionId) {
@@ -2664,17 +2782,23 @@ export function buildServer(): FastifyInstance {
         return reply.code(404).send({ error: "CONVERSATION_NOT_FOUND" });
       }
 
-      if (userKey && existing.rows[0].user_key && existing.rows[0].user_key !== userKey) {
+      const existingUserKey = existing.rows[0].user_key;
+      const canUpdate =
+        existingUserKey === null ||
+        existingUserKey === conversationIdentity.ownerKey ||
+        (conversationIdentity.legacyUserKey !== null && existingUserKey === conversationIdentity.legacyUserKey);
+      if (!canUpdate) {
         return reply.code(403).send({ error: "CONVERSATION_UPDATE_FORBIDDEN" });
       }
 
       const result = await pool.query(
         `update ai_core.conversation_session
-            set title = $2
+            set title = $2,
+                user_key = coalesce($3, user_key)
           where session_id = $1
           returning session_id, client_session_id, user_key, title, status,
                     message_count, last_message_at, created_at, updated_at`,
-        [existing.rows[0].session_id, title]
+        [existing.rows[0].session_id, title, conversationIdentity.ownerKey]
       );
 
       return reply.code(200).send({ ok: true, row: result.rows[0] ?? null });
@@ -2687,6 +2811,7 @@ export function buildServer(): FastifyInstance {
   app.delete<{ Params: { clientSessionId: string } }>("/conversations/:clientSessionId", async (request, reply) => {
     const clientSessionId = request.params?.clientSessionId?.trim();
     const userKey = (request.query as Record<string, string> | undefined)?.userKey?.trim() || null;
+    const conversationIdentity = resolveConversationIdentity(request, reply, userKey);
 
     if (!clientSessionId) {
       return reply.code(400).send({
@@ -2709,7 +2834,12 @@ export function buildServer(): FastifyInstance {
         return reply.code(404).send({ error: "CONVERSATION_NOT_FOUND" });
       }
 
-      if (userKey && existing.rows[0].user_key && existing.rows[0].user_key !== userKey) {
+      const existingUserKey = existing.rows[0].user_key;
+      const canDelete =
+        existingUserKey === null ||
+        existingUserKey === conversationIdentity.ownerKey ||
+        (conversationIdentity.legacyUserKey !== null && existingUserKey === conversationIdentity.legacyUserKey);
+      if (!canDelete) {
         return reply.code(403).send({ error: "CONVERSATION_DELETE_FORBIDDEN" });
       }
 
