@@ -1,6 +1,5 @@
 ﻿"use client"
 
-import Link from "next/link"
 import {
   Bot,
   Download,
@@ -498,11 +497,15 @@ export function ChatHeader({ isDarkMode, onToggleDarkMode, onExportChat, onOpenS
           >
             <DropdownMenuLabel>{"\uBE60\uB978 \uBA54\uB274"}</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/logs" className="flex w-full items-center gap-2">
-                <ScrollText className="h-4 w-4" />
-                <span>{"\uB85C\uADF8 \uB300\uC2DC\uBCF4\uB4DC"}</span>
-              </Link>
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault()
+                navigateTo("/logs")
+              }}
+              className="flex w-full items-center gap-2"
+            >
+              <ScrollText className="h-4 w-4" />
+              <span>{"\uB85C\uADF8 \uB300\uC2DC\uBCF4\uB4DC"}</span>
             </DropdownMenuItem>
             {onExportChat ? (
               <>
