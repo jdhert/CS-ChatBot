@@ -911,19 +911,32 @@ function ManualPreviewDialog({
           </button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] max-w-4xl overflow-hidden p-0">
-        <DialogHeader className="border-b border-border px-5 pb-3 pt-5">
-          <DialogTitle className="truncate text-base">{activeCandidate.title}</DialogTitle>
-          <DialogDescription className="flex flex-wrap items-center gap-2 text-xs">
-            <span>{activeCandidate.sourceLabel ?? activeCandidate.sectionTitle ?? "매뉴얼 화면 미리보기"}</span>
-            {typeof activeCandidate.previewPageNumber === "number" ? (
-              <span>p.{activeCandidate.previewPageNumber}</span>
-            ) : null}
-            {previewCandidates.length > 1 ? <span>{safeIndex + 1} / {previewCandidates.length}</span> : null}
-          </DialogDescription>
+      <DialogContent className="h-[92dvh] max-h-[92dvh] w-[96vw] max-w-[96vw] overflow-hidden p-0 sm:max-w-[96vw]">
+        <DialogHeader className="border-b border-border px-4 pb-3 pt-4 md:px-6 md:pt-5">
+          <div className="flex min-w-0 items-start justify-between gap-4 pr-8">
+            <div className="min-w-0">
+              <DialogTitle className="truncate text-base md:text-lg">{activeCandidate.title}</DialogTitle>
+              <DialogDescription className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                <span>{activeCandidate.sourceLabel ?? activeCandidate.sectionTitle ?? "매뉴얼 화면 미리보기"}</span>
+                {typeof activeCandidate.previewPageNumber === "number" ? (
+                  <span>p.{activeCandidate.previewPageNumber}</span>
+                ) : null}
+                {previewCandidates.length > 1 ? <span>{safeIndex + 1} / {previewCandidates.length}</span> : null}
+              </DialogDescription>
+            </div>
+            <a
+              href={activeCandidate.previewImageUrl!}
+              target="_blank"
+              rel="noreferrer"
+              className="hidden shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent md:inline-flex"
+            >
+              원본 이미지 열기
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          </div>
         </DialogHeader>
-        <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_240px]">
-          <div className="relative overflow-auto bg-black/90 p-4">
+        <div className="grid min-h-0 flex-1 gap-0 md:h-[calc(92dvh-5.5rem)] md:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="relative min-h-0 overflow-auto bg-black/95 p-3 md:p-5">
             {previewCandidates.length > 1 ? (
               <>
                 <button
@@ -947,20 +960,20 @@ function ManualPreviewDialog({
             <img
               src={activeCandidate.previewImageUrl!}
               alt={`${activeCandidate.title} 매뉴얼 확대 미리보기`}
-              className="mx-auto max-h-[calc(90dvh-8rem)] w-auto max-w-full rounded-xl bg-white object-contain"
+              className="mx-auto h-[70dvh] w-auto max-w-none rounded-xl bg-white object-contain shadow-2xl md:h-[calc(92dvh-8.5rem)]"
             />
           </div>
           {previewCandidates.length > 1 ? (
-            <div className="border-l border-border bg-card p-3">
+            <div className="min-h-0 border-t border-border bg-card p-3 md:border-l md:border-t-0">
               <p className="mb-2 text-xs font-semibold text-foreground">관련 화면</p>
-              <div className="space-y-2 overflow-auto md:max-h-[calc(90dvh-8rem)]">
+              <div className="flex gap-2 overflow-auto md:block md:max-h-[calc(92dvh-8.5rem)] md:space-y-2">
                 {previewCandidates.map((candidate, index) => (
                   <button
                     key={candidate.chunkId}
                     type="button"
                     onClick={() => setActiveIndex(index)}
                     className={cn(
-                      "flex w-full items-start gap-2 rounded-xl border p-2 text-left transition-colors",
+                      "flex min-w-56 items-start gap-2 rounded-xl border p-2 text-left transition-colors md:w-full md:min-w-0",
                       index === safeIndex
                         ? "border-sky-500/40 bg-sky-500/10"
                         : "border-border bg-background hover:bg-accent",
