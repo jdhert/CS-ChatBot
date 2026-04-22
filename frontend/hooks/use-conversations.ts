@@ -28,6 +28,26 @@ function isConversationSettled(messages: Message[]): boolean {
   return !["searching", "generating", "streaming"].includes(lastMessage.status ?? "")
 }
 
+function areMessagesEquivalent(left: Message[], right: Message[]): boolean {
+  if (left.length !== right.length) return false
+
+  return left.every((leftMessage, index) => {
+    const rightMessage = right[index]
+    if (!rightMessage) return false
+
+    return (
+      leftMessage.id === rightMessage.id &&
+      leftMessage.sender === rightMessage.sender &&
+      leftMessage.content === rightMessage.content &&
+      (leftMessage.status ?? null) === (rightMessage.status ?? null) &&
+      (leftMessage.answerSource ?? null) === (rightMessage.answerSource ?? null) &&
+      (leftMessage.retrievalMode ?? null) === (rightMessage.retrievalMode ?? null) &&
+      (leftMessage.linkUrl ?? null) === (rightMessage.linkUrl ?? null) &&
+      (leftMessage.logId ?? null) === (rightMessage.logId ?? null)
+    )
+  })
+}
+
 export function useConversations() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
@@ -232,6 +252,10 @@ export function useConversations() {
 
     setConversations((prev) => {
       const existingConv = prev.find((conv) => conv.id === activeConversationId)
+      if (existingConv && areMessagesEquivalent(existingConv.messages, currentMessages)) {
+        return prev
+      }
+
       const shouldUpdateTitle = !existingConv?.title || existingConv.title === "새 대화"
       const title = shouldUpdateTitle
         ? generateConversationTitle(currentMessages[0]?.content ?? "새 대화")
