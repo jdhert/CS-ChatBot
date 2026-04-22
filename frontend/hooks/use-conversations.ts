@@ -10,7 +10,6 @@ import {
   fetchConversationPageFromServer,
   generateConversationTitle,
   getBrowserUserKey,
-  loadActiveSessionId,
   loadConversations,
   mergeConversations,
   saveActiveSessionId,
@@ -49,21 +48,6 @@ export function useConversations() {
   const [conversationPaginationError, setConversationPaginationError] = useState<string | null>(null)
   const [renamingConversationIds, setRenamingConversationIds] = useState<Set<string>>(() => new Set())
 
-  const applyConversationSelection = useCallback((nextConversations: Conversation[], preferredId?: string | null) => {
-    if (nextConversations.length === 0) {
-      setActiveConversationId(null)
-      setCurrentMessages([])
-      return
-    }
-
-    const selected =
-      (preferredId ? nextConversations.find((conv) => conv.id === preferredId) : null) ?? nextConversations[0]
-
-    setActiveConversationId(selected.id)
-    setCurrentMessages(selected.messages)
-    saveActiveSessionId(selected.id)
-  }, [])
-
   useEffect(() => {
     let cancelled = false
 
@@ -71,14 +55,15 @@ export function useConversations() {
       setIsHydratingConversations(true)
       setConversationSyncError(null)
       const localConversations = loadConversations()
-      const savedActiveId = loadActiveSessionId()
       const stableUserKey = getBrowserUserKey()
 
       setBrowserUserKey(stableUserKey)
+      setActiveConversationId(null)
+      setCurrentMessages([])
+      clearActiveSessionId()
 
       if (localConversations.length > 0) {
         setConversations(localConversations)
-        applyConversationSelection(localConversations, savedActiveId)
       }
 
       try {
@@ -98,7 +83,6 @@ export function useConversations() {
           const mergedConversations = mergeConversations(localConversations, serverConversations)
           setConversations(mergedConversations)
           saveConversations(mergedConversations)
-          applyConversationSelection(mergedConversations, savedActiveId)
           return
         }
       } catch (error) {
@@ -110,7 +94,6 @@ export function useConversations() {
 
       if (!cancelled && localConversations.length > 0) {
         setConversations(localConversations)
-        applyConversationSelection(localConversations, savedActiveId)
       }
     }
 
@@ -123,7 +106,7 @@ export function useConversations() {
     return () => {
       cancelled = true
     }
-  }, [applyConversationSelection])
+  }, [])
 
   useEffect(() => {
     if (!browserUserKey) {
