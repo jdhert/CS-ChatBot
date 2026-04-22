@@ -379,7 +379,7 @@ export function ConversationsPanel({
                               event.stopPropagation()
                               startEditingTitle(conversation)
                             }}
-                            className="shrink-0 rounded-md p-1.5 opacity-0 transition-all hover:bg-accent group-hover:opacity-100"
+                            className="shrink-0 rounded-lg p-2 opacity-100 transition-all hover:bg-accent md:p-1.5 md:opacity-0 md:group-hover:opacity-100"
                             disabled={isDeleting || isRenaming}
                             type="button"
                             title="대화 제목 수정"
@@ -397,8 +397,8 @@ export function ConversationsPanel({
                             onDeleteConversation(conversation.id)
                           }}
                           className={cn(
-                            "shrink-0 rounded-md p-1.5 transition-all",
-                            isDeleting ? "opacity-70" : "opacity-0 group-hover:opacity-100",
+                            "shrink-0 rounded-lg p-2 transition-all md:p-1.5",
+                            isDeleting ? "opacity-70" : "opacity-100 md:opacity-0 md:group-hover:opacity-100",
                             "hover:bg-destructive/10",
                           )}
                           disabled={isDeleting || isRenaming || isEditing}
