@@ -26,7 +26,7 @@ import {
 } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -123,6 +123,59 @@ async function submitFeedback(logId: string, feedback: "up" | "down"): Promise<v
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ logId, feedback }),
   })
+}
+
+function useHorizontalSwipe(onNext: () => void, onPrevious: () => void, threshold = 45) {
+  const startRef = useRef<{ x: number; y: number } | null>(null)
+  const suppressClickRef = useRef(false)
+  const suppressTimerRef = useRef<number | null>(null)
+
+  const clearSuppressTimer = () => {
+    if (suppressTimerRef.current !== null) {
+      window.clearTimeout(suppressTimerRef.current)
+      suppressTimerRef.current = null
+    }
+  }
+
+  return {
+    onTouchStart: (event: React.TouchEvent<HTMLElement>) => {
+      const touch = event.touches[0]
+      if (!touch) return
+      startRef.current = { x: touch.clientX, y: touch.clientY }
+      clearSuppressTimer()
+      suppressClickRef.current = false
+    },
+    onTouchEnd: (event: React.TouchEvent<HTMLElement>) => {
+      const start = startRef.current
+      const touch = event.changedTouches[0]
+      startRef.current = null
+      if (!start || !touch) return
+
+      const deltaX = touch.clientX - start.x
+      const deltaY = touch.clientY - start.y
+      const isHorizontalSwipe = Math.abs(deltaX) >= threshold && Math.abs(deltaX) > Math.abs(deltaY) * 1.25
+      if (!isHorizontalSwipe) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      suppressClickRef.current = true
+      if (deltaX < 0) onNext()
+      else onPrevious()
+
+      clearSuppressTimer()
+      suppressTimerRef.current = window.setTimeout(() => {
+        suppressClickRef.current = false
+        suppressTimerRef.current = null
+      }, 350)
+    },
+    onClickCapture: (event: React.MouseEvent<HTMLElement>) => {
+      if (!suppressClickRef.current) return
+      event.preventDefault()
+      event.stopPropagation()
+      suppressClickRef.current = false
+      clearSuppressTimer()
+    },
+  }
 }
 
 function BotMessageContent({ content }: { content: string }) {
@@ -838,11 +891,6 @@ function ManualPreviewDialog({
     setActiveIndex(initialIndex)
   }, [initialIndex])
 
-  if (previewCandidates.length === 0) return null
-
-  const safeIndex = Math.min(activeIndex, previewCandidates.length - 1)
-  const activeCandidate = previewCandidates[safeIndex]!
-
   const move = (direction: number) => {
     setActiveIndex((current) => {
       const next = current + direction
@@ -851,6 +899,12 @@ function ManualPreviewDialog({
       return next
     })
   }
+  const imageSwipeHandlers = useHorizontalSwipe(() => move(1), () => move(-1))
+
+  if (previewCandidates.length === 0) return null
+
+  const safeIndex = Math.min(activeIndex, previewCandidates.length - 1)
+  const activeCandidate = previewCandidates[safeIndex]!
 
   return (
     <Dialog>
@@ -893,7 +947,7 @@ function ManualPreviewDialog({
           </div>
         </DialogHeader>
         <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-0 md:h-[calc(92dvh-5.5rem)] md:grid-cols-[minmax(0,1fr)_18rem] md:grid-rows-none">
-          <div className="relative flex min-h-0 items-center justify-center overflow-auto bg-slate-950 p-2 md:p-5">
+          <div className="relative min-h-0 overflow-hidden bg-slate-950 p-2 md:p-5">
             {previewCandidates.length > 1 ? (
               <>
                 <button
@@ -914,11 +968,17 @@ function ManualPreviewDialog({
                 </button>
               </>
             ) : null}
-            <img
-              src={activeCandidate.previewImageUrl!}
-              alt={`${activeCandidate.title} 매뉴얼 확대 미리보기`}
-              className="max-h-[calc(100dvh-15rem)] w-auto max-w-full rounded-xl bg-white object-contain shadow-2xl md:max-h-[calc(92dvh-8.5rem)] md:max-w-none"
-            />
+            <div
+              className="flex h-full w-full touch-pan-y select-none items-center justify-center overflow-auto"
+              {...imageSwipeHandlers}
+            >
+              <img
+                src={activeCandidate.previewImageUrl!}
+                alt={`${activeCandidate.title} 매뉴얼 확대 미리보기`}
+                className="max-h-full max-w-full rounded-xl bg-white object-contain shadow-2xl"
+                draggable={false}
+              />
+            </div>
           </div>
           {previewCandidates.length > 1 ? (
             <div className="min-h-0 border-t border-border bg-card p-3 md:border-l md:border-t-0">
@@ -1155,11 +1215,6 @@ function ManualPreviewCallout({ candidates }: { candidates: ManualCandidateCard[
   const [isHidden, setIsHidden] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
 
-  if (previewCandidates.length === 0 || isHidden) return null
-
-  const safeIndex = Math.min(activeIndex, previewCandidates.length - 1)
-  const activeCandidate = previewCandidates[safeIndex]!
-
   const move = (direction: number) => {
     setActiveIndex((current) => {
       const next = current + direction
@@ -1168,6 +1223,12 @@ function ManualPreviewCallout({ candidates }: { candidates: ManualCandidateCard[
       return next
     })
   }
+  const previewSwipeHandlers = useHorizontalSwipe(() => move(1), () => move(-1))
+
+  if (previewCandidates.length === 0 || isHidden) return null
+
+  const safeIndex = Math.min(activeIndex, previewCandidates.length - 1)
+  const activeCandidate = previewCandidates[safeIndex]!
 
   return (
     <div className="mt-3 overflow-hidden rounded-xl border border-sky-500/25 bg-sky-500/5">
@@ -1202,8 +1263,9 @@ function ManualPreviewCallout({ candidates }: { candidates: ManualCandidateCard[
         <ManualPreviewDialog candidates={previewCandidates} initialIndex={safeIndex}>
           <button
             type="button"
-            className="block w-full transition-colors hover:bg-background"
+            className="block w-full touch-pan-y select-none transition-colors hover:bg-background"
             title="미리보기 이미지를 크게 보기"
+            {...previewSwipeHandlers}
           >
             <img
               src={activeCandidate.previewImageUrl!}
@@ -1211,6 +1273,7 @@ function ManualPreviewCallout({ candidates }: { candidates: ManualCandidateCard[
               className="max-h-72 w-full rounded-lg object-contain"
               loading="lazy"
               onError={() => setIsHidden(true)}
+              draggable={false}
             />
           </button>
         </ManualPreviewDialog>
